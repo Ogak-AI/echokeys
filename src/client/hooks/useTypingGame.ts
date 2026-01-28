@@ -15,6 +15,8 @@ interface GameState {
   accuracy: number;
   leaderboard: GetLeaderboardResponse['leaderboard'];
   showLeaderboard: boolean;
+  showDifficultySelect: boolean;
+  selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
 }
 
 export const useTypingGame = () => {
@@ -32,6 +34,8 @@ export const useTypingGame = () => {
     accuracy: 0,
     leaderboard: [],
     showLeaderboard: false,
+    showDifficultySelect: true,
+    selectedDifficulty: null,
   });
 
   // fetch initial data
@@ -49,10 +53,11 @@ export const useTypingGame = () => {
           userStats: data.userStats,
           dailyChallenge: data.dailyChallenge,
           loading: false,
+          showDifficultySelect: true,
         }));
       } catch (err) {
         console.error('Failed to init game', err);
-        setState(prev => ({ ...prev, loading: false }));
+        setState(prev => ({ ...prev, loading: false, showDifficultySelect: true }));
       }
     };
     void init();
@@ -68,6 +73,22 @@ export const useTypingGame = () => {
       wpm: 0,
       accuracy: 0,
     }));
+  }, []);
+
+  const selectDifficulty = useCallback(async (difficulty: 'easy' | 'medium' | 'hard') => {
+    try {
+      const res = await fetch(`/api/challenge/${difficulty}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { challenge: DailyChallenge } = await res.json();
+      setState(prev => ({
+        ...prev,
+        selectedDifficulty: difficulty,
+        dailyChallenge: data.challenge,
+        showDifficultySelect: false,
+      }));
+    } catch (err) {
+      console.error('Failed to fetch challenge for difficulty', err);
+    }
   }, []);
 
   const updateInput = useCallback((input: string) => {
@@ -139,12 +160,15 @@ export const useTypingGame = () => {
       endTime: null,
       wpm: 0,
       accuracy: 0,
+      showDifficultySelect: true,
+      selectedDifficulty: null,
     }));
   }, []);
 
   return {
     ...state,
     startGame,
+    selectDifficulty,
     updateInput,
     fetchLeaderboard,
     toggleLeaderboard,

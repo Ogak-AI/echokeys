@@ -302,6 +302,45 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
   }
 });
 
+router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
+  const { difficulty } = req.params;
+  
+  if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+    res.status(400).json({ status: 'error', message: 'Invalid difficulty level' });
+    return;
+  }
+
+  try {
+    if (!challengesLoaded || challenges.length === 0) {
+      res.status(500).json({ status: 'error', message: 'Challenges not loaded' });
+      return;
+    }
+
+    // Filter challenges by difficulty
+    const filtered = challenges.filter(c => c.difficulty === difficulty);
+    if (filtered.length === 0) {
+      res.status(404).json({ status: 'error', message: `No challenges found for difficulty: ${difficulty}` });
+      return;
+    }
+
+    // Randomly select one from the filtered challenges
+    const randomIndex = Math.floor(Math.random() * filtered.length);
+    const selectedChallenge = filtered[randomIndex];
+    const today = new Date();
+
+    res.json({
+      challenge: {
+        ...selectedChallenge,
+        id: `${difficulty}-${randomIndex}`,
+        date: today.toISOString().split('T')[0] || today.toDateString(),
+      }
+    });
+  } catch (error) {
+    console.error(`Challenge error:`, error);
+    res.status(500).json({ status: 'error', message: 'Failed to get challenge' });
+  }
+});
+
 router.post('/internal/on-app-install', async (_req, res): Promise<void> => {
   try {
     const post = await createPost();

@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "echokeys",
+  "name": "keyscriptures",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -35,6 +35,6 @@
     "onAppInstall": "/internal/on-app-install"
   },
   "dev": {
-    "subreddit": "echokeys_dev"
+    "subreddit": "keyscriptures_dev"
   }
 }

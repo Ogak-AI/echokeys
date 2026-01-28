@@ -14,7 +14,9 @@ export const App = () => {
     accuracy,
     leaderboard,
     showLeaderboard,
+    showDifficultySelect,
     startGame,
+    selectDifficulty,
     updateInput,
     fetchLeaderboard,
     toggleLeaderboard,
@@ -67,12 +69,45 @@ export const App = () => {
     );
   }
 
+  // Difficulty Selection Screen
+  if (showDifficultySelect && !gameStarted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
+        <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-screen">
+          <h1 className="text-4xl font-bold mb-4 text-center">KeyScriptures</h1>
+          <p className="text-xl opacity-90 mb-12 text-center">Choose your difficulty level</p>
+          
+          <div className="space-y-4 w-full max-w-md">
+            <button
+              onClick={() => selectDifficulty('easy')}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
+            >
+              Easy
+            </button>
+            <button
+              onClick={() => selectDifficulty('medium')}
+              className="w-full bg-blue-700 hover:bg-blue-800 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
+            >
+              Medium
+            </button>
+            <button
+              onClick={() => selectDifficulty('hard')}
+              className="w-full bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
+            >
+              Hard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold mb-2">EchoKeys</h1>
+          <h1 className="text-4xl font-bold mb-2">KeyScriptures</h1>
           <p className="text-lg opacity-90">Welcome, {username}!</p>
         </div>
 
@@ -116,7 +151,7 @@ export const App = () => {
 
             {!gameStarted ? (
               <div className="text-center">
-                <p className="mb-4 opacity-90">{dailyChallenge.text}</p>
+                <p className="mb-4 opacity-90 text-sm max-h-20 overflow-hidden">{dailyChallenge.text.substring(0, 150)}...</p>
                 <button
                   onClick={startGame}
                   className="bg-white text-blue-900 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors"
@@ -126,55 +161,30 @@ export const App = () => {
               </div>
             ) : (
               <div className="flex flex-col h-auto">
-                {/* Typing Area - Fixed on mobile, normal on desktop */}
-                <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-lg sm:text-xl md:text-2xl leading-relaxed min-h-16 sm:min-h-24 md:min-h-32 overflow-hidden flex-shrink-0 md:flex-none">
+                {/* Typing Area - Shows ~100-120 characters at a time */}
+                <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-base sm:text-lg md:text-xl leading-relaxed min-h-20 sm:min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
                   {(() => {
-                    // Split text into lines
-                    const lines = dailyChallenge.text.split('\n');
                     const charIndex = currentInput.length;
+                    // Show 100-120 characters total, with cursor roughly in the middle
+                    const charsToShow = 110; // characters to display
+                    const beforeCursor = 40; // characters before cursor
+                    const startIdx = Math.max(0, charIndex - beforeCursor);
+                    const endIdx = Math.min(dailyChallenge.text.length, startIdx + charsToShow);
                     
-                    // Find which line and position within the line the cursor is on
-                    let currentLine = 0;
-                    let charCount = 0;
-                    for (let i = 0; i < lines.length; i++) {
-                      const lineLength = lines[i].length + 1; // +1 for newline
-                      if (charCount + lineLength > charIndex) {
-                        currentLine = i;
-                        break;
+                    const displayText = dailyChallenge.text.substring(startIdx, endIdx);
+                    
+                    return displayText.split('').map((char, idx) => {
+                      const charAbsIndex = startIdx + idx;
+                      let className = 'text-gray-300';
+                      if (charAbsIndex < currentInput.length) {
+                        className = currentInput[charAbsIndex] === char ? 'text-white font-semibold' : 'text-red-500 bg-red-500/30 font-semibold';
+                      } else if (charAbsIndex === currentInput.length) {
+                        className = 'bg-white text-black font-bold animate-pulse';
                       }
-                      charCount += lineLength;
-                    }
-                    
-                    // Show 2-3 lines on mobile, 3 on desktop
-                    const linesToShow = window.innerWidth < 768 ? 2 : 3;
-                    const startLine = Math.max(0, currentLine);
-                    const endLine = Math.min(lines.length - 1, currentLine + linesToShow - 1);
-                    
-                    return lines.slice(startLine, endLine + 1).map((line, lineIdx) => {
-                      const actualLineIdx = startLine + lineIdx;
-                      // Calculate the character index for this line
-                      let lineCharStart = 0;
-                      for (let i = 0; i < actualLineIdx; i++) {
-                        lineCharStart += lines[i].length + 1; // +1 for newline
-                      }
-                      
                       return (
-                        <div key={actualLineIdx}>
-                          {line.split('').map((char, charIdx) => {
-                            const charAbsIndex = lineCharStart + charIdx;
-                            let className = 'text-gray-300';
-                            if (charAbsIndex < currentInput.length) {
-                              className = currentInput[charAbsIndex] === char ? 'text-white' : 'text-red-500 bg-red-500/30';
-                            } else if (charAbsIndex === currentInput.length) {
-                              className = 'bg-white text-black animate-pulse';
-                            }
-                            return (
-                              <span key={charIdx} className={className}>
-                                {char}
-                              </span>
-                            );
-                          })}
-                        </div>
+                        <span key={idx} className={className}>
+                          {char === '\n' ? '↵' : char}
+                        </span>
                       );
                     });
                   })()}
@@ -185,9 +195,9 @@ export const App = () => {
                   value={currentInput}
                   onChange={(e) => updateInput(e.target.value)}
                   onTouchStart={(e) => e.currentTarget.scrollIntoView(false)}
-                  className="w-full bg-white/10 border border-white/20 rounded-lg p-2 sm:p-4 text-base sm:text-lg md:text-lg text-white placeholder-white/50 focus:outline-none focus:border-white/50 flex-shrink-0 md:flex-none"
+                  className="w-full bg-white/10 border border-white/20 rounded-lg p-3 sm:p-4 text-lg sm:text-xl md:text-lg text-white placeholder-white/50 focus:outline-none focus:border-white/50 flex-shrink-0 md:flex-none"
                   placeholder="Start typing here..."
-                  rows={2}
+                  rows={5}
                   disabled={gameFinished}
                 />
 
