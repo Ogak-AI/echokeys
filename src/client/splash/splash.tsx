@@ -2,10 +2,13 @@ import '../index.css';
 
 import { navigateTo } from '@devvit/web/client';
 import { context, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 export const Splash = () => {
+  const [availableRooms, setAvailableRooms] = useState<Array<any>>([]);
+  const [showRooms, setShowRooms] = useState(false);
+
   return (
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
       <div className="text-center">
@@ -25,6 +28,58 @@ export const Splash = () => {
           Start Typing!
         </button>
       </div>
+      <div className="flex items-center justify-center mt-3">
+        <button
+          className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={async () => {
+            try {
+              const res = await fetch('/api/multiplayer/rooms');
+              if (!res.ok) throw new Error('Failed to fetch rooms');
+              const data = await res.json();
+              setAvailableRooms(data.rooms || []);
+              setShowRooms(true);
+            } catch (err) {
+              console.error('Failed to fetch rooms', err);
+            }
+          }}
+        >
+          Watch
+        </button>
+      </div>
+
+      {showRooms && (
+        <div className="mt-4 w-full max-w-md bg-white/5 rounded-lg p-4">
+          <h3 className="text-lg font-semibold mb-2">Live Games</h3>
+          {availableRooms.length === 0 ? (
+            <p className="text-sm opacity-80">No active games right now.</p>
+          ) : (
+            <div className="space-y-2">
+              {availableRooms.map((r: any) => (
+                <div key={r.id} className="flex justify-between items-center bg-white/5 rounded p-2">
+                  <div>
+                    <div className="font-semibold">{r.id}</div>
+                    <div className="text-sm opacity-80">Players: {r.playerCount} • Challenge: {r.challengeId}</div>
+                  </div>
+                  <div>
+                    <button
+                      className="px-3 py-1 rounded bg-white text-blue-900 font-semibold"
+                      onClick={() => {
+                        try {
+                          localStorage.setItem('keyscripture_join_room', r.id);
+                        } catch (_) {}
+                        navigateTo('game');
+                      }}
+                    >
+                      Watch
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-white/80">
         <button
           className="cursor-pointer hover:text-white"

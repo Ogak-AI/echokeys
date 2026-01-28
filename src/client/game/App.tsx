@@ -1,5 +1,5 @@
 import { navigateTo } from '@devvit/web/client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTypingGame } from '../hooks/useTypingGame';
 
 export const App = () => {
@@ -28,7 +28,24 @@ export const App = () => {
     joinMultiplayerRoom,
     leaveRoom,
     roomState,
+    roomId,
   } = useTypingGame();
+
+  const [roomInput, setRoomInput] = useState('');
+  const [availableRooms, setAvailableRooms] = useState<Array<any>>([]);
+  const [showRooms, setShowRooms] = useState(false);
+  const [showJoinInput, setShowJoinInput] = useState(false);
+
+  // Auto-join room if splash set a join id
+  useEffect(() => {
+    try {
+      const id = localStorage.getItem('keyscripture_join_room');
+      if (id) {
+        joinMultiplayerRoom(id);
+        localStorage.removeItem('keyscripture_join_room');
+      }
+    } catch (_) {}
+  }, [joinMultiplayerRoom]);
 
   if (loading) {
     return (
@@ -113,22 +130,68 @@ export const App = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="text-center flex-1">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+          <div className="text-left flex-1">
             <h1 className="text-4xl font-bold mb-2">KeyScripture</h1>
             <p className="text-lg opacity-90">Welcome, {username}!</p>
           </div>
-          <button
-            onClick={toggleMute}
-            className="ml-4 px-4 py-2 rounded-lg font-semibold transition-colors"
-            title={isMuted ? "Unmute" : "Mute"}
-            style={{
-              backgroundColor: isMuted ? '#666' : '#fff',
-              color: isMuted ? '#fff' : '#1e3a8a',
-            }}
-          >
-            {isMuted ? '🔇' : '🔊'}
-          </button>
+          <div className="flex flex-wrap items-center gap-3 justify-end">
+            {showJoinInput && (
+              <input
+                id="roomIdInput"
+                placeholder="Room ID"
+                value={roomInput}
+                className="px-3 py-2 rounded-lg text-black w-full sm:w-40"
+                onChange={(e) => setRoomInput(e.target.value)}
+              />
+            )}
+            {showJoinInput ? (
+              <button
+                onClick={() => {
+                  if (!roomInput) return;
+                  joinMultiplayerRoom(roomInput);
+                  setShowJoinInput(false);
+                  setRoomInput('');
+                }}
+                className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
+                style={{ backgroundColor: '#fff', color: '#1e3a8a' }}
+              >
+                Confirm
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowJoinInput(true)}
+                className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
+                style={{ backgroundColor: '#fff', color: '#1e3a8a' }}
+              >
+                Join
+              </button>
+            )}
+            <button
+              onClick={async () => {
+                const id = await createMultiplayerRoom(dailyChallenge?.id);
+                // show generated id to user in the UI via `roomId`
+                setRoomInput('');
+              }}
+              className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
+              style={{ backgroundColor: '#fff', color: '#1e3a8a' }}
+            >
+              Create
+            </button>
+            <button
+              onClick={toggleMute}
+              className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
+              title={isMuted ? 'Unmute' : 'Mute'}
+              style={{ backgroundColor: isMuted ? '#666' : '#fff', color: isMuted ? '#fff' : '#1e3a8a' }}
+            >
+              {isMuted ? 'Muted' : 'Sound'}
+            </button>
+            {roomId ? (
+              <div className="w-full sm:w-auto px-3 py-2 rounded-lg bg-white/10 text-sm text-center">
+                Room: <span className="font-mono">{roomId}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {/* Stats */}
@@ -178,6 +241,54 @@ export const App = () => {
                 >
                   Start Typing!
                 </button>
+                <div className="mt-3">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/multiplayer/rooms');
+                        if (!res.ok) throw new Error('Failed to fetch rooms');
+                        const data = await res.json();
+                        setAvailableRooms(data.rooms || []);
+                        setShowRooms(true);
+                      } catch (err) {
+                        console.error('Failed to fetch rooms', err);
+                      }
+                    }}
+                    className="bg-transparent border border-white text-white px-4 py-2 rounded-lg hover:bg-white/10"
+                  >
+                    Watch
+                  </button>
+                </div>
+                {showRooms && (
+                  <div className="mt-4 text-left">
+                    <h3 className="text-lg font-semibold mb-2">Live Games</h3>
+                    {availableRooms.length === 0 ? (
+                      <p className="text-sm opacity-80">No active games right now.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {availableRooms.map((r: any) => (
+                          <div key={r.id} className="flex justify-between items-center bg-white/5 rounded p-2">
+                            <div>
+                              <div className="font-semibold">{r.id}</div>
+                              <div className="text-sm opacity-80">Players: {r.playerCount} • Challenge: {r.challengeId}</div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  joinMultiplayerRoom(r.id);
+                                  setShowRooms(false);
+                                }}
+                                className="px-3 py-1 rounded bg-white text-blue-900 font-semibold"
+                              >
+                                Watch
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col h-auto">

@@ -461,3 +461,17 @@ router.post('/api/multiplayer/update/:roomId', async (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// List active rooms for watchers
+router.get('/api/multiplayer/rooms', (_req, res) => {
+  try {
+    const list = Array.from(rooms.values()).map(r => ({
+      id: r.id,
+      challengeId: r.challengeId,
+      playerCount: Object.keys(r.players || {}).length,
+    }));
+    res.json({ status: 'ok', rooms: list });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: 'Failed to list rooms' });
+  }
+});
+
