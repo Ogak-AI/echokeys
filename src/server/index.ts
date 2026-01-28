@@ -44,6 +44,11 @@ async function loadChallenges() {
   }
 }
 
+// Pre-load challenges in the background (non-blocking)
+setImmediate(() => {
+  loadChallenges().catch(err => console.error('Failed to pre-load challenges:', err));
+});
+
 function getDailyChallenge(): DailyChallenge {
   if (!challengesLoaded || challenges.length === 0) {
     return {
@@ -106,11 +111,6 @@ async function updateUserStats(username: string, result: GameResult): Promise<{ 
 }
 
 router.get('/api/init', async (_req, res): Promise<void> => {
-  // Load challenges on first request
-  if (!challengesLoaded) {
-    await loadChallenges();
-  }
-
   const { postId } = context;
 
   if (!postId) {
