@@ -64,12 +64,11 @@ export default defineConfig([
       'devvit.config.ts',
     ],
     languageOptions: {
+      ecmaVersion: 2023,
       parserOptions: {
         project: ['./tsconfig.json', './src/*/tsconfig.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    plugins: { js },
-    extends: ['js/recommended'],
   },
 ]);
