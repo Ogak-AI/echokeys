@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 
 export const Splash = () => {
   return (
-    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 text-white">
+    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white">
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-2">EchoKeys</h1>
         <p className="text-lg mb-4">The Ultimate Typing Adventure</p>
@@ -23,7 +23,7 @@ export const Splash = () => {
       </div>
       <div className="flex items-center justify-center mt-5">
         <button
-          className="flex items-center justify-center bg-white text-red-500 w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-gray-100 hover:scale-105"
+          className="flex items-center justify-center bg-white text-blue-900 w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-gray-100 hover:scale-105"
           onClick={(e) => requestExpandedMode(e.nativeEvent, 'game')}
         >
           Start Typing!

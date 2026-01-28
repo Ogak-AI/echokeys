@@ -31,7 +31,7 @@ export const App = () => {
 
   if (showLeaderboard) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 text-white p-4">
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
         <div className="max-w-2xl mx-auto">
           <h1 className="text-3xl font-bold text-center mb-6">Leaderboard</h1>
           <div className="bg-white/10 rounded-lg p-4 mb-4">
@@ -42,7 +42,7 @@ export const App = () => {
                 {leaderboard.map((entry, index) => (
                   <div key={index} className="flex justify-between items-center bg-white/5 rounded p-2">
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-yellow-300">#{index + 1}</span>
+                      <span className="font-bold text-white">#{index + 1}</span>
                       <span>{entry.username}</span>
                     </div>
                     <div className="text-right">
@@ -57,7 +57,7 @@ export const App = () => {
           <div className="flex gap-4 justify-center">
             <button
               onClick={toggleLeaderboard}
-              className="bg-white text-purple-600 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
+              className="bg-white text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
             >
               Back to Game
             </button>
@@ -68,7 +68,7 @@ export const App = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-400 via-blue-500 to-purple-600 text-white p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6">
@@ -107,8 +107,8 @@ export const App = () => {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-semibold">Daily Challenge</h2>
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                dailyChallenge.difficulty === 'easy' ? 'bg-green-500' :
-                dailyChallenge.difficulty === 'medium' ? 'bg-yellow-500' : 'bg-red-500'
+                dailyChallenge.difficulty === 'easy' ? 'bg-blue-600' :
+                dailyChallenge.difficulty === 'medium' ? 'bg-blue-700' : 'bg-red-600'
               }`}>
                 {dailyChallenge.difficulty}
               </span>
@@ -119,15 +119,15 @@ export const App = () => {
                 <p className="mb-4 opacity-90">{dailyChallenge.text}</p>
                 <button
                   onClick={startGame}
-                  className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors"
+                  className="bg-white text-blue-900 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors"
                 >
                   Start Typing!
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col h-screen md:h-auto">
+              <div className="flex flex-col h-auto">
                 {/* Typing Area - Fixed on mobile, normal on desktop */}
-                <div className="bg-black/30 rounded-lg p-4 mb-4 font-mono text-lg leading-relaxed min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
+                <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-lg sm:text-xl md:text-2xl leading-relaxed min-h-16 sm:min-h-24 md:min-h-32 overflow-hidden flex-shrink-0 md:flex-none">
                   {(() => {
                     // Split text into lines
                     const lines = dailyChallenge.text.split('\n');
@@ -145,9 +145,10 @@ export const App = () => {
                       charCount += lineLength;
                     }
                     
-                    // Show current line and 2 lines ahead (3 lines total)
+                    // Show 2-3 lines on mobile, 3 on desktop
+                    const linesToShow = window.innerWidth < 768 ? 2 : 3;
                     const startLine = Math.max(0, currentLine);
-                    const endLine = Math.min(lines.length - 1, currentLine + 2);
+                    const endLine = Math.min(lines.length - 1, currentLine + linesToShow - 1);
                     
                     return lines.slice(startLine, endLine + 1).map((line, lineIdx) => {
                       const actualLineIdx = startLine + lineIdx;
@@ -161,9 +162,9 @@ export const App = () => {
                         <div key={actualLineIdx}>
                           {line.split('').map((char, charIdx) => {
                             const charAbsIndex = lineCharStart + charIdx;
-                            let className = 'text-gray-400';
+                            let className = 'text-gray-300';
                             if (charAbsIndex < currentInput.length) {
-                              className = currentInput[charAbsIndex] === char ? 'text-green-400' : 'text-red-400 bg-red-500/20';
+                              className = currentInput[charAbsIndex] === char ? 'text-white' : 'text-red-500 bg-red-500/30';
                             } else if (charAbsIndex === currentInput.length) {
                               className = 'bg-white text-black animate-pulse';
                             }
@@ -184,25 +185,25 @@ export const App = () => {
                   value={currentInput}
                   onChange={(e) => updateInput(e.target.value)}
                   onTouchStart={(e) => e.currentTarget.scrollIntoView(false)}
-                  className="w-full bg-white/10 border border-white/20 rounded-lg p-3 text-white placeholder-white/50 focus:outline-none focus:border-white/50 flex-shrink-0 md:flex-none"
+                  className="w-full bg-white/10 border border-white/20 rounded-lg p-2 sm:p-4 text-base sm:text-lg md:text-lg text-white placeholder-white/50 focus:outline-none focus:border-white/50 flex-shrink-0 md:flex-none"
                   placeholder="Start typing here..."
-                  rows={3}
+                  rows={2}
                   disabled={gameFinished}
                 />
 
                 {/* Stats during game */}
-                <div className="flex justify-between items-center mt-4 flex-shrink-0 md:flex-none">
-                  <div className="text-lg">
+                <div className="flex justify-between items-center mt-2 flex-shrink-0 md:flex-none">
+                  <div className="text-base sm:text-lg md:text-2xl">
                     WPM: <span className="font-bold">{wpm}</span>
                   </div>
-                  <div className="text-lg">
+                  <div className="text-base sm:text-lg md:text-2xl">
                     Accuracy: <span className="font-bold">{accuracy}%</span>
                   </div>
                 </div>
 
                 {/* Game finished */}
                 {gameFinished && (
-                  <div className="mt-6 text-center flex-grow md:flex-none">
+                  <div className="mt-4 text-center">
                     <div className="bg-white/10 rounded-lg p-4 mb-4">
                       <h3 className="text-2xl font-bold mb-2">Great job!</h3>
                       <div className="grid grid-cols-2 gap-4 text-lg">
@@ -219,13 +220,13 @@ export const App = () => {
                     <div className="flex gap-4 justify-center">
                       <button
                         onClick={resetGame}
-                        className="bg-white text-blue-600 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
+                        className="bg-white text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
                       >
                         Try Again
                       </button>
                       <button
                         onClick={() => void fetchLeaderboard()}
-                        className="bg-yellow-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-yellow-600"
+                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700"
                       >
                         Leaderboard
                       </button>
