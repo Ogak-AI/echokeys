@@ -37,33 +37,55 @@ let challengesLoaded = false;
 
 async function loadChallenges() {
   try {
-    const challengesDir = path.join(__dirname, 'challenges');
-    try {
-      const files = await fs.readdir(challengesDir);
-      const challengeFiles = files
-        .filter(f => f.endsWith('.txt'))
-        .sort()
-        .slice(0, 365); // Limit to 365 challenges for a year
+    const candidates = [
+      path.join(__dirname, 'challenges'),
+      path.join(__dirname, '..', 'challenges'),
+      path.join(process.cwd(), 'server', 'challenges'),
+      path.join(process.cwd(), 'src', 'server', 'challenges'),
+    ];
 
-      for (const file of challengeFiles) {
-        const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
-        // Extract difficulty from filename (e.g., "001-easy.txt" or "Genesis.txt")
-        // If no difficulty is found, default to 'medium'
-        let difficulty: 'easy' | 'medium' | 'hard' = 'medium';
-        const difficultyMatch = file.match(/-(easy|medium|hard)\.txt$/i);
-        if (difficultyMatch && difficultyMatch[1]) {
-          difficulty = difficultyMatch[1].toLowerCase() as 'easy' | 'medium' | 'hard';
+    let challengesDir: string | null = null;
+    for (const c of candidates) {
+      try {
+        const s = await fs.stat(c);
+        // @ts-ignore - stat type from fs/promises
+        if (s.isDirectory && s.isDirectory()) {
+          challengesDir = c;
+          break;
         }
-        challenges.push({ text: text.trim(), difficulty });
+      } catch (_) {
+        // ignore
       }
-      
-      if (challenges.length > 0) {
-        challengesLoaded = true;
-        console.log(`Loaded ${challenges.length} challenges from files`);
-        return;
+    }
+
+    if (challengesDir) {
+      try {
+        const files = await fs.readdir(challengesDir);
+        const challengeFiles = files
+          .filter(f => f.endsWith('.txt'))
+          .sort()
+          .slice(0, 365); // Limit to 365 challenges for a year
+
+        for (const file of challengeFiles) {
+          const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
+          let difficulty: 'easy' | 'medium' | 'hard' = 'medium';
+          const difficultyMatch = file.match(/-(easy|medium|hard)\.txt$/i);
+          if (difficultyMatch && difficultyMatch[1]) {
+            difficulty = difficultyMatch[1].toLowerCase() as 'easy' | 'medium' | 'hard';
+          }
+          challenges.push({ text: text.trim(), difficulty });
+        }
+
+        if (challenges.length > 0) {
+          challengesLoaded = true;
+          console.log(`Loaded ${challenges.length} challenges from ${challengesDir}`);
+          return;
+        }
+      } catch (fileErr) {
+        console.warn('Could not load challenges from files, using fallback:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
       }
-    } catch (fileErr) {
-      console.warn('Could not load challenges from files, using fallback:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
+    } else {
+      console.warn('No challenges directory found in any candidate paths, using fallback');
     }
     
     // Use fallback challenges if files couldn't be loaded
