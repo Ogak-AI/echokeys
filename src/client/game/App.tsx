@@ -125,22 +125,58 @@ export const App = () => {
                 </button>
               </div>
             ) : (
-              <div>
-                {/* Typing Area */}
-                <div className="bg-black/30 rounded-lg p-4 mb-4 font-mono text-lg leading-relaxed">
-                  {dailyChallenge.text.split('').map((char, index) => {
-                    let className = 'text-gray-400';
-                    if (index < currentInput.length) {
-                      className = currentInput[index] === char ? 'text-green-400' : 'text-red-400 bg-red-500/20';
-                    } else if (index === currentInput.length) {
-                      className = 'bg-white text-black animate-pulse';
+              <div className="flex flex-col h-screen md:h-auto">
+                {/* Typing Area - Fixed on mobile, normal on desktop */}
+                <div className="bg-black/30 rounded-lg p-4 mb-4 font-mono text-lg leading-relaxed min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
+                  {(() => {
+                    // Split text into lines
+                    const lines = dailyChallenge.text.split('\n');
+                    const charIndex = currentInput.length;
+                    
+                    // Find which line and position within the line the cursor is on
+                    let currentLine = 0;
+                    let charCount = 0;
+                    for (let i = 0; i < lines.length; i++) {
+                      const lineLength = lines[i].length + 1; // +1 for newline
+                      if (charCount + lineLength > charIndex) {
+                        currentLine = i;
+                        break;
+                      }
+                      charCount += lineLength;
                     }
-                    return (
-                      <span key={index} className={className}>
-                        {char}
-                      </span>
-                    );
-                  })}
+                    
+                    // Show current line and 2 lines ahead (3 lines total)
+                    const startLine = Math.max(0, currentLine);
+                    const endLine = Math.min(lines.length - 1, currentLine + 2);
+                    
+                    return lines.slice(startLine, endLine + 1).map((line, lineIdx) => {
+                      const actualLineIdx = startLine + lineIdx;
+                      // Calculate the character index for this line
+                      let lineCharStart = 0;
+                      for (let i = 0; i < actualLineIdx; i++) {
+                        lineCharStart += lines[i].length + 1; // +1 for newline
+                      }
+                      
+                      return (
+                        <div key={actualLineIdx}>
+                          {line.split('').map((char, charIdx) => {
+                            const charAbsIndex = lineCharStart + charIdx;
+                            let className = 'text-gray-400';
+                            if (charAbsIndex < currentInput.length) {
+                              className = currentInput[charAbsIndex] === char ? 'text-green-400' : 'text-red-400 bg-red-500/20';
+                            } else if (charAbsIndex === currentInput.length) {
+                              className = 'bg-white text-black animate-pulse';
+                            }
+                            return (
+                              <span key={charIdx} className={className}>
+                                {char}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
 
                 {/* Input */}

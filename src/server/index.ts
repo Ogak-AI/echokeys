@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
+import challengesData from './challenges.json' assert { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +38,17 @@ let challengesLoaded = false;
 
 async function loadChallenges() {
   try {
+    // First, try to use the embedded challenges data
+    if (Array.isArray(challengesData) && challengesData.length > 0) {
+      challenges = challengesData.map(p => ({ 
+        text: (p.text || '').trim(), 
+        difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard' 
+      }));
+      challengesLoaded = true;
+      console.log(`Loaded ${challenges.length} challenges from embedded data`);
+      return;
+    }
+
     const candidates = [
       path.join(__dirname, 'challenges'),
       path.join(__dirname, '..', 'challenges'),
@@ -82,10 +94,10 @@ async function loadChallenges() {
           return;
         }
       } catch (fileErr) {
-        console.warn('Could not load challenges from files, using fallback:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
+        console.warn('Could not load challenges from files, trying JSON:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
       }
     } else {
-      console.warn('No challenges directory found in any candidate paths, using fallback');
+      console.warn('No challenges directory found in any candidate paths, trying JSON');
     }
     // Also try JSON challenge files in common locations (single-file bundle)
     const jsonCandidatesBase = [
