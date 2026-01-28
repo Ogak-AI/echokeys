@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { builtinModules } from 'node:module';
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export default defineConfig({
@@ -34,8 +34,7 @@ export default defineConfig({
         const dest = resolve(__dirname, '../../dist/server/challenges');
         mkdirSync(dest, { recursive: true });
         
-        const fs = require('node:fs');
-        const files = fs.readdirSync(src);
+        const files = readdirSync(src);
         for (const file of files) {
           if (file.endsWith('.txt')) {
             copyFileSync(resolve(src, file), resolve(dest, file));
