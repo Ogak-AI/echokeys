@@ -51,7 +51,7 @@ async function loadChallenges() {
         // If no difficulty is found, default to 'medium'
         let difficulty: 'easy' | 'medium' | 'hard' = 'medium';
         const difficultyMatch = file.match(/-(easy|medium|hard)\.txt$/i);
-        if (difficultyMatch) {
+        if (difficultyMatch && difficultyMatch[1]) {
           difficulty = difficultyMatch[1].toLowerCase() as 'easy' | 'medium' | 'hard';
         }
         challenges.push({ text: text.trim(), difficulty });
