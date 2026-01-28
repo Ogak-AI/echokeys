@@ -17,6 +17,7 @@ interface GameState {
   showLeaderboard: boolean;
   showDifficultySelect: boolean;
   selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
+  lastSpokenIndex: number;
 }
 
 export const useTypingGame = () => {
@@ -36,6 +37,7 @@ export const useTypingGame = () => {
     showLeaderboard: false,
     showDifficultySelect: true,
     selectedDifficulty: null,
+    lastSpokenIndex: 0,
   });
 
   // fetch initial data
@@ -95,24 +97,25 @@ export const useTypingGame = () => {
     const challenge = state.dailyChallenge;
     if (!challenge || !state.gameStarted || state.gameFinished) return;
 
-    const previousInput = state.currentInput;
-
-    // Detect newly completed words
-    if (input.length > previousInput.length) {
+    // Detect newly completed words since last spoken position
+    if (input.length > state.lastSpokenIndex) {
+      const textSinceLastSpoken = input.slice(state.lastSpokenIndex);
+      
       // Check if a word was just completed (space or punctuation at the end)
-      const newChars = input.slice(previousInput.length);
-      if (/[\s.,!?;:\-—]/.test(newChars)) {
-        // Find the completed word
-        const lastSpaceIndex = input.lastIndexOf(/[\s.,!?;:\-—]/);
-        const wordStart = Math.max(0, input.lastIndexOf(/[\s.,!?;:\-—]/, lastSpaceIndex - 1) + 1);
-        const completedWord = input.slice(wordStart, lastSpaceIndex).trim();
+      const wordBoundaryMatch = textSinceLastSpoken.match(/([\w']+)[\s.,!?;:\-—]/);
+      if (wordBoundaryMatch) {
+        const completedWord = wordBoundaryMatch[1];
         
         if (completedWord && window.speechSynthesis) {
           const utterance = new SpeechSynthesisUtterance(completedWord);
           utterance.rate = 1;
           utterance.pitch = 1;
-          window.speechSynthesis.cancel(); // Cancel any previous speech
+          window.speechSynthesis.cancel();
           window.speechSynthesis.speak(utterance);
+          
+          // Update the index to the position after the completed word and delimiter
+          const newSpokenIndex = state.lastSpokenIndex + wordBoundaryMatch.index + wordBoundaryMatch[0].length;
+          setState(prev => ({ ...prev, lastSpokenIndex: newSpokenIndex }));
         }
       }
     }
@@ -155,7 +158,7 @@ export const useTypingGame = () => {
         body: JSON.stringify(result),
       }).catch(err => console.error('Failed to submit score', err));
     }
-  }, [state.dailyChallenge, state.gameStarted, state.gameFinished, state.startTime, state.currentInput]);
+  }, [state.dailyChallenge, state.gameStarted, state.gameFinished, state.startTime, state.lastSpokenIndex]);
 
   const fetchLeaderboard = useCallback(async () => {
     try {
@@ -184,6 +187,7 @@ export const useTypingGame = () => {
       accuracy: 0,
       showDifficultySelect: true,
       selectedDifficulty: null,
+      lastSpokenIndex: 0,
     }));
   }, []);
 
