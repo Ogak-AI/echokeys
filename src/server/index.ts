@@ -106,6 +106,11 @@ async function updateUserStats(username: string, result: GameResult): Promise<{ 
 }
 
 router.get('/api/init', async (_req, res): Promise<void> => {
+  // Load challenges on first request
+  if (!challengesLoaded) {
+    await loadChallenges();
+  }
+
   const { postId } = context;
 
   if (!postId) {
