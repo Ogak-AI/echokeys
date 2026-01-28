@@ -88,12 +88,21 @@ async function loadChallenges() {
       console.warn('No challenges directory found in any candidate paths, using fallback');
     }
     // Also try JSON challenge files in common locations (single-file bundle)
-    const jsonCandidates = [
+    const jsonCandidatesBase = [
       path.join(__dirname, 'challenges.json'),
       path.join(__dirname, '..', 'challenges.json'),
       path.join(process.cwd(), 'server', 'challenges.json'),
       path.join(process.cwd(), 'src', 'server', 'challenges.json'),
     ];
+
+    const jsonCandidates: string[] = [...jsonCandidatesBase];
+    // Also try ancestors of __dirname (covers built output locations)
+    for (let i = 1; i <= 5; i++) {
+      const ups = Array(i).fill('..');
+      jsonCandidates.push(path.join(__dirname, ...ups, 'challenges.json'));
+      jsonCandidates.push(path.join(__dirname, ...ups, 'server', 'challenges.json'));
+      jsonCandidates.push(path.join(__dirname, ...ups, 'src', 'server', 'challenges.json'));
+    }
 
     for (const jc of jsonCandidates) {
       try {
