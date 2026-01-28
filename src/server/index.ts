@@ -20,6 +20,17 @@ app.use(express.text());
 
 const router = express.Router();
 
+// Fallback challenges if files can't be loaded
+const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
+  { text: "Welcome to EchoKeys! Type this simple sentence to get started.", difficulty: 'easy' },
+  { text: "Reddit is a network of communities where people can dive into their interests, hobbies and passions.", difficulty: 'medium' },
+  { text: "The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.", difficulty: 'medium' },
+  { text: "In the world of programming, typing speed and accuracy are crucial skills for developers.", difficulty: 'hard' },
+  { text: "Memes are a huge part of internet culture, spreading joy and humor across social platforms.", difficulty: 'medium' },
+  { text: "Devvit allows developers to create interactive experiences directly within Reddit posts.", difficulty: 'hard' },
+  { text: "Community engagement is key to building successful online platforms and fostering meaningful connections.", difficulty: 'hard' },
+];
+
 // Load daily challenges from challenge files
 let challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [];
 let challengesLoaded = false;
@@ -27,20 +38,42 @@ let challengesLoaded = false;
 async function loadChallenges() {
   try {
     const challengesDir = path.join(__dirname, 'challenges');
-    const files = await fs.readdir(challengesDir);
-    const challengeFiles = files
-      .filter(f => f.endsWith('.txt'))
-      .sort()
-      .slice(0, 365); // Limit to 365 challenges for a year
+    try {
+      const files = await fs.readdir(challengesDir);
+      const challengeFiles = files
+        .filter(f => f.endsWith('.txt'))
+        .sort()
+        .slice(0, 365); // Limit to 365 challenges for a year
 
-    for (const file of challengeFiles) {
-      const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
-      const difficulty = file.split('-')[1]?.replace('.txt', '') as 'easy' | 'medium' | 'hard' || 'medium';
-      challenges.push({ text: text.trim(), difficulty });
+      for (const file of challengeFiles) {
+        const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
+        // Extract difficulty from filename (e.g., "001-easy.txt" or "Genesis.txt")
+        // If no difficulty is found, default to 'medium'
+        let difficulty: 'easy' | 'medium' | 'hard' = 'medium';
+        const difficultyMatch = file.match(/-(easy|medium|hard)\.txt$/i);
+        if (difficultyMatch) {
+          difficulty = difficultyMatch[1].toLowerCase() as 'easy' | 'medium' | 'hard';
+        }
+        challenges.push({ text: text.trim(), difficulty });
+      }
+      
+      if (challenges.length > 0) {
+        challengesLoaded = true;
+        console.log(`Loaded ${challenges.length} challenges from files`);
+        return;
+      }
+    } catch (fileErr) {
+      console.warn('Could not load challenges from files, using fallback:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
     }
+    
+    // Use fallback challenges if files couldn't be loaded
+    challenges = fallbackChallenges;
     challengesLoaded = true;
+    console.log('Using fallback challenges');
   } catch (err) {
     console.error('Failed to load challenges:', err);
+    challenges = fallbackChallenges;
+    challengesLoaded = true;
   }
 }
 
