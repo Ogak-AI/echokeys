@@ -1,4 +1,4 @@
-# KeyScriptures - Interactive Bible Typing Game
+# KeyScripture - Interactive Bible Typing Game
 
 A fun and engaging typing game built on Reddit's Devvit platform. Test your typing skills with Bible passages, compete on leaderboards, and join the community of typists!
 

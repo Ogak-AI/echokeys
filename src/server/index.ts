@@ -23,7 +23,7 @@ const router = express.Router();
 
 // Fallback challenges if files can't be loaded
 const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
-  { text: "Welcome to EchoKeys! Type this simple sentence to get started.", difficulty: 'easy' },
+  { text: "Welcome to KeyScripture! Type this simple sentence to get started.", difficulty: 'easy' },
   { text: "Reddit is a network of communities where people can dive into their interests, hobbies and passions.", difficulty: 'medium' },
   { text: "The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.", difficulty: 'medium' },
   { text: "In the world of programming, typing speed and accuracy are crucial skills for developers.", difficulty: 'hard' },

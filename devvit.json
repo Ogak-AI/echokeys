@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "keyscriptures",
+  "name": "keyscripture",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -24,7 +24,7 @@
     "items": [
       {
         "label": "Create a new post",
-        "description": "echokeys",
+        "description": "keyscripture",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -35,6 +35,6 @@
     "onAppInstall": "/internal/on-app-install"
   },
   "dev": {
-    "subreddit": "keyscriptures_dev"
+    "subreddit": "keyscripture_dev"
   }
 }

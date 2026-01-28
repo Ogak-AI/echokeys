@@ -7,18 +7,18 @@ import { createRoot } from 'react-dom/client';
 
 export const Splash = () => {
   return (
-    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white">
+    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
       <div className="text-center">
-        <h1 className="text-4xl font-bold mb-2">EchoKeys</h1>
-        <p className="text-lg mb-4">The Ultimate Typing Adventure</p>
-        <p className="text-sm opacity-90">Test your typing skills with Reddit-inspired challenges!</p>
+        <h1 className="text-4xl font-bold mb-2">KeyScripture</h1>
+        <p className="text-lg mb-4">The Ultimate Scripture Typing Adventure</p>
+        <p className="text-sm opacity-90">Test your typing skills with Bible passages and daily challenges!</p>
       </div>
       <div className="flex flex-col items-center gap-2">
         <h2 className="text-2xl font-semibold">
           Welcome, {context.username ?? 'Typist'}! 👋
         </h2>
         <p className="text-center text-sm opacity-90">
-          Ready to echo the keys and conquer the challenges?
+          Ready to type the scripture and conquer the challenges?
         </p>
       </div>
       <div className="flex items-center justify-center mt-5">

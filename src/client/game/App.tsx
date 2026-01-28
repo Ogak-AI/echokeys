@@ -74,7 +74,7 @@ export const App = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
         <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-screen">
-          <h1 className="text-4xl font-bold mb-4 text-center">KeyScriptures</h1>
+          <h1 className="text-4xl font-bold mb-4 text-center">KeyScripture</h1>
           <p className="text-xl opacity-90 mb-12 text-center">Choose your difficulty level</p>
           
           <div className="space-y-4 w-full max-w-md">
@@ -107,7 +107,7 @@ export const App = () => {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold mb-2">KeyScriptures</h1>
+          <h1 className="text-4xl font-bold mb-2">KeyScripture</h1>
           <p className="text-lg opacity-90">Welcome, {username}!</p>
         </div>
 
