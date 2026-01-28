@@ -1,0 +1,30 @@
+[
+  {
+    "text": "Welcome to EchoKeys! Type this simple sentence to get started.",
+    "difficulty": "easy"
+  },
+  {
+    "text": "Reddit is a network of communities where people can dive into their interests, hobbies and passions.",
+    "difficulty": "medium"
+  },
+  {
+    "text": "The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.",
+    "difficulty": "medium"
+  },
+  {
+    "text": "In the world of programming, typing speed and accuracy are crucial skills for developers.",
+    "difficulty": "hard"
+  },
+  {
+    "text": "Memes are a huge part of internet culture, spreading joy and humor across social platforms.",
+    "difficulty": "medium"
+  },
+  {
+    "text": "Devvit allows developers to create interactive experiences directly within Reddit posts.",
+    "difficulty": "hard"
+  },
+  {
+    "text": "Community engagement is key to building successful online platforms and fostering meaningful connections.",
+    "difficulty": "hard"
+  }
+]

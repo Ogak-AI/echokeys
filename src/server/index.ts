@@ -1,7 +1,13 @@
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -14,16 +20,29 @@ app.use(express.text());
 
 const router = express.Router();
 
-// Predefined daily challenges
-const challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
-  { text: "Welcome to EchoKeys! Type this simple sentence to get started.", difficulty: 'easy' },
-  { text: "Reddit is a network of communities where people can dive into their interests, hobbies and passions.", difficulty: 'medium' },
-  { text: "The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.", difficulty: 'medium' },
-  { text: "In the world of programming, typing speed and accuracy are crucial skills for developers.", difficulty: 'hard' },
-  { text: "Memes are a huge part of internet culture, spreading joy and humor across social platforms.", difficulty: 'medium' },
-  { text: "Devvit allows developers to create interactive experiences directly within Reddit posts.", difficulty: 'hard' },
-  { text: "Community engagement is key to building successful online platforms and fostering meaningful connections.", difficulty: 'hard' },
-];
+// Load daily challenges from challenge files
+let challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [];
+
+async function loadChallenges() {
+  try {
+    const challengesDir = path.join(__dirname, 'challenges');
+    const files = await fs.readdir(challengesDir);
+    const challengeFiles = files
+      .filter(f => f.endsWith('.txt'))
+      .sort()
+      .slice(0, 365); // Limit to 365 challenges for a year
+
+    for (const file of challengeFiles) {
+      const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
+      const difficulty = file.split('-')[1].replace('.txt', '') as 'easy' | 'medium' | 'hard';
+      challenges.push({ text: text.trim(), difficulty });
+    }
+  } catch (err) {
+    console.error('Failed to load challenges:', err);
+  }
+}
+
+await loadChallenges();
 
 function getDailyChallenge(): DailyChallenge {
   const today = new Date();
