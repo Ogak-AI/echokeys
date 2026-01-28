@@ -87,6 +87,36 @@ async function loadChallenges() {
     } else {
       console.warn('No challenges directory found in any candidate paths, using fallback');
     }
+    // Also try JSON challenge files in common locations (single-file bundle)
+    const jsonCandidates = [
+      path.join(__dirname, 'challenges.json'),
+      path.join(__dirname, '..', 'challenges.json'),
+      path.join(process.cwd(), 'server', 'challenges.json'),
+      path.join(process.cwd(), 'src', 'server', 'challenges.json'),
+    ];
+
+    for (const jc of jsonCandidates) {
+      try {
+        const s = await fs.stat(jc);
+        // @ts-ignore
+        if (s.isFile && s.isFile()) {
+          try {
+            const raw = await fs.readFile(jc, 'utf-8');
+            const parsed = JSON.parse(raw) as Array<{ text: string; difficulty?: string }>;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              challenges = parsed.map(p => ({ text: (p.text || '').trim(), difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard' }));
+              challengesLoaded = true;
+              console.log(`Loaded ${challenges.length} challenges from JSON ${jc}`);
+              return;
+            }
+          } catch (jsonErr) {
+            console.warn('Failed to parse challenges JSON, trying next candidate:', jsonErr instanceof Error ? jsonErr.message : String(jsonErr));
+          }
+        }
+      } catch (_) {
+        // ignore missing
+      }
+    }
     
     // Use fallback challenges if files couldn't be loaded
     challenges = fallbackChallenges;
