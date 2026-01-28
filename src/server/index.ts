@@ -22,6 +22,7 @@ const router = express.Router();
 
 // Load daily challenges from challenge files
 let challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [];
+let challengesLoaded = false;
 
 async function loadChallenges() {
   try {
@@ -34,17 +35,24 @@ async function loadChallenges() {
 
     for (const file of challengeFiles) {
       const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
-      const difficulty = file.split('-')[1].replace('.txt', '') as 'easy' | 'medium' | 'hard';
+      const difficulty = file.split('-')[1]?.replace('.txt', '') as 'easy' | 'medium' | 'hard' || 'medium';
       challenges.push({ text: text.trim(), difficulty });
     }
+    challengesLoaded = true;
   } catch (err) {
     console.error('Failed to load challenges:', err);
   }
 }
 
-await loadChallenges();
-
 function getDailyChallenge(): DailyChallenge {
+  if (!challengesLoaded || challenges.length === 0) {
+    return {
+      text: 'Loading challenges...',
+      difficulty: 'easy',
+      id: 'loading',
+      date: new Date().toISOString().split('T')[0] || new Date().toDateString(),
+    };
+  }
   const today = new Date();
   const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
   const challengeIndex = dayOfYear % challenges.length;
