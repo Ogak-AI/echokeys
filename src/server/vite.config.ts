@@ -40,6 +40,15 @@ export default defineConfig({
             copyFileSync(resolve(src, file), resolve(dest, file));
           }
         }
+        
+        // Copy challenges.json to dist/server
+        try {
+          const jsonSrc = resolve(__dirname, 'challenges.json');
+          const jsonDest = resolve(__dirname, '../../dist/server/challenges.json');
+          copyFileSync(jsonSrc, jsonDest);
+        } catch (err) {
+          console.warn('Could not copy challenges.json:', err instanceof Error ? err.message : 'Unknown error');
+        }
       },
     },
   ],

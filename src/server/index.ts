@@ -138,10 +138,14 @@ async function loadChallenges() {
   }
 }
 
-// Pre-load challenges in the background (non-blocking)
-setImmediate(() => {
-  loadChallenges().catch(err => console.error('Failed to pre-load challenges:', err));
-});
+// Pre-load challenges (awaited to ensure they load before first request)
+(async () => {
+  try {
+    await loadChallenges();
+  } catch (err) {
+    console.error('Failed to pre-load challenges:', err);
+  }
+})();
 
 function getDailyChallenge(): DailyChallenge {
   if (!challengesLoaded || challenges.length === 0) {
