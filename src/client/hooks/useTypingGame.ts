@@ -95,6 +95,28 @@ export const useTypingGame = () => {
     const challenge = state.dailyChallenge;
     if (!challenge || !state.gameStarted || state.gameFinished) return;
 
+    const previousInput = state.currentInput;
+
+    // Detect newly completed words
+    if (input.length > previousInput.length) {
+      // Check if a word was just completed (space or punctuation at the end)
+      const newChars = input.slice(previousInput.length);
+      if (/[\s.,!?;:\-—]/.test(newChars)) {
+        // Find the completed word
+        const lastSpaceIndex = input.lastIndexOf(/[\s.,!?;:\-—]/);
+        const wordStart = Math.max(0, input.lastIndexOf(/[\s.,!?;:\-—]/, lastSpaceIndex - 1) + 1);
+        const completedWord = input.slice(wordStart, lastSpaceIndex).trim();
+        
+        if (completedWord && window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance(completedWord);
+          utterance.rate = 1;
+          utterance.pitch = 1;
+          window.speechSynthesis.cancel(); // Cancel any previous speech
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    }
+
     const isFinished = input.length >= challenge.text.length;
     const endTime = isFinished ? Date.now() : null;
 
@@ -133,7 +155,7 @@ export const useTypingGame = () => {
         body: JSON.stringify(result),
       }).catch(err => console.error('Failed to submit score', err));
     }
-  }, [state.dailyChallenge, state.gameStarted, state.gameFinished, state.startTime]);
+  }, [state.dailyChallenge, state.gameStarted, state.gameFinished, state.startTime, state.currentInput]);
 
   const fetchLeaderboard = useCallback(async () => {
     try {
