@@ -18,6 +18,7 @@ interface GameState {
   showDifficultySelect: boolean;
   selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
   lastSpokenIndex: number;
+  isMuted: boolean;
 }
 
 export const useTypingGame = () => {
@@ -38,6 +39,7 @@ export const useTypingGame = () => {
     showDifficultySelect: true,
     selectedDifficulty: null,
     lastSpokenIndex: 0,
+    isMuted: false,
   });
 
   // fetch initial data
@@ -106,7 +108,7 @@ export const useTypingGame = () => {
       if (wordBoundaryMatch) {
         const completedWord = wordBoundaryMatch[1];
         
-        if (completedWord && window.speechSynthesis) {
+        if (completedWord && window.speechSynthesis && !state.isMuted) {
           const utterance = new SpeechSynthesisUtterance(completedWord);
           utterance.rate = 1;
           utterance.pitch = 1;
@@ -191,6 +193,10 @@ export const useTypingGame = () => {
     }));
   }, []);
 
+  const toggleMute = useCallback(() => {
+    setState(prev => ({ ...prev, isMuted: !prev.isMuted }));
+  }, []);
+
   return {
     ...state,
     startGame,
@@ -199,5 +205,6 @@ export const useTypingGame = () => {
     fetchLeaderboard,
     toggleLeaderboard,
     resetGame,
+    toggleMute,
   };
 };

@@ -15,11 +15,13 @@ export const App = () => {
     leaderboard,
     showLeaderboard,
     showDifficultySelect,
+    isMuted,
     startGame,
     selectDifficulty,
     updateInput,
     fetchLeaderboard,
     toggleLeaderboard,
+    toggleMute,
     resetGame,
   } = useTypingGame();
 
