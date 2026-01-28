@@ -383,3 +383,81 @@ const port = getServerPort();
 const server = createServer(app);
 server.on('error', (err) => console.error(`server error; ${err.stack}`));
 server.listen(port);
+
+// --- Simple in-memory multiplayer (SSE) implementation ---
+type RoomState = {
+  id: string;
+  challengeId: string;
+  players: Record<string, { username: string; position: number; finished: boolean }>;
+};
+
+const rooms: Map<string, RoomState> = new Map();
+const sseClients: Map<string, Array<import('http').ServerResponse>> = new Map();
+
+function sendSSE(roomId: string, event: string, data: any) {
+  const clients = sseClients.get(roomId) || [];
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of clients.slice()) {
+    try {
+      res.write(payload);
+    } catch (err) {
+      // ignore broken clients
+    }
+  }
+}
+
+// Create a multiplayer room
+router.post('/api/multiplayer/create', async (req, res) => {
+  const { challengeId } = req.body || {};
+  const id = `room-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const room: RoomState = { id, challengeId: challengeId || 'daily', players: {} };
+  rooms.set(id, room);
+  sseClients.set(id, []);
+  res.json({ status: 'ok', roomId: id });
+});
+
+// SSE endpoint to subscribe to room updates (players & watchers)
+router.get('/api/multiplayer/stream/:roomId', (req, res) => {
+  const { roomId } = req.params;
+  // basic validation
+  if (!rooms.has(roomId)) {
+    res.status(404).end('room not found');
+    return;
+  }
+  res.writeHead(200, {
+    Connection: 'keep-alive',
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'text/event-stream',
+  });
+  res.write('\n');
+  const arr = sseClients.get(roomId)!;
+  arr.push(res);
+  // send initial state
+  const room = rooms.get(roomId)!;
+  res.write(`event: state\ndata: ${JSON.stringify(room)}\n\n`);
+
+  req.on('close', () => {
+    const list = sseClients.get(roomId) || [];
+    const idx = list.indexOf(res);
+    if (idx >= 0) list.splice(idx, 1);
+  });
+});
+
+// Player updates their progress to the room
+router.post('/api/multiplayer/update/:roomId', async (req, res) => {
+  const { roomId } = req.params;
+  const payload = req.body || {};
+  const { username = 'anonymous', position = 0, finished = false } = payload;
+  const room = rooms.get(roomId);
+  if (!room) {
+    res.status(404).json({ status: 'error', message: 'room not found' });
+    return;
+  }
+  room.players[username] = { username, position, finished };
+  sendSSE(roomId, 'state', room);
+  if (finished) {
+    sendSSE(roomId, 'finished', { username });
+  }
+  res.json({ status: 'ok' });
+});
+

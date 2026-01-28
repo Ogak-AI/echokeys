@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useMultiplayer } from './useMultiplayer';
 import type { InitResponse, GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../../shared/types/api';
 
 interface GameState {
@@ -19,6 +20,7 @@ interface GameState {
   selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
   lastSpokenIndex: number;
   isMuted: boolean;
+  roomId: string | null;
 }
 
 export const useTypingGame = () => {
@@ -40,6 +42,7 @@ export const useTypingGame = () => {
     selectedDifficulty: null,
     lastSpokenIndex: 0,
     isMuted: false,
+    roomId: null,
   });
 
   // fetch initial data
@@ -78,6 +81,21 @@ export const useTypingGame = () => {
       accuracy: 0,
     }));
   }, []);
+
+  // Multiplayer hook
+  const { roomState, createRoom, joinRoom, leaveRoom, sendUpdate } = useMultiplayer();
+
+  const createMultiplayerRoom = useCallback(async (challengeId?: string) => {
+    const id = await createRoom(challengeId);
+    setState(prev => ({ ...prev, roomId: id }));
+    joinRoom(id);
+    return id;
+  }, [createRoom, joinRoom]);
+
+  const joinMultiplayerRoom = useCallback((id: string) => {
+    setState(prev => ({ ...prev, roomId: id }));
+    joinRoom(id);
+  }, [joinRoom]);
 
   const selectDifficulty = useCallback(async (difficulty: 'easy' | 'medium' | 'hard') => {
     try {
@@ -146,6 +164,11 @@ export const useTypingGame = () => {
       accuracy,
     }));
 
+    // Send multiplayer update if in a room
+    if (state.roomId) {
+      void sendUpdate(state.roomId, { username: state.username || 'anonymous', position: input.length, finished: isFinished });
+    }
+
     if (isFinished) {
       // Submit score
       const result: GameResult = {
@@ -206,5 +229,10 @@ export const useTypingGame = () => {
     toggleLeaderboard,
     resetGame,
     toggleMute,
+    // multiplayer helpers
+    createMultiplayerRoom,
+    joinMultiplayerRoom,
+    leaveRoom,
+    roomState,
   };
 };

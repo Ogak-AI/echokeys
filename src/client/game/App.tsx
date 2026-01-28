@@ -1,4 +1,5 @@
 import { navigateTo } from '@devvit/web/client';
+import { useState } from 'react';
 import { useTypingGame } from '../hooks/useTypingGame';
 
 export const App = () => {
@@ -23,6 +24,10 @@ export const App = () => {
     toggleLeaderboard,
     toggleMute,
     resetGame,
+    createMultiplayerRoom,
+    joinMultiplayerRoom,
+    leaveRoom,
+    roomState,
   } = useTypingGame();
 
   if (loading) {
