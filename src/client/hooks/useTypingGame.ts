@@ -41,6 +41,7 @@ export const useTypingGame = () => {
         const res = await fetch('/api/init');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
+        console.log('Received data from /api/init:', data);
         if (data.type !== 'init') throw new Error('Unexpected response');
         setState(prev => ({
           ...prev,
