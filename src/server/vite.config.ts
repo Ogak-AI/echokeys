@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import { builtinModules } from 'node:module';
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   ssr: {
@@ -22,4 +24,24 @@ export default defineConfig({
       },
     },
   },
+  plugins: [
+    {
+      name: 'copy-challenges',
+      apply: 'build',
+      writeBundle() {
+        // Copy challenges directory to dist
+        const src = resolve(__dirname, 'challenges');
+        const dest = resolve(__dirname, '../../dist/server/challenges');
+        mkdirSync(dest, { recursive: true });
+        
+        const fs = require('node:fs');
+        const files = fs.readdirSync(src);
+        for (const file of files) {
+          if (file.endsWith('.txt')) {
+            copyFileSync(resolve(src, file), resolve(dest, file));
+          }
+        }
+      },
+    },
+  ],
 });
