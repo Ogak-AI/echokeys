@@ -183,14 +183,15 @@ export const App = () => {
                 <textarea
                   value={currentInput}
                   onChange={(e) => updateInput(e.target.value)}
-                  className="w-full bg-white/10 border border-white/20 rounded-lg p-3 text-white placeholder-white/50 focus:outline-none focus:border-white/50"
+                  onTouchStart={(e) => e.currentTarget.scrollIntoView(false)}
+                  className="w-full bg-white/10 border border-white/20 rounded-lg p-3 text-white placeholder-white/50 focus:outline-none focus:border-white/50 flex-shrink-0 md:flex-none"
                   placeholder="Start typing here..."
                   rows={3}
                   disabled={gameFinished}
                 />
 
                 {/* Stats during game */}
-                <div className="flex justify-between items-center mt-4">
+                <div className="flex justify-between items-center mt-4 flex-shrink-0 md:flex-none">
                   <div className="text-lg">
                     WPM: <span className="font-bold">{wpm}</span>
                   </div>
@@ -201,7 +202,7 @@ export const App = () => {
 
                 {/* Game finished */}
                 {gameFinished && (
-                  <div className="mt-6 text-center">
+                  <div className="mt-6 text-center flex-grow md:flex-none">
                     <div className="bg-white/10 rounded-lg p-4 mb-4">
                       <h3 className="text-2xl font-bold mb-2">Great job!</h3>
                       <div className="grid grid-cols-2 gap-4 text-lg">
