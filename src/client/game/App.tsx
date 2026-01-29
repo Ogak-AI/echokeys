@@ -32,9 +32,8 @@ export const App = () => {
   } = useTypingGame();
 
   const [roomInput, setRoomInput] = useState('');
-  const [availableRooms, setAvailableRooms] = useState<Array<any>>([]);
-  const [showRooms, setShowRooms] = useState(false);
   const [showJoinInput, setShowJoinInput] = useState(false);
+  const [showWaitingRoom, setShowWaitingRoom] = useState(false);
 
   // Auto-join room if splash set a join id
   useEffect(() => {
@@ -51,6 +50,57 @@ export const App = () => {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (showWaitingRoom) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
+        <div className="max-w-2xl mx-auto">
+          <h1 className="text-3xl font-bold text-center mb-6">Waiting Room</h1>
+          <div className="bg-white/10 rounded-lg p-4 mb-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Room ID: {roomId}</h2>
+              <button
+                onClick={() => navigator.clipboard.writeText(roomId || '')}
+                className="bg-white text-blue-900 px-4 py-1 rounded-lg font-semibold hover:bg-gray-100"
+              >
+                Copy ID
+              </button>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Players:</h3>
+              <ul className="space-y-2">
+                {roomState?.players &&
+                  Object.values(roomState.players).map((player) => (
+                    <li key={player.username} className="flex items-center gap-3 bg-white/5 rounded p-2">
+                      <span>{player.username}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </div>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => {
+                setShowWaitingRoom(false);
+              }}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700"
+            >
+              Start Game
+            </button>
+            <button
+              onClick={() => {
+                leaveRoom();
+                setShowWaitingRoom(false);
+              }}
+              className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700"
+            >
+              Leave
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -170,7 +220,7 @@ export const App = () => {
             <button
               onClick={async () => {
                 const id = await createMultiplayerRoom(dailyChallenge?.id);
-                // show generated id to user in the UI via `roomId`
+                setShowWaitingRoom(true);
                 setRoomInput('');
               }}
               className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
@@ -241,54 +291,6 @@ export const App = () => {
                 >
                   Start Typing!
                 </button>
-                <div className="mt-3">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await fetch('/api/multiplayer/rooms');
-                        if (!res.ok) throw new Error('Failed to fetch rooms');
-                        const data = await res.json();
-                        setAvailableRooms(data.rooms || []);
-                        setShowRooms(true);
-                      } catch (err) {
-                        console.error('Failed to fetch rooms', err);
-                      }
-                    }}
-                    className="bg-transparent border border-white text-white px-4 py-2 rounded-lg hover:bg-white/10"
-                  >
-                    Watch
-                  </button>
-                </div>
-                {showRooms && (
-                  <div className="mt-4 text-left">
-                    <h3 className="text-lg font-semibold mb-2">Live Games</h3>
-                    {availableRooms.length === 0 ? (
-                      <p className="text-sm opacity-80">No active games right now.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {availableRooms.map((r: any) => (
-                          <div key={r.id} className="flex justify-between items-center bg-white/5 rounded p-2">
-                            <div>
-                              <div className="font-semibold">{r.id}</div>
-                              <div className="text-sm opacity-80">Players: {r.playerCount} • Challenge: {r.challengeId}</div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  joinMultiplayerRoom(r.id);
-                                  setShowRooms(false);
-                                }}
-                                className="px-3 py-1 rounded bg-white text-blue-900 font-semibold"
-                              >
-                                Watch
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex flex-col h-auto">

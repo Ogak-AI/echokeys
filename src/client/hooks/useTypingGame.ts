@@ -127,6 +127,7 @@ export const useTypingGame = () => {
         const completedWord = wordBoundaryMatch[1];
         
         if (completedWord && window.speechSynthesis && !state.isMuted) {
+          console.log('Speaking word:', completedWord); // for debugging
           const utterance = new SpeechSynthesisUtterance(completedWord);
           utterance.rate = 1;
           utterance.pitch = 1;
