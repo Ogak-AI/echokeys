@@ -248,6 +248,7 @@ async function updateUserStats(
   await redis.zAdd('leaderboard', { score: result.wpm, member });
 
   // Get rank (1-based)
+  // @ts-expect-error
   const rawRank = await redis.zRevRank('leaderboard', member);
   const rank = rawRank !== null ? rawRank + 1 : 0;
 
