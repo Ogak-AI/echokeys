@@ -105,7 +105,6 @@ export const useTypingGame = () => {
     // Detect newly completed words since last spoken position
     if (input.length > currentSpokenIndex) {
       const textSinceLastSpoken = input.slice(currentSpokenIndex);
-      const-
       // Use a global match to find all completed words
       const completedWords = textSinceLastSpoken.matchAll(/([\w']+)[\s.,!?;:\-—]/g);
   
