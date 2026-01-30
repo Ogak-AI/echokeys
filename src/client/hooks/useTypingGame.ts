@@ -70,18 +70,6 @@ export const useTypingGame = () => {
     void init();
   }, []);
 
-  const startGame = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      gameStarted: true,
-      startTime: Date.now(),
-      currentInput: '',
-      gameFinished: false,
-      wpm: 0,
-      accuracy: 0,
-    }));
-  }, []);
-
   // Multiplayer hook
   const { roomState, createRoom, joinRoom, leaveRoom, sendUpdate } = useMultiplayer();
 
@@ -96,6 +84,18 @@ export const useTypingGame = () => {
     setState(prev => ({ ...prev, roomId: id }));
     joinRoom(id);
   }, [joinRoom]);
+
+  const startGame = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      gameStarted: true,
+      startTime: Date.now(),
+      currentInput: '',
+      gameFinished: false,
+      wpm: 0,
+      accuracy: 0,
+    }));
+  }, []);
 
   const selectDifficulty = useCallback(async (difficulty: 'easy' | 'medium' | 'hard') => {
     try {
@@ -230,10 +230,5 @@ export const useTypingGame = () => {
     toggleLeaderboard,
     resetGame,
     toggleMute,
-    // multiplayer helpers
-    createMultiplayerRoom,
-    joinMultiplayerRoom,
-    leaveRoom,
-    roomState,
   };
 };

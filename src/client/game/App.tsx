@@ -24,83 +24,12 @@ export const App = () => {
     toggleLeaderboard,
     toggleMute,
     resetGame,
-    createMultiplayerRoom,
-    joinMultiplayerRoom,
-    leaveRoom,
-    roomState,
-    roomId,
   } = useTypingGame();
-
-  const [roomInput, setRoomInput] = useState('');
-  const [showJoinInput, setShowJoinInput] = useState(false);
-  const [showWaitingRoom, setShowWaitingRoom] = useState(false);
-
-  // Auto-join room if splash set a join id
-  useEffect(() => {
-    try {
-      const id = localStorage.getItem('keyscripture_join_room');
-      if (id) {
-        joinMultiplayerRoom(id);
-        localStorage.removeItem('keyscripture_join_room');
-      }
-    } catch (_) {}
-  }, [joinMultiplayerRoom]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
-
-  if (showWaitingRoom) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold text-center mb-6">Waiting Room</h1>
-          <div className="bg-white/10 rounded-lg p-4 mb-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Room ID: {roomId}</h2>
-              <button
-                onClick={() => navigator.clipboard.writeText(roomId || '')}
-                className="bg-white text-blue-900 px-4 py-1 rounded-lg font-semibold hover:bg-gray-100"
-              >
-                Copy ID
-              </button>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Players:</h3>
-              <ul className="space-y-2">
-                {roomState?.players &&
-                  Object.values(roomState.players).map((player) => (
-                    <li key={player.username} className="flex items-center gap-3 bg-white/5 rounded p-2">
-                      <span>{player.username}</span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          </div>
-          <div className="flex gap-4 justify-center">
-            <button
-              onClick={() => {
-                setShowWaitingRoom(false);
-              }}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700"
-            >
-              Start Game
-            </button>
-            <button
-              onClick={() => {
-                leaveRoom();
-                setShowWaitingRoom(false);
-              }}
-              className="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700"
-            >
-              Leave
-            </button>
-          </div>
-        </div>
       </div>
     );
   }
@@ -186,48 +115,6 @@ export const App = () => {
             <p className="text-lg opacity-90">Welcome, {username}!</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 justify-end">
-            {showJoinInput && (
-              <input
-                id="roomIdInput"
-                placeholder="Room ID"
-                value={roomInput}
-                className="px-3 py-2 rounded-lg text-black w-full sm:w-40"
-                onChange={(e) => setRoomInput(e.target.value)}
-              />
-            )}
-            {showJoinInput ? (
-              <button
-                onClick={() => {
-                  if (!roomInput) return;
-                  joinMultiplayerRoom(roomInput);
-                  setShowJoinInput(false);
-                  setRoomInput('');
-                }}
-                className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
-                style={{ backgroundColor: '#fff', color: '#1e3a8a' }}
-              >
-                Confirm
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowJoinInput(true)}
-                className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
-                style={{ backgroundColor: '#fff', color: '#1e3a8a' }}
-              >
-                Join
-              </button>
-            )}
-            <button
-              onClick={async () => {
-                const id = await createMultiplayerRoom(dailyChallenge?.id);
-                setShowWaitingRoom(true);
-                setRoomInput('');
-              }}
-              className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
-              style={{ backgroundColor: '#fff', color: '#1e3a8a' }}
-            >
-              Create
-            </button>
             <button
               onClick={toggleMute}
               className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
@@ -236,11 +123,6 @@ export const App = () => {
             >
               {isMuted ? 'Muted' : 'Sound'}
             </button>
-            {roomId ? (
-              <div className="w-full sm:w-auto px-3 py-2 rounded-lg bg-white/10 text-sm text-center">
-                Room: <span className="font-mono">{roomId}</span>
-              </div>
-            ) : null}
           </div>
         </div>
 
