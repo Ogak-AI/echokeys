@@ -248,7 +248,7 @@ async function updateUserStats(
   await redis.zAdd('leaderboard', { score: result.wpm, member });
 
   // Get rank (1-based)
-  // @ts-expect-error
+  // @ts-expect-error zRevRank is not in the type definitions
   const rawRank = await redis.zRevRank('leaderboard', member);
   const rank = rawRank !== null ? rawRank + 1 : 0;
 

@@ -20,6 +20,7 @@
     "lint:fix": "eslint --fix ./src",
     "login": "devvit login",
     "prettier": "prettier-package-json --write ./package.json && prettier --write .",
+    "test": "vitest",
     "type-check": "tsc --build"
   },
   "dependencies": {
