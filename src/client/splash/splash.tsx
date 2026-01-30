@@ -2,7 +2,7 @@ import '../index.css';
 
 import { navigateTo } from '@devvit/web/client';
 import { context, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode, useState } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 export const Splash = () => {
@@ -13,9 +13,7 @@ export const Splash = () => {
         <p className="text-base mb-4">Scripture Typing Challenge</p>
       </div>
       <div className="flex flex-col items-center gap-2">
-        <h2 className="text-xl font-semibold">
-          Welcome, {context.username ?? 'Typist'}!
-        </h2>
+        <h2 className="text-xl font-semibold">Welcome, {context.username ?? 'Typist'}!</h2>
       </div>
       <div className="flex items-center justify-center mt-5">
         <button

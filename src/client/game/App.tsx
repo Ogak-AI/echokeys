@@ -1,5 +1,5 @@
 import { navigateTo } from '@devvit/web/client';
-import { useState, useEffect } from 'react';
+
 import { useTypingGame } from '../hooks/useTypingGame';
 
 export const App = () => {
@@ -45,7 +45,10 @@ export const App = () => {
             ) : (
               <div className="space-y-2">
                 {leaderboard.map((entry, index) => (
-                  <div key={index} className="flex justify-between items-center bg-white/5 rounded p-2">
+                  <div
+                    key={index}
+                    className="flex justify-between items-center bg-white/5 rounded p-2"
+                  >
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-white">#{index + 1}</span>
                       <span>{entry.username}</span>
@@ -79,7 +82,7 @@ export const App = () => {
         <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-screen">
           <h1 className="text-4xl font-bold mb-4 text-center">KeyScripture</h1>
           <p className="text-xl opacity-90 mb-12 text-center">Choose your difficulty level</p>
-          
+
           <div className="space-y-4 w-full max-w-md">
             <button
               onClick={() => selectDifficulty('easy')}
@@ -119,7 +122,10 @@ export const App = () => {
               onClick={toggleMute}
               className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
               title={isMuted ? 'Unmute' : 'Mute'}
-              style={{ backgroundColor: isMuted ? '#666' : '#fff', color: isMuted ? '#fff' : '#1e3a8a' }}
+              style={{
+                backgroundColor: isMuted ? '#666' : '#fff',
+                color: isMuted ? '#fff' : '#1e3a8a',
+              }}
             >
               {isMuted ? 'Muted' : 'Sound'}
             </button>
@@ -156,17 +162,24 @@ export const App = () => {
           <div className="bg-white/20 rounded-lg p-6 mb-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-semibold">Daily Challenge</h2>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                dailyChallenge.difficulty === 'easy' ? 'bg-blue-600' :
-                dailyChallenge.difficulty === 'medium' ? 'bg-blue-700' : 'bg-red-600'
-              }`}>
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  dailyChallenge.difficulty === 'easy'
+                    ? 'bg-blue-600'
+                    : dailyChallenge.difficulty === 'medium'
+                      ? 'bg-blue-700'
+                      : 'bg-red-600'
+                }`}
+              >
                 {dailyChallenge.difficulty}
               </span>
             </div>
 
             {!gameStarted ? (
               <div className="text-center">
-                <p className="mb-4 opacity-90 text-sm max-h-20 overflow-hidden">{dailyChallenge.text.substring(0, 150)}...</p>
+                <p className="mb-4 opacity-90 text-sm max-h-20 overflow-hidden">
+                  {dailyChallenge.text.substring(0, 150)}...
+                </p>
                 <button
                   onClick={startGame}
                   className="bg-white text-blue-900 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors"
@@ -185,14 +198,17 @@ export const App = () => {
                     const beforeCursor = 40; // characters before cursor
                     const startIdx = Math.max(0, charIndex - beforeCursor);
                     const endIdx = Math.min(dailyChallenge.text.length, startIdx + charsToShow);
-                    
+
                     const displayText = dailyChallenge.text.substring(startIdx, endIdx);
-                    
+
                     return displayText.split('').map((char, idx) => {
                       const charAbsIndex = startIdx + idx;
                       let className = 'text-gray-300';
                       if (charAbsIndex < currentInput.length) {
-                        className = currentInput[charAbsIndex] === char ? 'text-white font-semibold' : 'text-red-500 bg-red-500/30 font-semibold';
+                        className =
+                          currentInput[charAbsIndex] === char
+                            ? 'text-white font-semibold'
+                            : 'text-red-500 bg-red-500/30 font-semibold';
                       } else if (charAbsIndex === currentInput.length) {
                         className = 'bg-white text-black font-bold animate-pulse';
                       }

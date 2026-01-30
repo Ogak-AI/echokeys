@@ -23,13 +23,34 @@ const router = express.Router();
 
 // Fallback challenges if files can't be loaded
 const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
-  { text: "Welcome to KeyScripture! Type this simple sentence to get started.", difficulty: 'easy' },
-  { text: "Reddit is a network of communities where people can dive into their interests, hobbies and passions.", difficulty: 'medium' },
-  { text: "The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.", difficulty: 'medium' },
-  { text: "In the world of programming, typing speed and accuracy are crucial skills for developers.", difficulty: 'hard' },
-  { text: "Memes are a huge part of internet culture, spreading joy and humor across social platforms.", difficulty: 'medium' },
-  { text: "Devvit allows developers to create interactive experiences directly within Reddit posts.", difficulty: 'hard' },
-  { text: "Community engagement is key to building successful online platforms and fostering meaningful connections.", difficulty: 'hard' },
+  {
+    text: 'Welcome to KeyScripture! Type this simple sentence to get started.',
+    difficulty: 'easy',
+  },
+  {
+    text: 'Reddit is a network of communities where people can dive into their interests, hobbies and passions.',
+    difficulty: 'medium',
+  },
+  {
+    text: 'The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.',
+    difficulty: 'medium',
+  },
+  {
+    text: 'In the world of programming, typing speed and accuracy are crucial skills for developers.',
+    difficulty: 'hard',
+  },
+  {
+    text: 'Memes are a huge part of internet culture, spreading joy and humor across social platforms.',
+    difficulty: 'medium',
+  },
+  {
+    text: 'Devvit allows developers to create interactive experiences directly within Reddit posts.',
+    difficulty: 'hard',
+  },
+  {
+    text: 'Community engagement is key to building successful online platforms and fostering meaningful connections.',
+    difficulty: 'hard',
+  },
 ];
 
 // Load daily challenges from challenge files
@@ -40,9 +61,9 @@ async function loadChallenges() {
   try {
     // First, try to use the embedded challenges data
     if (Array.isArray(challengesData) && challengesData.length > 0) {
-      challenges = challengesData.map(p => ({ 
-        text: (p.text || '').trim(), 
-        difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard' 
+      challenges = challengesData.map((p) => ({
+        text: (p.text || '').trim(),
+        difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
       }));
       challengesLoaded = true;
       console.log(`Loaded ${challenges.length} challenges from embedded data`);
@@ -60,8 +81,7 @@ async function loadChallenges() {
     for (const c of candidates) {
       try {
         const s = await fs.stat(c);
-        // @ts-ignore - stat type from fs/promises
-        if (s.isDirectory && s.isDirectory()) {
+        if (s.isDirectory()) {
           challengesDir = c;
           break;
         }
@@ -74,7 +94,7 @@ async function loadChallenges() {
       try {
         const files = await fs.readdir(challengesDir);
         const challengeFiles = files
-          .filter(f => f.endsWith('.txt'))
+          .filter((f) => f.endsWith('.txt'))
           .sort()
           .slice(0, 365); // Limit to 365 challenges for a year
 
@@ -94,7 +114,10 @@ async function loadChallenges() {
           return;
         }
       } catch (fileErr) {
-        console.warn('Could not load challenges from files, trying JSON:', fileErr instanceof Error ? fileErr.message : 'Unknown error');
+        console.warn(
+          'Could not load challenges from files, trying JSON:',
+          fileErr instanceof Error ? fileErr.message : 'Unknown error'
+        );
       }
     } else {
       console.warn('No challenges directory found in any candidate paths, trying JSON');
@@ -119,26 +142,31 @@ async function loadChallenges() {
     for (const jc of jsonCandidates) {
       try {
         const s = await fs.stat(jc);
-        // @ts-ignore
-        if (s.isFile && s.isFile()) {
+        if (s.isFile()) {
           try {
             const raw = await fs.readFile(jc, 'utf-8');
             const parsed = JSON.parse(raw) as Array<{ text: string; difficulty?: string }>;
             if (Array.isArray(parsed) && parsed.length > 0) {
-              challenges = parsed.map(p => ({ text: (p.text || '').trim(), difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard' }));
+              challenges = parsed.map((p) => ({
+                text: (p.text || '').trim(),
+                difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
+              }));
               challengesLoaded = true;
               console.log(`Loaded ${challenges.length} challenges from JSON ${jc}`);
               return;
             }
           } catch (jsonErr) {
-            console.warn('Failed to parse challenges JSON, trying next candidate:', jsonErr instanceof Error ? jsonErr.message : String(jsonErr));
+            console.warn(
+              'Failed to parse challenges JSON, trying next candidate:',
+              jsonErr instanceof Error ? jsonErr.message : String(jsonErr)
+            );
           }
         }
       } catch (_) {
         // ignore missing
       }
     }
-    
+
     // Use fallback challenges if files couldn't be loaded
     challenges = fallbackChallenges;
     challengesLoaded = true;
@@ -151,7 +179,7 @@ async function loadChallenges() {
 }
 
 // Pre-load challenges (awaited to ensure they load before first request)
-(async () => {
+void (async () => {
   try {
     await loadChallenges();
   } catch (err) {
@@ -169,7 +197,9 @@ function getDailyChallenge(): DailyChallenge {
     };
   }
   const today = new Date();
-  const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+  const dayOfYear = Math.floor(
+    (today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
+  );
   const challengeIndex = dayOfYear % challenges.length;
   const challenge = challenges[challengeIndex];
   return {
@@ -189,7 +219,10 @@ async function getUserStats(username: string): Promise<UserStats> {
   };
 }
 
-async function updateUserStats(username: string, result: GameResult): Promise<{ newHighScore: boolean; rank: number }> {
+async function updateUserStats(
+  username: string,
+  result: GameResult
+): Promise<{ newHighScore: boolean; rank: number }> {
   const stats = await getUserStats(username);
   let newHighScore = false;
   if (result.wpm > stats.bestWPM) {
@@ -214,8 +247,9 @@ async function updateUserStats(username: string, result: GameResult): Promise<{ 
   const member = `${username}:${Date.now()}:${result.accuracy}`;
   await redis.zAdd('leaderboard', { score: result.wpm, member });
 
-  // Get rank (1-based) - simplified
-  const rank = 0; // TODO: implement proper ranking
+  // Get rank (1-based)
+  const rawRank = await redis.zRevRank('leaderboard', member);
+  const rank = rawRank !== null ? rawRank + 1 : 0;
 
   return { newHighScore, rank };
 }
@@ -232,7 +266,7 @@ router.get('/api/init', async (_req, res): Promise<void> => {
   }
 
   try {
-    const username = await reddit.getCurrentUsername() ?? 'anonymous';
+    const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
     const userStats = await getUserStats(username);
     const dailyChallenge = getDailyChallenge();
 
@@ -261,7 +295,7 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
 
   try {
     const result: GameResult = req.body;
-    const username = await reddit.getCurrentUsername() ?? 'anonymous';
+    const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
     const { newHighScore, rank } = await updateUserStats(username, result);
 
     res.json({
@@ -304,7 +338,7 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
 
 router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
   const { difficulty } = req.params;
-  
+
   if (!['easy', 'medium', 'hard'].includes(difficulty)) {
     res.status(400).json({ status: 'error', message: 'Invalid difficulty level' });
     return;
@@ -317,9 +351,11 @@ router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
     }
 
     // Filter challenges by difficulty
-    const filtered = challenges.filter(c => c.difficulty === difficulty);
+    const filtered = challenges.filter((c) => c.difficulty === difficulty);
     if (filtered.length === 0) {
-      res.status(404).json({ status: 'error', message: `No challenges found for difficulty: ${difficulty}` });
+      res
+        .status(404)
+        .json({ status: 'error', message: `No challenges found for difficulty: ${difficulty}` });
       return;
     }
 
@@ -333,7 +369,7 @@ router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
         ...selectedChallenge,
         id: `${difficulty}-${randomIndex}`,
         date: today.toISOString().split('T')[0] || today.toDateString(),
-      }
+      },
     });
   } catch (error) {
     console.error(`Challenge error:`, error);
