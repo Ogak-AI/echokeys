@@ -13,6 +13,9 @@
       },
       "games": {
         "entry": "games.html"
+      },
+      "watch": {
+        "entry": "watch.html"
       }
     }
   },

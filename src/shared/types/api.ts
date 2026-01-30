@@ -1,3 +1,18 @@
+export type WatchGameResponse = {
+  type: 'watchGame';
+  username: string;
+  challenge: DailyChallenge;
+  currentInput: string;
+  startTime: number;
+  wpm: number;
+  accuracy: number;
+};
+
+export type GetActiveGamesResponse = {
+  type: 'activeGames';
+  games: { username: string }[];
+};
+
 export type InitResponse = {
   type: 'init';
   postId: string;

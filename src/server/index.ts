@@ -255,6 +255,14 @@ async function updateUserStats(
   return { newHighScore, rank };
 }
 
+async function addActivePlayer(username: string): Promise<void> {
+  await redis.sAdd('active_players', username);
+}
+
+async function removeActivePlayer(username: string): Promise<void> {
+  await redis.sRem('active_players', username);
+}
+
 router.get('/api/init', async (_req, res): Promise<void> => {
   const { postId } = context;
 
@@ -268,6 +276,7 @@ router.get('/api/init', async (_req, res): Promise<void> => {
 
   try {
     const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+    await addActivePlayer(username);
     const userStats = await getUserStats(username);
     const dailyChallenge = getDailyChallenge();
 
@@ -297,6 +306,7 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
   try {
     const result: GameResult = req.body;
     const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+    await removeActivePlayer(username);
     const { newHighScore, rank } = await updateUserStats(username, result);
 
     res.json({
@@ -334,6 +344,19 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
   } catch (error) {
     console.error(`Leaderboard error:`, error);
     res.status(500).json({ status: 'error', message: 'Failed to get leaderboard' });
+  }
+});
+
+router.get('/api/active-games', async (_req, res): Promise<void> => {
+  try {
+    const activePlayers = await redis.sMembers('active_players');
+    res.json({
+      type: 'activeGames',
+      games: activePlayers.map((player) => ({ username: player })),
+    });
+  } catch (error) {
+    console.error(`Active games error:`, error);
+    res.status(500).json({ status: 'error', message: 'Failed to get active games' });
   }
 });
 
@@ -375,6 +398,65 @@ router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
   } catch (error) {
     console.error(`Challenge error:`, error);
     res.status(500).json({ status: 'error', message: 'Failed to get challenge' });
+  }
+});
+
+router.post('/api/remove-player', async (_req, res): Promise<void> => {
+  try {
+    const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+    await removeActivePlayer(username);
+    res.json({ status: 'success', message: `Player ${username} removed from active games` });
+  } catch (error) {
+    console.error(`Remove player error:`, error);
+    res.status(500).json({ status: 'error', message: 'Failed to remove player' });
+  }
+});
+
+router.post('/api/update-game-state', async (req, res): Promise<void> => {
+  try {
+    const { username, challenge, currentInput, startTime, wpm, accuracy } = req.body;
+    if (!username || !challenge || currentInput === undefined || startTime === undefined || wpm === undefined || accuracy === undefined) {
+      res.status(400).json({ status: 'error', message: 'Missing game state parameters' });
+      return;
+    }
+    // Store game state in Redis. Using a hash for each user's game state.
+    await redis.hSet(`game:${username}`, {
+      challenge: JSON.stringify(challenge),
+      currentInput,
+      startTime: startTime.toString(),
+      wpm: wpm.toString(),
+      accuracy: accuracy.toString(),
+    });
+    res.json({ status: 'success' });
+  } catch (error) {
+    console.error(`Update game state error:`, error);
+    res.status(500).json({ status: 'error', message: 'Failed to update game state' });
+  }
+});
+
+router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
+  try {
+    const { username } = req.params;
+    const gameState = await redis.hGetAll(`game:${username}`);
+    if (!gameState || Object.keys(gameState).length === 0) {
+      res.status(404).json({ status: 'error', message: `No active game found for ${username}` });
+      return;
+    }
+
+    const challenge = JSON.parse(gameState.challenge);
+
+    res.json({
+      type: 'watchGame',
+      username,
+      challenge,
+      currentInput: gameState.currentInput,
+      startTime: parseInt(gameState.startTime),
+      wpm: parseFloat(gameState.wpm),
+      accuracy: parseFloat(gameState.accuracy),
+    });
+  } catch (error) {
+    console.error(`Watch game error:`, error);
+    res.status(500).json({ status: 'error', message: 'Failed to retrieve game state' });
   }
 });
 

@@ -26,7 +26,7 @@ export const Splash = () => {
       <div className="flex items-center justify-center mt-3">
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={() => navigateTo('games')}
+          onClick={(e) => requestExpandedMode(e.nativeEvent, 'games')}
         >
           Watch
         </button>

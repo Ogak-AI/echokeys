@@ -154,6 +154,22 @@ export const useTypingGame = () => {
         lastSpokenIndex: currentSpokenIndex, // Update state with the new index
       }));
 
+      // Send game state to server for spectators
+      if (state.username && challenge && state.startTime) {
+        fetch('/api/update-game-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: state.username,
+            challenge: challenge,
+            currentInput: input,
+            startTime: state.startTime,
+            wpm,
+            accuracy,
+          }),
+        }).catch((err) => console.error('Failed to update game state for spectators', err));
+      }
+
       if (isFinished) {
         window.speechSynthesis.cancel(); // Stop any lingering speech
         // Submit score
@@ -177,6 +193,7 @@ export const useTypingGame = () => {
       state.startTime,
       state.isMuted,
       state.lastSpokenIndex,
+      state.username,
     ]
   );
 
@@ -197,6 +214,12 @@ export const useTypingGame = () => {
 
   const resetGame = useCallback(() => {
     window.speechSynthesis.cancel();
+    // Remove player from active games when game is reset
+    fetch('/api/remove-player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }).catch((err) => console.error('Failed to remove player from active games', err));
+
     setState((prev) => ({
       ...prev,
       gameStarted: false,
