@@ -180,6 +180,7 @@ export const useTypingGame = () => {
   }, []);
 
   const resetGame = useCallback(() => {
+    window.speechSynthesis.cancel();
     setState(prev => ({
       ...prev,
       gameStarted: false,
@@ -192,6 +193,7 @@ export const useTypingGame = () => {
       showDifficultySelect: true,
       selectedDifficulty: null,
       lastSpokenIndex: 0,
+      isMuted: false,
     }));
   }, []);
 
