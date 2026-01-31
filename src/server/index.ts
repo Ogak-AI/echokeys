@@ -3,9 +3,26 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
-import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
+import { reddit, createServer, context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
 import challengesData from './challenges.json' assert { type: 'json' };
+
+interface DevvitRedisClient {
+  sAdd(key: string, member: string | string[]): Promise<number>;
+  sRem(key: string, member: string | string[]): Promise<number>;
+  hSet(key: string, field: string, value: string): Promise<number>;
+  hSet(key: string, mapping: { [key: string]: string }): Promise<string>;
+  hGetAll(key: string): Promise<{ [key: string]: string }>;
+  zAdd(key: string, members: { score: number, member: string }[]): Promise<number>;
+  zRange(key: string, min: number, max: number): Promise<{ score: number, member: string }[]>;
+  zRevRank(key: string, member: string): Promise<number | null>;
+}
+
+declare module '@devvit/web/server' {
+  interface Context {
+    redis: DevvitRedisClient;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -210,7 +227,7 @@ function getDailyChallenge(): DailyChallenge {
 }
 
 async function getUserStats(username: string): Promise<UserStats> {
-  const stats = await redis.hGetAll(`user:${username}:stats`);
+  const stats = await context.redis.hGetAll(`user:${username}:stats`);
   return {
     bestWPM: parseFloat(stats.bestWPM || '0'),
     bestAccuracy: parseFloat(stats.bestAccuracy || '0'),
@@ -219,7 +236,7 @@ async function getUserStats(username: string): Promise<UserStats> {
   };
 }
 
-async function updateUserStats(
+export async function updateUserStats(
   username: string,
   result: GameResult
 ): Promise<{ newHighScore: boolean; rank: number }> {
@@ -236,7 +253,7 @@ async function updateUserStats(
   // For streak, we'd need to track last play date, but simplify for now
   stats.streak = stats.streak + 1; // Assume daily play
 
-  await redis.hSet(`user:${username}:stats`, {
+  await context.redis.hSet(`user:${username}:stats`, {
     bestWPM: stats.bestWPM.toString(),
     bestAccuracy: stats.bestAccuracy.toString(),
     totalGames: stats.totalGames.toString(),
@@ -245,22 +262,21 @@ async function updateUserStats(
 
   // Update leaderboard
   const member = `${username}:${Date.now()}:${result.accuracy}`;
-  await redis.zAdd('leaderboard', { score: result.wpm, member });
+  await context.redis.zAdd('leaderboard', [{ score: result.wpm, member }]);
 
   // Get rank (1-based)
-  // @ts-expect-error zRevRank is not in the type definitions
-  const rawRank = await redis.zRevRank('leaderboard', member);
+  const rawRank = await context.redis.zRevRank('leaderboard', member);
   const rank = rawRank !== null ? rawRank + 1 : 0;
 
   return { newHighScore, rank };
 }
 
 async function addActivePlayer(username: string): Promise<void> {
-  await redis.sAdd('active_players', username);
+  await context.redis.sAdd('active_players', username);
 }
 
 async function removeActivePlayer(username: string): Promise<void> {
-  await redis.sRem('active_players', username);
+  await context.redis.sRem('active_players', username);
 }
 
 router.get('/api/init', async (_req, res): Promise<void> => {
@@ -323,7 +339,7 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
 
 router.get('/api/leaderboard', async (_req, res): Promise<void> => {
   try {
-    const leaderboardData = await redis.zRange('leaderboard', -10, -1);
+    const leaderboardData = await context.redis.zRange('leaderboard', -10, -1);
     const leaderboard: GetLeaderboardResponse['leaderboard'] = [];
     for (const entry of leaderboardData) {
       const parts = entry.member.split(':');
@@ -349,7 +365,7 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
 
 router.get('/api/active-games', async (_req, res): Promise<void> => {
   try {
-    const activePlayers = await redis.sMembers('active_players');
+    const activePlayers = await context.redis.sMembers('active_players');
     res.json({
       type: 'activeGames',
       games: activePlayers.map((player) => ({ username: player })),
@@ -420,7 +436,7 @@ router.post('/api/update-game-state', async (req, res): Promise<void> => {
       return;
     }
     // Store game state in Redis. Using a hash for each user's game state.
-    await redis.hSet(`game:${username}`, {
+    await context.redis.hSet(`game:${username}`, {
       challenge: JSON.stringify(challenge),
       currentInput,
       startTime: startTime.toString(),
@@ -437,13 +453,20 @@ router.post('/api/update-game-state', async (req, res): Promise<void> => {
 router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
   try {
     const { username } = req.params;
-    const gameState = await redis.hGetAll(`game:${username}`);
+    const gameState = await context.redis.hGetAll(`game:${username}`);
     if (!gameState || Object.keys(gameState).length === 0) {
       res.status(404).json({ status: 'error', message: `No active game found for ${username}` });
       return;
     }
 
-    const challenge = JSON.parse(gameState.challenge);
+    let challenge;
+    try {
+      challenge = JSON.parse(gameState.challenge);
+    } catch (parseError) {
+      console.error(`Watch game error: Failed to parse challenge for ${username}:`, parseError);
+      res.status(400).json({ status: 'error', message: 'Invalid challenge data in game state' });
+      return;
+    }
 
     res.json({
       type: 'watchGame',

@@ -48,9 +48,19 @@ export const Watch = () => {
     return () => clearInterval(interval); // Cleanup on unmount
   }, []);
 
+  const handleBack = () => {
+    window.history.back();
+  };
+
   if (!username) {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+        <button
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
         <h1 className="text-3xl font-bold mb-2">Watching Game</h1>
         <p>Loading...</p>
       </div>
@@ -60,6 +70,12 @@ export const Watch = () => {
   if (loading) {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+        <button
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
         <h1 className="text-3xl font-bold mb-2">Watching {username}'s Game</h1>
         <p>Loading game state...</p>
       </div>
@@ -69,6 +85,12 @@ export const Watch = () => {
   if (error) {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+        <button
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
         <h1 className="text-3xl font-bold mb-2">Watching {username}'s Game</h1>
         <p className="text-red-500">Error: {error}</p>
         <button
@@ -103,6 +125,12 @@ export const Watch = () => {
 
   return (
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+      <button
+        className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+        onClick={handleBack}
+      >
+        &larr; Back
+      </button>
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Watching {username}'s Game</h1>
         {gameState ? (
