@@ -3,13 +3,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
-import { reddit, createServer, context, getServerPort } from '@devvit/web/server';
+import { reddit, createServer, context as _context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
 import challengesData from './challenges.json' assert { type: 'json' };
 
 interface DevvitRedisClient {
   sAdd(key: string, member: string | string[]): Promise<number>;
   sRem(key: string, member: string | string[]): Promise<number>;
+  sMembers(key: string): Promise<string[]>;
   hSet(key: string, field: string, value: string): Promise<number>;
   hSet(key: string, mapping: { [key: string]: string }): Promise<string>;
   hGetAll(key: string): Promise<{ [key: string]: string }>;
@@ -18,11 +19,7 @@ interface DevvitRedisClient {
   zRevRank(key: string, member: string): Promise<number | null>;
 }
 
-declare module '@devvit/web/server' {
-  interface Context {
-    redis: DevvitRedisClient;
-  }
-}
+const context = _context as typeof _context & { redis: DevvitRedisClient };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -291,7 +288,7 @@ router.get('/api/init', async (_req, res): Promise<void> => {
   }
 
   try {
-    const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+    const username = (await reddit.getCurrentUsername()) || 'anonymous';
     await addActivePlayer(username);
     const userStats = await getUserStats(username);
     const dailyChallenge = getDailyChallenge();
@@ -321,7 +318,7 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
 
   try {
     const result: GameResult = req.body;
-    const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+    const username = (await reddit.getCurrentUsername()) || 'anonymous';
     await removeActivePlayer(username);
     const { newHighScore, rank } = await updateUserStats(username, result);
 
@@ -419,7 +416,7 @@ router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
 
 router.post('/api/remove-player', async (_req, res): Promise<void> => {
   try {
-    const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+    const username = (await reddit.getCurrentUsername()) || 'anonymous';
     await removeActivePlayer(username);
     res.json({ status: 'success', message: `Player ${username} removed from active games` });
   } catch (error) {
@@ -461,7 +458,7 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
 
     let challenge;
     try {
-      challenge = JSON.parse(gameState.challenge);
+      challenge = JSON.parse(gameState.challenge || '');
     } catch (parseError) {
       console.error(`Watch game error: Failed to parse challenge for ${username}:`, parseError);
       res.status(400).json({ status: 'error', message: 'Invalid challenge data in game state' });
@@ -472,10 +469,10 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
       type: 'watchGame',
       username,
       challenge,
-      currentInput: gameState.currentInput,
-      startTime: parseInt(gameState.startTime),
-      wpm: parseFloat(gameState.wpm),
-      accuracy: parseFloat(gameState.accuracy),
+      currentInput: gameState.currentInput || '',
+      startTime: parseInt(gameState.startTime || '0'),
+      wpm: parseFloat(gameState.wpm || '0'),
+      accuracy: parseFloat(gameState.accuracy || '0'),
     });
   } catch (error) {
     console.error(`Watch game error:`, error);
@@ -489,7 +486,7 @@ router.post('/internal/on-app-install', async (_req, res): Promise<void> => {
 
     res.json({
       status: 'success',
-      message: `Post created in subreddit ${context.subredditName} with id ${post.id}`,
+      message: `Post created in subreddit ${context.subredditName || 'unknown'} with id ${post.id}`,
     });
   } catch (error) {
     console.error(`Error creating post: ${error}`);
@@ -505,7 +502,7 @@ router.post('/internal/menu/post-create', async (_req, res): Promise<void> => {
     const post = await createPost();
 
     res.json({
-      navigateTo: `https://reddit.com/r/${context.subredditName}/comments/${post.id}`,
+      navigateTo: `https://reddit.com/r/${context.subredditName || 'unknown'}/comments/${post.id}`,
     });
   } catch (error) {
     console.error(`Error creating post: ${error}`);
