@@ -47,9 +47,23 @@ The game transforms the traditionally solitary act of typing practice into a **s
 - **Historical performance**: Monitor improvement over time across different difficulty levels
 - **Automatic score submission**: Seamless leaderboard integration with instant ranking updates
 
-## Core Features
+### Content and Challenges
 
-### Gameplay Features
+#### Challenge Content
+KeyScripture features **biblical text passages** from the Book of Esther, providing:
+- **Meaningful content**: Rich, narrative text that's engaging to type rather than random words
+- **Varied complexity**: Different passages offer natural difficulty progression
+- **Cultural significance**: Classic literature that many users will find familiar and meaningful
+- **Proper punctuation practice**: Real-world text with authentic punctuation, capitalization, and formatting
+
+#### Difficulty Levels
+- **Easy**: Shorter passages with simpler sentence structures and common vocabulary
+- **Medium**: Moderate-length passages with mixed sentence complexity and standard punctuation
+- **Hard**: Longer, more complex passages with advanced vocabulary, intricate punctuation, and challenging formatting
+
+The biblical text provides a consistent, high-quality typing experience that's more engaging than typical "lorem ipsum" or random word generators used in other typing games.
+
+## Core Features
 - **Three-Difficulty Challenge System**: Choose from Easy, Medium, and Hard typing challenges with varying text complexity
 - **Real-time Performance Metrics**: Live WPM (Words Per Minute) and accuracy tracking with instant updates during gameplay
 - **Intelligent Audio Feedback**: Hear words pronounced as you type them correctly, with smart word-completion detection
@@ -72,8 +86,10 @@ The game transforms the traditionally solitary act of typing practice into a **s
 ### Technical Features
 - **Reddit-Native Integration**: Seamlessly integrated into Reddit posts with native authentication and user management
 - **Mobile-Optimized Interface**: Responsive design that works perfectly on both desktop and mobile Reddit browsers
+- **Robust Error Handling**: Graceful degradation when servers are unavailable, showing empty game lists instead of error messages
 - **Automatic Cleanup**: Smart session management that removes players from active games when they leave or finish
 - **Cross-Platform Audio**: Web Speech API integration that works across different devices and browsers
+- **Auto-Recovery Systems**: Automatic reconnection and retry mechanisms for network interruptions
 
 ## Tech Stack
 
@@ -161,9 +177,10 @@ When you start the game, you'll see three difficulty options:
 
 #### Discovering Active Games
 1. From the splash screen, click **"Watch"** to enter spectator mode
-2. You'll see a list of players currently typing with live indicators
+2. You'll see a list of players currently typing with live indicators (or "No active games right now" if no one is playing)
 3. The list **auto-refreshes every 10 seconds** to show current active games
-4. Click on any username to watch their game in real-time
+4. If server issues occur, the system gracefully shows an empty list rather than error messages
+5. Click on any username to watch their game in real-time
 
 #### Watching a Live Typing Session
 **Real-Time Spectator View:**
@@ -180,8 +197,9 @@ When you start the game, you'll see three difficulty options:
 
 #### Spectator Controls
 - **"Back" button** = return to the active games list
-- **"Retry Connection"** = manually refresh if connection issues occur
+- **"Retry Connection"** = manually refresh if connection issues occur (appears only when needed)
 - **Auto-refresh** = spectator view updates automatically every 2 seconds
+- **Graceful error handling** = system shows helpful messages instead of technical errors
 - **Game end handling** = automatic notification when watched games complete
 
 ### Pro Tips for Better Performance

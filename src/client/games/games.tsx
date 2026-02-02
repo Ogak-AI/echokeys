@@ -18,16 +18,22 @@ export const Games = () => {
       setError(null);
       const response = await fetch('/api/active-games');
       if (!response.ok) {
+        // Handle server errors gracefully
+        if (response.status === 500) {
+          // Show "no active games" instead of server error
+          setActiveGames([]);
+          setError(null);
+          return;
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data: GetActiveGamesResponse = await response.json();
       setActiveGames(data.games);
     } catch (e: unknown) {
-      if (e instanceof Error) {
-        setError(e.message);
-      } else {
-        setError('An unknown error occurred');
-      }
+      console.error('Failed to fetch active games:', e);
+      // On any error, show empty games list instead of error message
+      setActiveGames([]);
+      setError(null);
     } finally {
       setLoading(false);
     }
@@ -54,7 +60,7 @@ export const Games = () => {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
-        <p className="text-red-500">Error: {error}</p>
+        <p className="text-red-500">Connection issue: {error}</p>
         <div className="flex gap-4">
           <button
             className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
@@ -101,7 +107,13 @@ export const Games = () => {
         ) : (
           <div className="text-center py-8">
             <p className="text-lg opacity-80 mb-2">No active games right now</p>
-            <p className="text-sm opacity-60">Start a game to appear here!</p>
+            <p className="text-sm opacity-60">Be the first to start a typing challenge!</p>
+            <button
+              className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-full hover:bg-blue-700"
+              onClick={() => navigateTo('game')}
+            >
+              Start Playing
+            </button>
           </div>
         )}
       </div>
