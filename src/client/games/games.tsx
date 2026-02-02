@@ -1,6 +1,6 @@
 import '../index.css';
 
-import { navigateTo } from '@devvit/web/client';
+import { navigateTo, requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GetActiveGamesResponse } from '../../shared/types/api';
@@ -12,41 +12,65 @@ export const Games = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleStartPlaying = () => {
+  const handleStartPlaying = (e: React.MouseEvent) => {
     console.log('Start Playing button clicked');
     try {
-      navigateTo('game');
+      // Use requestExpandedMode for proper Devvit navigation
+      requestExpandedMode(e.nativeEvent, 'game');
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback: try direct navigation
-      window.location.href = 'game.html';
+      // Fallback: try standard navigation
+      try {
+        navigateTo('game');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        window.location.href = 'game.html';
+      }
     }
   };
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.preventDefault();
     console.log('Refresh button clicked');
     await fetchActiveGames();
   };
 
-  const handleBack = () => {
+  const handleBack = (e: React.MouseEvent) => {
     console.log('Back button clicked');
     try {
-      navigateTo('splash');
+      // Use requestExpandedMode to go back to splash (like in splash.tsx)
+      requestExpandedMode(e.nativeEvent, 'splash');
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback: try direct navigation
-      window.location.href = 'splash.html';
+      // Fallback: try standard navigation
+      try {
+        navigateTo('splash');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        // Final fallback: browser history or direct navigation
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.location.href = 'splash.html';
+        }
+      }
     }
   };
 
-  const handleWatchGame = (username: string) => {
+  const handleWatchGame = (username: string, e: React.MouseEvent) => {
     console.log('Watch game clicked for:', username);
     try {
-      navigateTo(`watch?username=${username}`);
+      // Use requestExpandedMode for proper Devvit navigation
+      requestExpandedMode(e.nativeEvent, `watch?username=${username}`);
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback: try direct navigation
-      window.location.href = `watch.html?username=${username}`;
+      // Fallback: try standard navigation
+      try {
+        navigateTo(`watch?username=${username}`);
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        window.location.href = `watch.html?username=${username}`;
+      }
     }
   };
 
@@ -130,7 +154,7 @@ export const Games = () => {
               <div
                 key={game.username}
                 className="flex items-center justify-between p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
-                onClick={() => handleWatchGame(game.username)}
+                onClick={(e) => handleWatchGame(game.username, e)}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>

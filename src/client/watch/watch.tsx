@@ -1,6 +1,6 @@
 import '../index.css';
 
-import { navigateTo } from '@devvit/web/client';
+import { navigateTo, requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { WatchGameResponse } from '../../shared/types/api';
@@ -19,7 +19,11 @@ export const Watch = () => {
     if (usernameParam) {
       setUsername(usernameParam);
     } else {
-      navigateTo('games');
+      try {
+        requestExpandedMode(new Event('click'), 'games');
+      } catch {
+        navigateTo('games');
+      }
       return;
     }
 
@@ -88,8 +92,43 @@ export const Watch = () => {
     setLoading(true);
   };
 
-  const handleBack = () => {
-    navigateTo('games');
+  const handleBack = (e: React.MouseEvent) => {
+    console.log('Back button clicked in watch');
+    try {
+      // Use requestExpandedMode to go back to games
+      requestExpandedMode(e.nativeEvent, 'games');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try standard navigation
+      try {
+        navigateTo('games');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        // Final fallback: browser history or direct navigation
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.location.href = 'games.html';
+        }
+      }
+    }
+  };
+
+  const handleBackToGames = (e: React.MouseEvent) => {
+    console.log('Back to Active Games button clicked');
+    try {
+      // Use requestExpandedMode to go back to games
+      requestExpandedMode(e.nativeEvent, 'games');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try standard navigation
+      try {
+        navigateTo('games');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        window.location.href = 'games.html';
+      }
+    }
   };
 
   if (!username) {
@@ -143,7 +182,7 @@ export const Watch = () => {
         )}
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={() => navigateTo('games')}
+          onClick={handleBackToGames}
         >
           Back to Active Games
         </button>
@@ -205,6 +244,7 @@ export const Watch = () => {
                     ? 'bg-blue-700'
                     : 'bg-red-600'
               }`}>
+              }`}>
                 {gameState.challenge.difficulty}
               </span>
             </div>
@@ -238,7 +278,7 @@ export const Watch = () => {
       <div className="flex items-center justify-center mt-3">
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={() => navigateTo('games')}
+          onClick={handleBackToGames}
         >
           Back to Active Games
         </button>
