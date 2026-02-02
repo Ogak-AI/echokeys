@@ -71,7 +71,28 @@ export const useTypingGame = () => {
       }
     };
     void init();
-  }, []);
+
+    // Cleanup on page unload
+    const handleBeforeUnload = () => {
+      if (state.username && state.gameStarted && !state.gameFinished) {
+        // Remove player from active games when leaving
+        fetch('/api/remove-player', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: true, // Ensure request completes even if page is closing
+        }).catch(() => {
+          // Ignore errors on page unload
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Also cleanup when component unmounts
+      handleBeforeUnload();
+    };
+  }, [state.username, state.gameStarted, state.gameFinished]);
 
   const startGame = useCallback(() => {
     setState((prev) => ({

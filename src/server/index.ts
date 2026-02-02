@@ -269,11 +269,46 @@ export async function updateUserStats(
 }
 
 async function addActivePlayer(username: string): Promise<void> {
+  // Add player with timestamp for cleanup
+  const timestamp = Date.now();
   await context.redis.sAdd('active_players', username);
+  await context.redis.hSet(`player:${username}:session`, {
+    startTime: timestamp.toString(),
+    lastActivity: timestamp.toString(),
+  });
 }
 
 async function removeActivePlayer(username: string): Promise<void> {
   await context.redis.sRem('active_players', username);
+  // Clean up game state and session data
+  await context.redis.hSet(`game:${username}`, {});
+  await context.redis.hSet(`player:${username}:session`, {});
+}
+
+async function cleanupStalePlayers(): Promise<void> {
+  try {
+    const activePlayers = await context.redis.sMembers('active_players');
+    const now = Date.now();
+    const staleThreshold = 5 * 60 * 1000; // 5 minutes
+
+    for (const player of activePlayers) {
+      const session = await context.redis.hGetAll(`player:${player}:session`);
+      const lastActivity = parseInt(session.lastActivity || '0');
+      
+      if (now - lastActivity > staleThreshold) {
+        console.log(`Removing stale player: ${player}`);
+        await removeActivePlayer(player);
+      }
+    }
+  } catch (error) {
+    console.error('Error cleaning up stale players:', error);
+  }
+}
+
+async function updatePlayerActivity(username: string): Promise<void> {
+  await context.redis.hSet(`player:${username}:session`, {
+    lastActivity: Date.now().toString(),
+  });
 }
 
 router.get('/api/init', async (_req, res): Promise<void> => {
@@ -288,7 +323,20 @@ router.get('/api/init', async (_req, res): Promise<void> => {
   }
 
   try {
-    const username = (await reddit.getCurrentUsername()) || 'anonymous';
+    const username = await reddit.getCurrentUsername();
+    
+    // Validate username
+    if (!username || username.trim() === '') {
+      res.status(401).json({
+        status: 'error',
+        message: 'Unable to authenticate user. Please ensure you are logged into Reddit.',
+      });
+      return;
+    }
+
+    // Clean up stale players before adding new one
+    await cleanupStalePlayers();
+    
     await addActivePlayer(username);
     const userStats = await getUserStats(username);
     const dailyChallenge = getDailyChallenge();
@@ -318,7 +366,16 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
 
   try {
     const result: GameResult = req.body;
-    const username = (await reddit.getCurrentUsername()) || 'anonymous';
+    const username = await reddit.getCurrentUsername();
+    
+    if (!username || username.trim() === '') {
+      res.status(401).json({
+        status: 'error',
+        message: 'Unable to authenticate user',
+      });
+      return;
+    }
+
     await removeActivePlayer(username);
     const { newHighScore, rank } = await updateUserStats(username, result);
 
@@ -362,10 +419,30 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
 
 router.get('/api/active-games', async (_req, res): Promise<void> => {
   try {
+    // Clean up stale players before returning active games
+    await cleanupStalePlayers();
+    
     const activePlayers = await context.redis.sMembers('active_players');
+    const games = [];
+    
+    // Get additional info for each active player
+    for (const player of activePlayers) {
+      const session = await context.redis.hGetAll(`player:${player}:session`);
+      const gameState = await context.redis.hGetAll(`game:${player}`);
+      
+      games.push({
+        username: player,
+        startTime: parseInt(session.startTime || '0'),
+        hasGameState: Object.keys(gameState).length > 0,
+      });
+    }
+    
+    // Sort by start time (newest first)
+    games.sort((a, b) => b.startTime - a.startTime);
+    
     res.json({
       type: 'activeGames',
-      games: activePlayers.map((player) => ({ username: player })),
+      games: games.map(g => ({ username: g.username })), // Keep API compatible
     });
   } catch (error) {
     console.error(`Active games error:`, error);
@@ -416,7 +493,16 @@ router.get('/api/challenge/:difficulty', async (req, res): Promise<void> => {
 
 router.post('/api/remove-player', async (_req, res): Promise<void> => {
   try {
-    const username = (await reddit.getCurrentUsername()) || 'anonymous';
+    const username = await reddit.getCurrentUsername();
+    
+    if (!username || username.trim() === '') {
+      res.status(401).json({
+        status: 'error',
+        message: 'Unable to authenticate user',
+      });
+      return;
+    }
+
     await removeActivePlayer(username);
     res.json({ status: 'success', message: `Player ${username} removed from active games` });
   } catch (error) {
@@ -428,18 +514,33 @@ router.post('/api/remove-player', async (_req, res): Promise<void> => {
 router.post('/api/update-game-state', async (req, res): Promise<void> => {
   try {
     const { username, challenge, currentInput, startTime, wpm, accuracy } = req.body;
+    
+    // Validate required fields
     if (!username || !challenge || currentInput === undefined || startTime === undefined || wpm === undefined || accuracy === undefined) {
       res.status(400).json({ status: 'error', message: 'Missing game state parameters' });
       return;
     }
-    // Store game state in Redis. Using a hash for each user's game state.
+
+    // Verify the username matches the authenticated user
+    const authenticatedUsername = await reddit.getCurrentUsername();
+    if (!authenticatedUsername || authenticatedUsername !== username) {
+      res.status(401).json({ status: 'error', message: 'Unauthorized: username mismatch' });
+      return;
+    }
+
+    // Update player activity timestamp
+    await updatePlayerActivity(username);
+
+    // Store game state in Redis
     await context.redis.hSet(`game:${username}`, {
       challenge: JSON.stringify(challenge),
       currentInput,
       startTime: startTime.toString(),
       wpm: wpm.toString(),
       accuracy: accuracy.toString(),
+      lastUpdate: Date.now().toString(),
     });
+
     res.json({ status: 'success' });
   } catch (error) {
     console.error(`Update game state error:`, error);
@@ -450,29 +551,71 @@ router.post('/api/update-game-state', async (req, res): Promise<void> => {
 router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
   try {
     const { username } = req.params;
+    
+    if (!username || username.trim() === '') {
+      res.status(400).json({ status: 'error', message: 'Username is required' });
+      return;
+    }
+
     const gameState = await context.redis.hGetAll(`game:${username}`);
+    
     if (!gameState || Object.keys(gameState).length === 0) {
-      res.status(404).json({ status: 'error', message: `No active game found for ${username}` });
+      res.status(404).json({ 
+        status: 'error', 
+        message: `No active game found for ${username}`,
+        gameEnded: true 
+      });
+      return;
+    }
+
+    // Check if game data is stale (older than 10 minutes)
+    const lastUpdate = parseInt(gameState.lastUpdate || '0');
+    const now = Date.now();
+    const staleThreshold = 10 * 60 * 1000; // 10 minutes
+
+    if (lastUpdate > 0 && now - lastUpdate > staleThreshold) {
+      // Clean up stale game data
+      await context.redis.hSet(`game:${username}`, {});
+      res.status(404).json({ 
+        status: 'error', 
+        message: `Game session for ${username} has expired`,
+        gameEnded: true 
+      });
       return;
     }
 
     let challenge;
     try {
-      challenge = JSON.parse(gameState.challenge || '');
+      challenge = JSON.parse(gameState.challenge || '{}');
+      
+      // Validate challenge structure
+      if (!challenge.text || !challenge.difficulty) {
+        throw new Error('Invalid challenge structure');
+      }
     } catch (parseError) {
       console.error(`Watch game error: Failed to parse challenge for ${username}:`, parseError);
-      res.status(400).json({ status: 'error', message: 'Invalid challenge data in game state' });
+      res.status(400).json({ 
+        status: 'error', 
+        message: 'Invalid challenge data in game state',
+        gameEnded: true 
+      });
       return;
     }
+
+    // Check if game is completed
+    const currentInput = gameState.currentInput || '';
+    const isGameCompleted = currentInput.length >= challenge.text.length;
 
     res.json({
       type: 'watchGame',
       username,
       challenge,
-      currentInput: gameState.currentInput || '',
+      currentInput,
       startTime: parseInt(gameState.startTime || '0'),
       wpm: parseFloat(gameState.wpm || '0'),
       accuracy: parseFloat(gameState.accuracy || '0'),
+      gameCompleted: isGameCompleted,
+      lastUpdate: lastUpdate,
     });
   } catch (error) {
     console.error(`Watch game error:`, error);

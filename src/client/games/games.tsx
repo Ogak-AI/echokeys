@@ -12,27 +12,33 @@ export const Games = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchActiveGames = async () => {
-      try {
-        const response = await fetch('/api/active-games');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data: GetActiveGamesResponse = await response.json();
-        setActiveGames(data.games);
-      } catch (e: unknown) {
-        if (e instanceof Error) {
-          setError(e.message);
-        } else {
-          setError('An unknown error occurred');
-        }
-      } finally {
-        setLoading(false);
+  const fetchActiveGames = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/active-games');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
+      const data: GetActiveGamesResponse = await response.json();
+      setActiveGames(data.games);
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError('An unknown error occurred');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     void fetchActiveGames();
+    
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(fetchActiveGames, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {
@@ -49,12 +55,20 @@ export const Games = () => {
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
         <p className="text-red-500">Error: {error}</p>
-        <button
-          className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={() => navigateTo('splash')}
-        >
-          Back
-        </button>
+        <div className="flex gap-4">
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
+            onClick={() => void fetchActiveGames()}
+          >
+            Retry
+          </button>
+          <button
+            className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+            onClick={() => navigateTo('splash')}
+          >
+            Back
+          </button>
+        </div>
       </div>
     );
   }
@@ -63,25 +77,42 @@ export const Games = () => {
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
+        <p className="text-sm opacity-75 mb-4">Live games update every 10 seconds</p>
       </div>
       <div className="mt-4 w-full max-w-md bg-white/5 rounded-lg p-4">
         {activeGames && activeGames.length > 0 ? (
-          <ul>
+          <div className="space-y-3">
             {activeGames.map((game) => (
-              <li
+              <div
                 key={game.username}
-                className="text-lg cursor-pointer hover:text-blue-300"
+                className="flex items-center justify-between p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
                 onClick={() => navigateTo(`watch?username=${game.username}`)}
               >
-                {game.username} is playing...
-              </li>
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-lg font-medium">{game.username}</span>
+                </div>
+                <div className="text-sm opacity-75">
+                  <span className="bg-blue-600 px-2 py-1 rounded-full text-xs">LIVE</span>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         ) : (
-          <p className="text-sm opacity-80">No active games right now.</p>
+          <div className="text-center py-8">
+            <p className="text-lg opacity-80 mb-2">No active games right now</p>
+            <p className="text-sm opacity-60">Start a game to appear here!</p>
+          </div>
         )}
       </div>
-      <div className="flex items-center justify-center mt-3">
+      <div className="flex items-center justify-center gap-4 mt-3">
+        <button
+          className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
+          onClick={() => void fetchActiveGames()}
+          disabled={loading}
+        >
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
           onClick={() => navigateTo('splash')}

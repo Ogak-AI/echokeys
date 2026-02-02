@@ -6,6 +6,8 @@ export type WatchGameResponse = {
   startTime: number;
   wpm: number;
   accuracy: number;
+  gameCompleted?: boolean;
+  lastUpdate?: number;
 };
 
 export type GetActiveGamesResponse = {
