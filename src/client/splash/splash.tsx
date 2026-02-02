@@ -18,7 +18,21 @@ export const Splash = () => {
       <div className="flex items-center justify-center mt-5">
         <button
           className="flex items-center justify-center bg-white text-blue-900 w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-gray-100 hover:scale-105"
-          onClick={(e) => requestExpandedMode(e.nativeEvent, 'game')}
+          onClick={(e) => {
+            console.log('Start Typing button clicked');
+            try {
+              requestExpandedMode(e.nativeEvent, 'game');
+            } catch (error) {
+              console.error('Navigation error:', error);
+              // Fallback navigation
+              try {
+                navigateTo('game');
+              } catch (navError) {
+                console.error('Standard navigation failed:', navError);
+                window.location.href = 'game.html';
+              }
+            }
+          }}
         >
           Start Typing!
         </button>
@@ -26,7 +40,21 @@ export const Splash = () => {
       <div className="flex items-center justify-center mt-3">
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={(e) => requestExpandedMode(e.nativeEvent, 'games')}
+          onClick={(e) => {
+            console.log('Watch button clicked');
+            try {
+              requestExpandedMode(e.nativeEvent, 'games');
+            } catch (error) {
+              console.error('Navigation error:', error);
+              // Fallback navigation
+              try {
+                navigateTo('games');
+              } catch (navError) {
+                console.error('Standard navigation failed:', navError);
+                window.location.href = 'games.html';
+              }
+            }
+          }}
         >
           Watch
         </button>

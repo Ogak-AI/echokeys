@@ -1,4 +1,4 @@
-import { navigateTo, context } from '@devvit/web/client';
+import { navigateTo, context, requestExpandedMode } from '@devvit/web/client';
 
 import { useTypingGame } from '../hooks/useTypingGame';
 
@@ -26,6 +26,28 @@ export const App = () => {
     resetGame,
   } = useTypingGame();
 
+  const handleBack = (e: React.MouseEvent) => {
+    console.log('Back button clicked in game');
+    try {
+      // Use requestExpandedMode to go back to splash
+      requestExpandedMode(e.nativeEvent, 'splash');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try standard navigation
+      try {
+        navigateTo('splash');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        // Final fallback: browser history or direct navigation
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.location.href = 'splash.html';
+        }
+      }
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -38,6 +60,12 @@ export const App = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
         <div className="max-w-2xl mx-auto">
+          <button
+            className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+            onClick={handleBack}
+          >
+            &larr; Back
+          </button>
           <h1 className="text-3xl font-bold text-center mb-6">Leaderboard</h1>
           <div className="bg-white/10 rounded-lg p-4 mb-4">
             {leaderboard.length === 0 ? (
@@ -80,6 +108,12 @@ export const App = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
         <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-screen">
+          <button
+            className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+            onClick={handleBack}
+          >
+            &larr; Back
+          </button>
           <h1 className="text-4xl font-bold mb-4 text-center">KeyScripture</h1>
           <p className="text-xl opacity-90 mb-12 text-center">Choose your difficulty level</p>
 
@@ -111,6 +145,12 @@ export const App = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
       <div className="max-w-4xl mx-auto">
+        <button
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div className="text-left flex-1">

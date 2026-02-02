@@ -2,6 +2,13 @@
 
 KeyScripture is an innovative **social typing game** built on Reddit's Devvit platform that transforms typing practice into an engaging multiplayer experience. Players type through biblical text challenges while competing with the Reddit community in real-time, featuring live spectating, intelligent audio feedback, and comprehensive progress tracking.
 
+## Recent Updates
+
+- **Enhanced Navigation**: Improved navigation system using Devvit's `requestExpandedMode` for seamless transitions between game screens
+- **Optimized Mobile Experience**: Better mobile interface with responsive design and touch-friendly controls
+- **Improved Audio System**: Enhanced word pronunciation with smart speech synthesis and instant mute/unmute functionality
+- **Real-time Spectator Updates**: Live game watching with 2-second refresh intervals and graceful error handling
+
 ## What KeyScripture Is
 
 KeyScripture is a **community-driven typing game** that runs directly within Reddit posts, combining the best of typing practice with social gaming. The game features the complete Book of Esther from the Bible, providing rich narrative content across 10 chapters with varying difficulty levels.
@@ -55,11 +62,12 @@ The game transforms the traditionally solitary act of typing practice into a **s
 - **Dynamic text rendering**: Shows typed text in white, errors in red with background highlighting, and upcoming text in gray
 
 ### 4. **Reddit-Native Social Integration**
-- **Automatic user authentication**: Leverages Reddit's built-in authentication system with fallback to context.username
-- **Community leaderboards**: Compete directly with fellow Redditors using real usernames with automatic score submission
-- **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system
-- **Moderator integration**: Easy post creation through Reddit's moderator menu system for subreddit deployment
-- **Enhanced navigation**: Uses `requestExpandedMode` for smooth transitions between splash, game, spectator, and leaderboard screens
+- **Seamless navigation system**: Enhanced navigation using Devvit's `requestExpandedMode` for smooth transitions between splash, game, spectator, and leaderboard screens
+- **Automatic user authentication**: Leverages Reddit's built-in authentication system with fallback to context.username for reliable user identification
+- **Community leaderboards**: Compete directly with fellow Redditors using real usernames with automatic score submission and instant ranking updates
+- **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system for seamless Reddit integration
+- **Moderator integration**: Easy post creation through Reddit's moderator menu system for subreddit deployment and community management
+- **Cross-platform compatibility**: Works seamlessly on both desktop and mobile Reddit browsers with responsive design
 
 ### 5. **Comprehensive Performance Analytics**
 - **Real-time metrics**: Live WPM and accuracy calculation during gameplay with instant updates as you type
@@ -113,12 +121,13 @@ The complete Book of Esther provides extensive, high-quality typing content with
 
 ### Technical Features
 - **Reddit-Native Integration**: Seamlessly integrated into Reddit posts with native authentication and user management using Devvit platform
-- **Mobile-Optimized Interface**: Responsive design that works perfectly on both desktop and mobile Reddit browsers
+- **Enhanced Navigation System**: Uses Devvit's `requestExpandedMode` for smooth, native transitions between game screens with improved mobile support
+- **Mobile-Optimized Interface**: Responsive design that works perfectly on both desktop and mobile Reddit browsers with touch-friendly controls
 - **Robust Error Handling**: Graceful degradation when servers are unavailable, showing empty game lists instead of error messages
 - **Automatic Cleanup**: Smart session management that removes players from active games when they leave or finish
 - **Cross-Platform Audio**: Web Speech API integration that works across different devices and browsers with smart word detection
 - **Auto-Recovery Systems**: Automatic reconnection and retry mechanisms for network interruptions during spectating
-- **Enhanced Navigation**: Uses Devvit's `requestExpandedMode` for smooth, native transitions between game screens
+- **Real-time Broadcasting**: Live game state updates for spectators with 2-second refresh intervals and connection status monitoring
 
 ## Tech Stack
 
@@ -230,12 +239,14 @@ When you start the game, you'll see three difficulty options:
 - **Live status indicators** = green pulsing dots and "LIVE" badges to show active games
 
 #### Spectator Controls
-- **"← Back" button** = return to the active games list with proper navigation
-- **"Retry Connection"** = manually refresh if connection issues occur (appears only when needed)
-- **"Back to Active Games"** = return to games list when watching completed games
-- **Auto-refresh** = spectator view updates automatically every 2 seconds without manual intervention
-- **Graceful error handling** = system shows helpful messages like "game has ended" instead of technical errors
-- **Game end handling** = automatic notification when watched games complete with final performance metrics
+- **Enhanced Navigation**: Seamless navigation using Devvit's `requestExpandedMode` for smooth transitions between screens
+- **"← Back" button**: Return to the active games list with proper navigation handling
+- **"Retry Connection"**: Manually refresh if connection issues occur (appears only when needed)
+- **"Back to Active Games"**: Return to games list when watching completed games with optimized routing
+- **Auto-refresh**: Spectator view updates automatically every 2 seconds without manual intervention
+- **Graceful error handling**: System shows helpful messages like "game has ended" instead of technical errors
+- **Game end handling**: Automatic notification when watched games complete with final performance metrics
+- **Mobile-optimized controls**: Touch-friendly interface that works seamlessly on mobile Reddit browsers
 
 ### Understanding Your Statistics
 
