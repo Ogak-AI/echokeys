@@ -6,6 +6,8 @@ KeyScripture is an innovative **social typing game** built on Reddit's Devvit pl
 
 KeyScripture is a **community-driven typing game** that runs directly within Reddit posts, combining the best of typing practice with social gaming. The game features the complete Book of Esther from the Bible, providing rich narrative content across 10 chapters with varying difficulty levels.
 
+**Core Gameplay:** Players select from three difficulty levels (Easy, Medium, Hard) and type through carefully curated biblical passages. The game provides real-time feedback with visual highlighting, audio pronunciation of completed words, and live performance metrics (WPM and accuracy). Every typing session is broadcast live, allowing other Reddit users to spectate your progress in real-time.
+
 ### Core Game Features
 - **Real-time multiplayer spectating** - Watch other Reddit users type live as they play with 2-second updates
 - **Intelligent audio feedback** - Hear each word pronounced as you complete it correctly using Web Speech API with smart word detection
@@ -145,7 +147,7 @@ The complete Book of Esther provides extensive, high-quality typing content with
 
 #### Step 1: Choose Your Difficulty Level
 When you start the game, you'll see three difficulty options:
-- **Easy**: Simple practice text with basic vocabulary for learning the interface
+- **Easy**: Simple practice text ("The quick brown fox jumps over the lazy dog") for learning the interface
 - **Medium**: Biblical passages from the Book of Esther with moderate complexity and punctuation  
 - **Hard**: Advanced biblical text featuring complex vocabulary, intricate punctuation, and challenging formatting
 
@@ -162,104 +164,108 @@ When you start the game, you'll see three difficulty options:
 - **White text** = correctly typed characters
 - **Red highlighted text** = typing errors that need correction
 - **Animated blinking cursor** = shows your current position in the text
-- **Smart text window** = displays ~110 characters with your cursor optimally positioned
+- **Smart text window** = displays ~110 characters with your cursor optimally positioned for readability
 
 **Audio Feedback System:**
 - **Word pronunciation** = hear each word spoken aloud as you complete it correctly (using Web Speech API)
-- **Mute/Unmute toggle** = click the sound button in the header to disable/enable audio during gameplay
+- **Mute/Unmute toggle** = click the "Sound"/"Muted" button in the header to disable/enable audio during gameplay
 - **Smart detection** = only completed words followed by punctuation or spaces are spoken, not partial typing
-- **Automatic speech cancellation** = audio stops when you finish the game or reset
+- **Automatic speech cancellation** = audio stops when you finish the game or reset to prevent lingering speech
 
 **Live Performance Metrics:**
-- **WPM (Words Per Minute)** = calculated as (characters typed ÷ 5) ÷ minutes elapsed
-- **Accuracy Percentage** = percentage of correctly typed characters in real-time
-- **Progress indicator** = visual progress through the text passage
+- **WPM (Words Per Minute)** = calculated as (characters typed ÷ 5) ÷ minutes elapsed, updated in real-time
+- **Accuracy Percentage** = percentage of correctly typed characters, calculated and displayed live as you type
+- **Progress indicator** = visual progress through the text passage with smart scrolling
 
 #### Step 4: Complete the Challenge
 - Type the entire passage to finish the challenge (you must reach 100% completion)
 - Your final WPM and accuracy will be calculated and displayed in a completion summary
-- Your score is **automatically submitted** to the community leaderboard
+- Your score is **automatically submitted** to the community leaderboard with instant ranking
 - The game ends and you're removed from the "active games" list that spectators see
+- View your performance summary with final metrics and personal best comparisons
 
 #### Step 5: Review Performance and Continue
 **Performance Summary:**
-- View your final WPM and accuracy percentage
-- See how your performance compares to your personal bests
-- Check if you achieved a new high score
+- View your final WPM and accuracy percentage in the completion screen
+- See how your performance compares to your personal bests across all difficulty levels
+- Check if you achieved a new high score with automatic detection and celebration
 
 **Next Actions:**
-- **"Try Again"** = attempt a new challenge (returns to difficulty selection)
-- **"Leaderboard"** = view community rankings and see where you placed
+- **"Try Again"** = attempt a new challenge (returns to difficulty selection screen)
+- **"Leaderboard"** = view community rankings and see where you placed among other Reddit users
 - **Return to splash** = go back to the main menu to start fresh or spectate others
 
 ### Spectator Mode (Watching Live Games)
 
 #### Discovering Active Games
 1. From the splash screen, click **"Watch"** to enter spectator mode
-2. You'll see a list of players currently typing with live indicators (or "No active games right now" if no one is playing)
-3. The list **auto-refreshes every 10 seconds** to show current active games
-4. If server issues occur, the system gracefully shows an empty list rather than error messages
-5. Click on any username to watch their game in real-time
+2. You'll see a list of players currently typing with live indicators and green pulsing dots (or "No active games right now" if no one is playing)
+3. The list **auto-refreshes every 10 seconds** to show current active games with real-time updates
+4. If server issues occur, the system gracefully shows an empty list rather than error messages for better user experience
+5. Click on any username to watch their game in real-time with live updates
 
 #### Watching a Live Typing Session
 **Real-Time Spectator View:**
-- See the exact text they're typing with **live progress highlighting**
-- Watch their **current WPM and accuracy** update as they type
-- Observe their **typing errors and corrections** in real-time with color coding
-- View their **progress percentage** through the challenge
+- See the exact text they're typing with **live progress highlighting** using the same color system as the player sees
+- Watch their **current WPM and accuracy** update every 2 seconds as they type
+- Observe their **typing errors and corrections** in real-time with color coding (green for correct, red for errors)
+- View their **progress percentage** through the challenge and difficulty level indicator
+- See the challenge difficulty badge (Easy/Medium/Hard) with appropriate color coding
 
 **Spectator Interface Features:**
-- **2-second update intervals** = game state refreshes automatically for smooth viewing
-- **Difficulty indicator** = see what challenge level they're attempting  
-- **Connection status** = automatic reconnection if connection is lost
-- **Game completion alerts** = notification when the player finishes with final scores
+- **2-second update intervals** = game state refreshes automatically for smooth viewing experience
+- **Difficulty indicator** = see what challenge level they're attempting with color-coded badges
+- **Connection status** = automatic reconnection with retry counter if connection is lost (up to 3 attempts)
+- **Game completion alerts** = notification when the player finishes with final scores and celebration message
+- **Live status indicators** = green pulsing dots and "LIVE" badges to show active games
 
 #### Spectator Controls
-- **"Back" button** = return to the active games list
+- **"← Back" button** = return to the active games list with proper navigation
 - **"Retry Connection"** = manually refresh if connection issues occur (appears only when needed)
-- **Auto-refresh** = spectator view updates automatically every 2 seconds
-- **Graceful error handling** = system shows helpful messages instead of technical errors
-- **Game end handling** = automatic notification when watched games complete
+- **"Back to Active Games"** = return to games list when watching completed games
+- **Auto-refresh** = spectator view updates automatically every 2 seconds without manual intervention
+- **Graceful error handling** = system shows helpful messages like "game has ended" instead of technical errors
+- **Game end handling** = automatic notification when watched games complete with final performance metrics
 
 ### Pro Tips for Better Performance
 
 #### Typing Technique
-- **Accuracy over speed** = focus on typing correctly rather than rushing (accuracy heavily impacts final score)
-- **Maintain rhythm** = keep a steady, consistent pace rather than bursts of speed
-- **Use proper posture** = sit up straight with wrists floating above the keyboard
-- **Look ahead** = read 2-3 words ahead of where you're currently typing
+- **Accuracy over speed** = focus on typing correctly rather than rushing (accuracy heavily impacts final score calculation)
+- **Maintain rhythm** = keep a steady, consistent pace rather than bursts of speed for better WPM consistency
+- **Use proper posture** = sit up straight with wrists floating above the keyboard for sustained performance
+- **Look ahead** = read 2-3 words ahead of where you're currently typing to maintain flow
 
 #### Using Game Features
-- **Enable audio cues** = use word pronunciation to confirm correct typing and maintain rhythm
-- **Watch the cursor** = the animated cursor shows exactly where you are in the text
-- **Learn from errors** = red highlighting shows mistakes immediately for quick correction
-- **Practice different difficulties** = gradually work up from Easy to Hard challenges
+- **Enable audio cues** = use word pronunciation to confirm correct typing and maintain rhythm during gameplay
+- **Watch the cursor** = the animated blinking cursor shows exactly where you are in the text for precise positioning
+- **Learn from errors** = red highlighting shows mistakes immediately for quick correction and learning
+- **Practice different difficulties** = gradually work up from Easy to Hard challenges to build skills progressively
 
 #### Learning from Others
-- **Spectate skilled players** = watch high-performing typists to learn techniques and pacing
+- **Spectate skilled players** = watch high-performing typists to learn techniques and pacing strategies
 - **Observe error patterns** = see how experienced players handle corrections and difficult passages
-- **Study different approaches** = watch various typing styles and find what works for you
-- **Check leaderboards** = see what WPM and accuracy combinations lead to top scores
+- **Study different approaches** = watch various typing styles and find what works best for your technique
+- **Check leaderboards** = see what WPM and accuracy combinations lead to top scores in the community
 
 ### Understanding Your Statistics
 
 #### Performance Metrics
-- **WPM (Words Per Minute)** = standard typing speed measurement (characters ÷ 5 ÷ minutes)
-- **Accuracy Percentage** = ratio of correctly typed characters to total characters typed
-- **Best WPM** = your highest words-per-minute achievement across all games
+- **WPM (Words Per Minute)** = standard typing speed measurement (characters ÷ 5 ÷ minutes), the primary speed metric
+- **Accuracy Percentage** = ratio of correctly typed characters to total characters typed, crucial for final scoring
+- **Best WPM** = your highest words-per-minute achievement across all games and difficulty levels
 - **Best Accuracy** = your highest accuracy percentage achieved in any completed game
 
 #### Progress Tracking
-- **Total Games** = number of typing challenges you've completed successfully
+- **Total Games** = number of typing challenges you've completed successfully across all difficulty levels
 - **Current Streak** = consecutive games played (may reset after periods of inactivity)
-- **Difficulty Progress** = track improvement across Easy, Medium, and Hard challenges
-- **Leaderboard Ranking** = see how you compare to other community members
+- **Difficulty Progress** = track improvement across Easy, Medium, and Hard challenges separately
+- **Leaderboard Ranking** = see how you compare to other community members with real Reddit usernames
 
 #### Score Calculation
-- **Final scores** consider both speed (WPM) and accuracy percentage
-- **Higher accuracy** is often more valuable than raw speed for leaderboard ranking
+- **Final scores** consider both speed (WPM) and accuracy percentage for comprehensive performance evaluation
+- **Higher accuracy** is often more valuable than raw speed for leaderboard ranking and personal improvement
 - **Consistent performance** across multiple games builds better statistics than single high scores
-- **Challenge difficulty** may influence how scores are weighted or displayed
+- **Challenge difficulty** influences the complexity of text but all difficulties contribute to overall statistics
 
 ## Contributing
 

@@ -67,7 +67,12 @@ export const useTypingGame = () => {
         }));
       } catch (err) {
         console.error('Failed to init game', err);
-        setState((prev) => ({ ...prev, loading: false, showDifficultySelect: true }));
+        setState((prev) => ({ 
+          ...prev, 
+          loading: false, 
+          showDifficultySelect: true,
+          username: 'Player' // Fallback username when API fails
+        }));
       }
     };
     void init();

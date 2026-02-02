@@ -1,4 +1,4 @@
-import { navigateTo } from '@devvit/web/client';
+import { navigateTo, context } from '@devvit/web/client';
 
 import { useTypingGame } from '../hooks/useTypingGame';
 
@@ -115,7 +115,7 @@ export const App = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div className="text-left flex-1">
             <h1 className="text-4xl font-bold mb-2">KeyScripture</h1>
-            <p className="text-lg opacity-90">Welcome, {username}!</p>
+            <p className="text-lg opacity-90">Welcome, {username || context.username || 'Player'}!</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 justify-end">
             <button
