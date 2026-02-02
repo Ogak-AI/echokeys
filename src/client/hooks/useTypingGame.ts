@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { context } from '@devvit/web/client';
 import type {
   InitResponse,
   GetLeaderboardResponse,
@@ -52,6 +53,10 @@ export const useTypingGame = () => {
   useEffect(() => {
     const init = async () => {
       try {
+        console.log('Attempting to fetch /api/init...');
+        console.log('Devvit context available:', context);
+        console.log('Devvit context username:', context?.username);
+        
         const res = await fetch('/api/init');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
@@ -67,11 +72,12 @@ export const useTypingGame = () => {
         }));
       } catch (err) {
         console.error('Failed to init game', err);
+        console.log('Devvit context username:', context?.username);
         setState((prev) => ({ 
           ...prev, 
           loading: false, 
           showDifficultySelect: true,
-          username: 'Player' // Fallback username when API fails
+          username: context?.username || 'Player' // Try Devvit context first, then fallback
         }));
       }
     };

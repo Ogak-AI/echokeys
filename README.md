@@ -6,7 +6,11 @@ KeyScripture is an innovative **social typing game** built on Reddit's Devvit pl
 
 KeyScripture is a **community-driven typing game** that runs directly within Reddit posts, combining the best of typing practice with social gaming. The game features the complete Book of Esther from the Bible, providing rich narrative content across 10 chapters with varying difficulty levels.
 
-**Core Gameplay:** Players select from three difficulty levels (Easy, Medium, Hard) and type through carefully curated biblical passages. The game provides real-time feedback with visual highlighting, audio pronunciation of completed words, and live performance metrics (WPM and accuracy). Every typing session is broadcast live, allowing other Reddit users to spectate your progress in real-time.
+**Core Gameplay:** Players select from three difficulty levels (Easy, Medium, Hard) and type through carefully curated passages. The game provides real-time feedback with visual highlighting, audio pronunciation of completed words, and live performance metrics (WPM and accuracy). Every typing session is broadcast live, allowing other Reddit users to spectate your progress in real-time.
+
+**Content Overview:**
+- **Easy Mode**: Simple practice text ("The quick brown fox jumps over the lazy dog") for beginners
+- **Medium & Hard Modes**: Complete Book of Esther from the Bible - a dramatic story spanning 10 chapters featuring Queen Esther, King Ahasuerus, Mordecai, and the villain Haman, culminating in the establishment of the Jewish festival of Purim
 
 ### Core Game Features
 - **Real-time multiplayer spectating** - Watch other Reddit users type live as they play with 2-second updates
@@ -30,39 +34,46 @@ The game transforms the traditionally solitary act of typing practice into a **s
 ## What Makes KeyScripture Innovative
 
 ### 1. **Live Spectator System**
-- **Real-time game watching**: Other players can watch your typing session live with 2-second automatic updates
+- **Real-time game watching**: Other players can watch your typing session live with 2-second automatic updates showing your exact progress, errors, and corrections
 - **Active games browser**: Discover and join ongoing games from community members with auto-refresh every 10 seconds
-- **Live progress visualization**: Spectators see your typing progress, errors, and corrections in real-time with color-coded feedback
+- **Live progress visualization**: Spectators see your typing progress with the same color-coded feedback system (white for correct, red for errors)
 - **Game completion notifications**: Spectators are notified when games end with final scores and performance metrics
-- **Graceful error handling**: System shows empty game lists instead of technical errors when servers are unavailable
+- **Graceful error handling**: System shows "No active games right now" instead of technical errors when servers are unavailable
 
 ### 2. **Intelligent Audio Feedback Engine**
-- **Word-completion pronunciation**: Hear each word spoken aloud as you type it correctly using Web Speech API
+- **Word-completion pronunciation**: Hear each word spoken aloud as you type it correctly using the Web Speech API
 - **Smart speech synthesis**: Optimized speech rate (1.2x) and pitch for comfortable listening during gameplay
 - **Context-aware audio**: Only speaks completed words followed by punctuation or spaces, not partial typing
 - **Instant mute/unmute**: Toggle audio feedback during gameplay without interruption using the sound button
-- **Automatic speech management**: Audio stops when games finish or reset to prevent lingering speech, with smart word detection
+- **Automatic speech management**: Audio stops when games finish or reset to prevent lingering speech
 
 ### 3. **Advanced Visual Interface**
 - **Smart text windowing**: Displays exactly 110 characters with cursor positioned 40 characters from the start for optimal readability
-- **Real-time error highlighting**: Immediate visual feedback with white (correct), red (incorrect), and animated blinking cursor positioning
-- **Responsive mobile design**: Optimized interface that works seamlessly on both desktop and mobile Reddit browsers with touch-friendly controls
-- **Progress-aware scrolling**: Text window automatically advances as you type, maintaining optimal viewing position throughout the challenge
-- **Dynamic text rendering**: Shows typed text in white, errors in red with background highlighting, and upcoming text in gray for clear visual hierarchy
+- **Real-time error highlighting**: Immediate visual feedback with white (correct), red (incorrect), and animated blinking cursor
+- **Responsive mobile design**: Optimized interface that works seamlessly on both desktop and mobile Reddit browsers
+- **Progress-aware scrolling**: Text window automatically advances as you type, maintaining optimal viewing position
+- **Dynamic text rendering**: Shows typed text in white, errors in red with background highlighting, and upcoming text in gray
 
 ### 4. **Reddit-Native Social Integration**
-- **Automatic user authentication**: Leverages Reddit's built-in authentication system seamlessly with context.username integration
+- **Automatic user authentication**: Leverages Reddit's built-in authentication system with fallback to context.username
 - **Community leaderboards**: Compete directly with fellow Redditors using real usernames with automatic score submission
-- **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system and requestExpandedMode
+- **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system
 - **Moderator integration**: Easy post creation through Reddit's moderator menu system for subreddit deployment
 - **Enhanced navigation**: Uses `requestExpandedMode` for smooth transitions between splash, game, spectator, and leaderboard screens
 
 ### 5. **Comprehensive Performance Analytics**
 - **Real-time metrics**: Live WPM and accuracy calculation during gameplay with instant updates as you type
-- **Personal statistics dashboard**: Track best WPM, highest accuracy, total games played, and current streaks across all difficulty levels
+- **Personal statistics dashboard**: Track best WPM, highest accuracy, total games played, and current streaks
 - **Historical performance**: Monitor improvement over time across different difficulty levels with persistent user stats
 - **Automatic score submission**: Seamless leaderboard integration with instant ranking updates and new high score detection
 - **Session management**: Smart cleanup that removes players from active games when they leave or complete challenges
+
+### 6. **Rich Biblical Content Experience**
+- **Complete Book of Esther**: All 10 chapters of this dramatic biblical narrative featuring palace intrigue, romance, and heroism
+- **Authentic biblical text**: Real scripture with proper formatting, including complex names like Ahasuerus, Hammedatha, and locations like Shushan
+- **Engaging storyline**: Follow Queen Esther's journey from orphaned Jewish girl to queen who saves her people from genocide
+- **Cultural significance**: Practice typing with meaningful, historically important text rather than random words
+- **Natural difficulty progression**: Story complexity increases naturally from simple introductions to dramatic plot developments
 
 ### Content and Challenges
 
@@ -148,8 +159,8 @@ The complete Book of Esther provides extensive, high-quality typing content with
 #### Step 1: Choose Your Difficulty Level
 When you start the game, you'll see three difficulty options:
 - **Easy**: Simple practice text ("The quick brown fox jumps over the lazy dog") for learning the interface
-- **Medium**: Biblical passages from the Book of Esther with moderate complexity and punctuation  
-- **Hard**: Advanced biblical text featuring complex vocabulary, intricate punctuation, and challenging formatting
+- **Medium**: Biblical passages from the Book of Esther with moderate complexity and standard punctuation  
+- **Hard**: Advanced biblical text featuring complex vocabulary, intricate punctuation, and challenging biblical names
 
 #### Step 2: Begin Your Typing Session
 - Click "Start Typing!" to begin the selected challenge
@@ -157,7 +168,6 @@ When you start the game, you'll see three difficulty options:
 - Your game becomes **live and visible** to other players who can spectate in real-time
 - Type the displayed text exactly as shown, including all punctuation, spacing, and capitalization
 - Use the large textarea input field below the text display for typing
-- The game automatically removes you from active games when you leave or complete the challenge
 
 #### Step 3: Real-Time Feedback and Performance
 **Visual Feedback System:**
@@ -227,6 +237,26 @@ When you start the game, you'll see three difficulty options:
 - **Graceful error handling** = system shows helpful messages like "game has ended" instead of technical errors
 - **Game end handling** = automatic notification when watched games complete with final performance metrics
 
+### Understanding Your Statistics
+
+#### Performance Metrics
+- **WPM (Words Per Minute)** = standard typing speed measurement (characters ÷ 5 ÷ minutes), the primary speed metric
+- **Accuracy Percentage** = ratio of correctly typed characters to total characters typed, crucial for final scoring
+- **Best WPM** = your highest words-per-minute achievement across all games and difficulty levels
+- **Best Accuracy** = your highest accuracy percentage achieved in any completed game
+
+#### Progress Tracking
+- **Total Games** = number of typing challenges you've completed successfully across all difficulty levels
+- **Current Streak** = consecutive games played (may reset after periods of inactivity)
+- **Difficulty Progress** = track improvement across Easy, Medium, and Hard challenges separately
+- **Leaderboard Ranking** = see how you compare to other community members with real Reddit usernames
+
+#### Score Calculation
+- **Final scores** consider both speed (WPM) and accuracy percentage for comprehensive performance evaluation
+- **Higher accuracy** is often more valuable than raw speed for leaderboard ranking and personal improvement
+- **Consistent performance** across multiple games builds better statistics than single high scores
+- **Challenge difficulty** influences the complexity of text but all difficulties contribute to overall statistics
+
 ### Pro Tips for Better Performance
 
 #### Typing Technique
@@ -247,25 +277,30 @@ When you start the game, you'll see three difficulty options:
 - **Study different approaches** = watch various typing styles and find what works best for your technique
 - **Check leaderboards** = see what WPM and accuracy combinations lead to top scores in the community
 
-### Understanding Your Statistics
+### The Story You're Typing: Book of Esther
 
-#### Performance Metrics
-- **WPM (Words Per Minute)** = standard typing speed measurement (characters ÷ 5 ÷ minutes), the primary speed metric
-- **Accuracy Percentage** = ratio of correctly typed characters to total characters typed, crucial for final scoring
-- **Best WPM** = your highest words-per-minute achievement across all games and difficulty levels
-- **Best Accuracy** = your highest accuracy percentage achieved in any completed game
+KeyScripture features the complete Book of Esther, a dramatic biblical narrative that provides engaging content for typing practice:
 
-#### Progress Tracking
-- **Total Games** = number of typing challenges you've completed successfully across all difficulty levels
-- **Current Streak** = consecutive games played (may reset after periods of inactivity)
-- **Difficulty Progress** = track improvement across Easy, Medium, and Hard challenges separately
-- **Leaderboard Ranking** = see how you compare to other community members with real Reddit usernames
+#### The Story Overview
+- **Setting**: Ancient Persian Empire under King Ahasuerus (Xerxes I), ruling 127 provinces from India to Ethiopia
+- **Main Characters**: 
+  - **Queen Esther** (Hadassah): Jewish orphan who becomes queen and saves her people
+  - **Mordecai**: Esther's cousin and guardian, a loyal palace official
+  - **King Ahasuerus**: Persian king who rules a vast empire
+  - **Haman**: The villain who plots to destroy all Jews in the empire
 
-#### Score Calculation
-- **Final scores** consider both speed (WPM) and accuracy percentage for comprehensive performance evaluation
-- **Higher accuracy** is often more valuable than raw speed for leaderboard ranking and personal improvement
-- **Consistent performance** across multiple games builds better statistics than single high scores
-- **Challenge difficulty** influences the complexity of text but all difficulties contribute to overall statistics
+#### Chapter Highlights You'll Type
+- **Chapters 1-2**: Queen Vashti's banishment and Esther's rise to become the new queen
+- **Chapters 3-4**: Haman's evil plot against the Jews and Mordecai's call for Esther to act
+- **Chapters 5-7**: Esther's brave approach to the king and the dramatic banquet scenes
+- **Chapters 8-10**: The Jews' deliverance, Haman's downfall, and the establishment of Purim
+
+#### Why This Content is Perfect for Typing
+- **Rich vocabulary**: Biblical names, places, and terms that challenge your typing skills
+- **Varied sentence structure**: From simple dialogue to complex narrative descriptions
+- **Cultural significance**: Practice with meaningful, historically important text
+- **Natural progression**: Story complexity increases from simple introductions to dramatic climaxes
+- **Engaging narrative**: Stay motivated by following an exciting story rather than typing random text
 
 ## Contributing
 
