@@ -244,7 +244,6 @@ export const Watch = () => {
                     ? 'bg-blue-700'
                     : 'bg-red-600'
               }`}>
-              }`}>
                 {gameState.challenge.difficulty}
               </span>
             </div>

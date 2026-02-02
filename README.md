@@ -4,74 +4,79 @@ KeyScripture is an innovative **social typing game** built on Reddit's Devvit pl
 
 ## What KeyScripture Is
 
-KeyScripture is a **community-driven typing game** that runs directly within Reddit posts, combining the best of typing practice with social gaming:
+KeyScripture is a **community-driven typing game** that runs directly within Reddit posts, combining the best of typing practice with social gaming. The game features the complete Book of Esther from the Bible, providing rich narrative content across 10 chapters with varying difficulty levels.
 
 ### Core Game Features
-- **Real-time multiplayer spectating** - Watch other Reddit users type live as they play
-- **Intelligent audio feedback** - Hear each word pronounced as you complete it correctly using Web Speech API
-- **Three-tier difficulty system** - Choose from Easy, Medium, or Hard text challenges
-- **Community leaderboards** - Compete directly with fellow Redditors on shared scoreboards
-- **Seamless Reddit integration** - Play without leaving the Reddit ecosystem using Devvit's native navigation
-- **Live game discovery** - Browse and spectate active typing sessions from other players with auto-refresh
+- **Real-time multiplayer spectating** - Watch other Reddit users type live as they play with 2-second updates
+- **Intelligent audio feedback** - Hear each word pronounced as you complete it correctly using Web Speech API with smart word detection
+- **Three-tier difficulty system** - Choose from Easy (practice text), Medium, or Hard challenges from the Book of Esther
+- **Community leaderboards** - Compete directly with fellow Redditors on shared scoreboards with automatic score submission
+- **Seamless Reddit integration** - Play without leaving the Reddit ecosystem using Devvit's native navigation and authentication
+- **Live game discovery** - Browse and spectate active typing sessions from other players with auto-refresh every 10 seconds
+- **Advanced visual interface** - Smart text windowing displaying 110 characters with optimal cursor positioning for readability
+- **Real-time performance metrics** - Live WPM and accuracy calculation with instant visual feedback during gameplay
 
 ### Rich Biblical Content
-The game transforms the traditionally solitary act of typing practice into a **social spectator sport** where every keystroke matters and the community can witness your progress in real-time. Players type through the complete **Book of Esther**, providing:
+The game transforms the traditionally solitary act of typing practice into a **social spectator sport** where every keystroke matters and the community can witness your progress in real-time. Players type through carefully selected content:
 
-- **Engaging narrative content** - Rich storytelling with characters, dialogue, and dramatic plot development
+- **Easy Mode**: Simple practice text ("The quick brown fox jumps over the lazy dog") for beginners to learn the interface
+- **Medium & Hard Modes**: Complete **Book of Esther** from the Bible, providing rich storytelling with characters, dialogue, and dramatic plot development across 10 chapters
 - **Educational value** - Classic biblical literature that's culturally significant and meaningful to type
-- **Varied complexity** - Natural difficulty progression through 10 chapters of increasing complexity
-- **Authentic formatting** - Real-world punctuation, capitalization, and sentence structures including biblical names and places
+- **Varied complexity** - Natural difficulty progression through the complete narrative from simple introductions to complex plot developments
+- **Authentic formatting** - Real-world punctuation, capitalization, and sentence structures including biblical names and places like Ahasuerus, Mordecai, and Shushan
 
 ## What Makes KeyScripture Innovative
 
 ### 1. **Live Spectator System**
-- **Real-time game watching**: Other players can watch your typing session live with 2-second updates
-- **Active games browser**: Discover and join ongoing games from community members  
-- **Live progress visualization**: Spectators see your typing progress, errors, and corrections in real-time
-- **Game completion notifications**: Spectators are notified when games end with final scores
+- **Real-time game watching**: Other players can watch your typing session live with 2-second automatic updates
+- **Active games browser**: Discover and join ongoing games from community members with auto-refresh every 10 seconds
+- **Live progress visualization**: Spectators see your typing progress, errors, and corrections in real-time with color-coded feedback
+- **Game completion notifications**: Spectators are notified when games end with final scores and performance metrics
+- **Graceful error handling**: System shows empty game lists instead of technical errors when servers are unavailable
 
 ### 2. **Intelligent Audio Feedback Engine**
 - **Word-completion pronunciation**: Hear each word spoken aloud as you type it correctly using Web Speech API
 - **Smart speech synthesis**: Optimized speech rate (1.2x) and pitch for comfortable listening during gameplay
 - **Context-aware audio**: Only speaks completed words followed by punctuation or spaces, not partial typing
-- **Instant mute/unmute**: Toggle audio feedback during gameplay without interruption
-- **Automatic speech management**: Audio stops when games finish or reset to prevent lingering speech
+- **Instant mute/unmute**: Toggle audio feedback during gameplay without interruption using the sound button
+- **Automatic speech management**: Audio stops when games finish or reset to prevent lingering speech, with smart word detection
 
 ### 3. **Advanced Visual Interface**
 - **Smart text windowing**: Displays exactly 110 characters with cursor positioned 40 characters from the start for optimal readability
-- **Real-time error highlighting**: Immediate visual feedback with white (correct), red (incorrect), and animated cursor positioning
-- **Responsive mobile design**: Optimized interface that works seamlessly on both desktop and mobile Reddit browsers
-- **Progress-aware scrolling**: Text window automatically advances as you type, maintaining optimal viewing position
-- **Dynamic text rendering**: Shows typed text in white, errors in red with background highlighting, and upcoming text in gray
+- **Real-time error highlighting**: Immediate visual feedback with white (correct), red (incorrect), and animated blinking cursor positioning
+- **Responsive mobile design**: Optimized interface that works seamlessly on both desktop and mobile Reddit browsers with touch-friendly controls
+- **Progress-aware scrolling**: Text window automatically advances as you type, maintaining optimal viewing position throughout the challenge
+- **Dynamic text rendering**: Shows typed text in white, errors in red with background highlighting, and upcoming text in gray for clear visual hierarchy
 
 ### 4. **Reddit-Native Social Integration**
-- **Automatic user authentication**: Leverages Reddit's built-in authentication system seamlessly
-- **Community leaderboards**: Compete directly with fellow Redditors using real usernames
-- **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system
-- **Moderator integration**: Easy post creation through Reddit's moderator menu system
-- **Enhanced navigation**: Uses `requestExpandedMode` for smooth transitions between game screens
+- **Automatic user authentication**: Leverages Reddit's built-in authentication system seamlessly with context.username integration
+- **Community leaderboards**: Compete directly with fellow Redditors using real usernames with automatic score submission
+- **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system and requestExpandedMode
+- **Moderator integration**: Easy post creation through Reddit's moderator menu system for subreddit deployment
+- **Enhanced navigation**: Uses `requestExpandedMode` for smooth transitions between splash, game, spectator, and leaderboard screens
 
 ### 5. **Comprehensive Performance Analytics**
-- **Real-time metrics**: Live WPM and accuracy calculation during gameplay
-- **Personal statistics dashboard**: Track best WPM, highest accuracy, total games played, and current streaks
-- **Historical performance**: Monitor improvement over time across different difficulty levels
-- **Automatic score submission**: Seamless leaderboard integration with instant ranking updates
+- **Real-time metrics**: Live WPM and accuracy calculation during gameplay with instant updates as you type
+- **Personal statistics dashboard**: Track best WPM, highest accuracy, total games played, and current streaks across all difficulty levels
+- **Historical performance**: Monitor improvement over time across different difficulty levels with persistent user stats
+- **Automatic score submission**: Seamless leaderboard integration with instant ranking updates and new high score detection
+- **Session management**: Smart cleanup that removes players from active games when they leave or complete challenges
 
 ### Content and Challenges
 
 #### Challenge Content
 KeyScripture features **the complete Book of Esther** from the Bible, providing:
-- **Rich narrative content**: Engaging story with characters like Queen Esther, King Ahasuerus, Mordecai, and Haman across 10 chapters
+- **Rich narrative content**: Engaging story with characters like Queen Esther, King Ahasuerus, Mordecai, and Haman across 10 complete chapters
 - **Varied complexity**: Natural difficulty progression through the biblical narrative from simple introductions to complex plot developments  
 - **Cultural significance**: Classic biblical literature that many users will find familiar and meaningful to practice with
-- **Authentic formatting**: Real-world text with proper punctuation, capitalization, and formatting including dialogue, biblical names, and complex sentence structures
+- **Authentic formatting**: Real-world text with proper punctuation, capitalization, and formatting including dialogue, biblical names like Hammedatha and Shushan, and complex sentence structures
 
 #### Difficulty Levels
 - **Easy**: Simple practice text ("The quick brown fox jumps over the lazy dog") for beginners to learn the interface and basic typing mechanics
 - **Medium**: Moderate-length passages from the Book of Esther with mixed sentence complexity and standard punctuation
 - **Hard**: Longer, more complex passages from Esther with advanced vocabulary, intricate punctuation, and challenging formatting including biblical names and places
 
-The complete Book of Esther provides extensive, high-quality typing content with engaging narrative that's more meaningful than typical "lorem ipsum" or random word generators used in other typing games. The biblical text offers consistent, culturally significant content for long-term practice and improvement.
+The complete Book of Esther provides extensive, high-quality typing content with engaging narrative that's more meaningful than typical "lorem ipsum" or random word generators used in other typing games. The biblical text offers consistent, culturally significant content spanning 10 chapters for long-term practice and improvement, from the opening banquet scenes to the dramatic conclusion with the establishment of Purim.
 
 ## Core Features
 - **Three-Difficulty Challenge System**: Choose from Easy, Medium, and Hard typing challenges with varying text complexity
