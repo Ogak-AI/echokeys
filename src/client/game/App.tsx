@@ -58,14 +58,8 @@ export const App = () => {
 
   if (showLeaderboard) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
         <div className="max-w-2xl mx-auto">
-          <button
-            className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-            onClick={handleBack}
-          >
-            &larr; Back
-          </button>
           <h1 className="text-3xl font-bold text-center mb-6">Leaderboard</h1>
           <div className="bg-white/10 rounded-lg p-4 mb-4">
             {leaderboard.length === 0 ? (
@@ -99,6 +93,12 @@ export const App = () => {
             </button>
           </div>
         </div>
+        <button
+          className="absolute bottom-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
       </div>
     );
   }
@@ -106,14 +106,8 @@ export const App = () => {
   // Difficulty Selection Screen
   if (showDifficultySelect && !gameStarted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4">
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
         <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-screen">
-          <button
-            className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-            onClick={handleBack}
-          >
-            &larr; Back
-          </button>
           <h1 className="text-4xl font-bold mb-4 text-center">KeyScripture</h1>
           <p className="text-xl opacity-90 mb-12 text-center">Choose your difficulty level</p>
 
@@ -138,6 +132,12 @@ export const App = () => {
             </button>
           </div>
         </div>
+        <button
+          className="absolute bottom-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
       </div>
     );
   }
