@@ -8,12 +8,12 @@ KeyScripture is a **community-driven typing game** that runs directly within Red
 
 - **Real-time multiplayer spectating** - Watch other Reddit users type live as they play
 - **Intelligent audio feedback** - Hear each word pronounced as you complete it correctly  
-- **Three-tier difficulty system** - Choose from Easy, Medium, or Hard text challenges
+- **Three-tier difficulty system** - Choose from Easy, Medium, or Hard text challenges featuring biblical content from the Book of Esther
 - **Community leaderboards** - Compete directly with fellow Redditors on shared scoreboards
 - **Seamless Reddit integration** - Play without leaving the Reddit ecosystem
 - **Live game discovery** - Browse and spectate active typing sessions from other players
 
-The game transforms the traditionally solitary act of typing practice into a **social spectator sport** where every keystroke matters and the community can witness your progress in real-time.
+The game transforms the traditionally solitary act of typing practice into a **social spectator sport** where every keystroke matters and the community can witness your progress in real-time. Players type through meaningful biblical passages from the Book of Esther, making practice both educational and engaging.
 
 ## What Makes KeyScripture Innovative
 
@@ -29,11 +29,12 @@ The game transforms the traditionally solitary act of typing practice into a **s
 - **Context-aware audio**: Only speaks completed words, not partial typing
 - **Instant mute/unmute**: Toggle audio feedback during gameplay without interruption
 
-### 3. **Advanced Visual Interface**
+### Advanced Visual Interface
 - **Smart text windowing**: Displays exactly 110 characters with cursor positioned 40 characters from the start for optimal readability
 - **Real-time error highlighting**: Immediate visual feedback with white (correct), red (incorrect), and animated cursor positioning
 - **Responsive mobile design**: Optimized interface that works seamlessly on both desktop and mobile Reddit
 - **Progress-aware scrolling**: Text window automatically advances as you type, maintaining optimal viewing
+- **Dynamic text rendering**: Shows typed text in white, errors in red with background highlighting, and upcoming text in gray
 
 ### 4. **Reddit-Native Social Integration**
 - **Automatic user authentication**: Leverages Reddit's built-in authentication system
@@ -51,17 +52,17 @@ The game transforms the traditionally solitary act of typing practice into a **s
 
 #### Challenge Content
 KeyScripture features **biblical text passages** from the Book of Esther, providing:
-- **Meaningful content**: Rich, narrative text that's engaging to type rather than random words
-- **Varied complexity**: Different passages offer natural difficulty progression
+- **Meaningful content**: Rich, narrative text from the complete Book of Esther that's engaging to type rather than random words
+- **Varied complexity**: Different passages offer natural difficulty progression through the biblical narrative
 - **Cultural significance**: Classic literature that many users will find familiar and meaningful
-- **Proper punctuation practice**: Real-world text with authentic punctuation, capitalization, and formatting
+- **Proper punctuation practice**: Real-world text with authentic punctuation, capitalization, and formatting including dialogue, names, and complex sentence structures
 
 #### Difficulty Levels
-- **Easy**: Shorter passages with simpler sentence structures and common vocabulary
-- **Medium**: Moderate-length passages with mixed sentence complexity and standard punctuation
-- **Hard**: Longer, more complex passages with advanced vocabulary, intricate punctuation, and challenging formatting
+- **Easy**: Currently uses practice text ("The quick brown fox jumps over the lazy dog") for beginners to learn the interface
+- **Medium**: Moderate-length passages from the Book of Esther with mixed sentence complexity and standard punctuation
+- **Hard**: Longer, more complex passages from Esther with advanced vocabulary, intricate punctuation, and challenging formatting including biblical names and places
 
-The biblical text provides a consistent, high-quality typing experience that's more engaging than typical "lorem ipsum" or random word generators used in other typing games.
+The biblical text from Esther provides a consistent, high-quality typing experience with engaging narrative content that's more meaningful than typical "lorem ipsum" or random word generators used in other typing games. The complete Book of Esther is available in the game's challenge system, offering extensive content for long-term practice and improvement.
 
 ## Core Features
 - **Three-Difficulty Challenge System**: Choose from Easy, Medium, and Hard typing challenges with varying text complexity
@@ -138,6 +139,8 @@ When you start the game, you'll see three difficulty options:
 - The timer starts immediately when you type your first character
 - Your game becomes **live and visible** to other players who can spectate in real-time
 - Type the displayed text exactly as shown, including all punctuation, spacing, and capitalization
+- Use the large textarea input field below the text display for typing
+- The game automatically removes you from active games when you leave or complete the challenge
 
 #### Step 3: Real-Time Feedback and Performance
 **Visual Feedback System:**
@@ -147,9 +150,10 @@ When you start the game, you'll see three difficulty options:
 - **Smart text window** = displays ~110 characters with your cursor optimally positioned
 
 **Audio Feedback System:**
-- **Word pronunciation** = hear each word spoken aloud as you complete it correctly
-- **Mute/Unmute toggle** = click the sound button to disable/enable audio during gameplay
-- **Smart detection** = only completed words are spoken, not partial typing
+- **Word pronunciation** = hear each word spoken aloud as you complete it correctly (using Web Speech API)
+- **Mute/Unmute toggle** = click the sound button in the header to disable/enable audio during gameplay
+- **Smart detection** = only completed words followed by punctuation or spaces are spoken, not partial typing
+- **Automatic speech cancellation** = audio stops when you finish the game or reset
 
 **Live Performance Metrics:**
 - **WPM (Words Per Minute)** = calculated as (characters typed ÷ 5) ÷ minutes elapsed

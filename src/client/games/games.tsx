@@ -12,6 +12,44 @@ export const Games = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const handleStartPlaying = () => {
+    console.log('Start Playing button clicked');
+    try {
+      navigateTo('game');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try direct navigation
+      window.location.href = 'game.html';
+    }
+  };
+
+  const handleRefresh = async () => {
+    console.log('Refresh button clicked');
+    await fetchActiveGames();
+  };
+
+  const handleBack = () => {
+    console.log('Back button clicked');
+    try {
+      navigateTo('splash');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try direct navigation
+      window.location.href = 'splash.html';
+    }
+  };
+
+  const handleWatchGame = (username: string) => {
+    console.log('Watch game clicked for:', username);
+    try {
+      navigateTo(`watch?username=${username}`);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try direct navigation
+      window.location.href = `watch.html?username=${username}`;
+    }
+  };
+
   const fetchActiveGames = async () => {
     try {
       setLoading(true);
@@ -64,13 +102,13 @@ export const Games = () => {
         <div className="flex gap-4">
           <button
             className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
-            onClick={() => void fetchActiveGames()}
+            onClick={handleRefresh}
           >
             Retry
           </button>
           <button
             className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-            onClick={() => navigateTo('splash')}
+            onClick={handleBack}
           >
             Back
           </button>
@@ -92,7 +130,7 @@ export const Games = () => {
               <div
                 key={game.username}
                 className="flex items-center justify-between p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
-                onClick={() => navigateTo(`watch?username=${game.username}`)}
+                onClick={() => handleWatchGame(game.username)}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
@@ -110,7 +148,7 @@ export const Games = () => {
             <p className="text-sm opacity-60">Be the first to start a typing challenge!</p>
             <button
               className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-full hover:bg-blue-700"
-              onClick={() => navigateTo('game')}
+              onClick={handleStartPlaying}
             >
               Start Playing
             </button>
@@ -120,14 +158,14 @@ export const Games = () => {
       <div className="flex items-center justify-center gap-4 mt-3">
         <button
           className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
-          onClick={() => void fetchActiveGames()}
+          onClick={handleRefresh}
           disabled={loading}
         >
           {loading ? 'Refreshing...' : 'Refresh'}
         </button>
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={() => navigateTo('splash')}
+          onClick={handleBack}
         >
           Back
         </button>
