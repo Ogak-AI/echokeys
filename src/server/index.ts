@@ -292,7 +292,7 @@ async function cleanupStalePlayers(): Promise<void> {
   try {
     const activePlayers = await context.redis.sMembers('active_players');
     const now = Date.now();
-    const staleThreshold = 5 * 60 * 1000; // 5 minutes
+    const staleThreshold = 15 * 60 * 1000; // 15 minutes
 
     for (const player of activePlayers) {
       const session = await context.redis.hGetAll(`player:${player}:session`);
