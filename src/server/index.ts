@@ -268,7 +268,7 @@ export async function updateUserStats(
   return { newHighScore, rank };
 }
 
-async function addActivePlayer(username: string, isPublic: boolean = false): Promise<void> {
+async function addActivePlayer(username: string, isPublic: boolean = true): Promise<void> {
   // Add player with timestamp for cleanup
   const timestamp = Date.now();
   await context.redis.sAdd('active_players', username);
@@ -285,6 +285,7 @@ async function removeActivePlayer(username: string): Promise<void> {
   // Clean up game state and session data
   await context.redis.hSet(`game:${username}`, {}); // Clear game state
   await context.redis.hSet(`player:${username}:session`, {});
+  await cleanupStalePlayers();
 }
 
 async function cleanupStalePlayers(): Promise<void> {
