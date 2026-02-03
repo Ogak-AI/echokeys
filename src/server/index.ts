@@ -297,10 +297,6 @@ async function cleanupStalePlayers(): Promise<void> {
     for (const player of activePlayers) {
       const session = await context.redis.hGetAll(`player:${player}:session`);
 
-      // Skip private games
-      if (session.isPublic !== 'true') {
-        continue;
-      }
       const lastActivity = parseInt(session.lastActivity || '0');
 
       if (now - lastActivity > staleThreshold) {
@@ -519,6 +515,7 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
         username: g.username,
         challenge: g.challenge,
         difficulty: g.difficulty,
+        isSpectatable: true, // If it's in this list, it's spectatable
       })),
     });
   } catch (error) {
