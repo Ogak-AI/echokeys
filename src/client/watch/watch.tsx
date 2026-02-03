@@ -276,7 +276,7 @@ export const Watch = () => {
       </div>
       <div className="flex items-center justify-center mt-3">
         <button
-          className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          className="absolute top-4 right-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
           onClick={handleBackToGames}
         >
           Back to Active Games

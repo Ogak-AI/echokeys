@@ -112,6 +112,12 @@ export const Games = () => {
   if (loading) {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+        <button
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
         <p>Loading active games...</p>
       </div>
@@ -121,6 +127,12 @@ export const Games = () => {
   if (error) {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+        <button
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          onClick={handleBack}
+        >
+          &larr; Back
+        </button>
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
         <p className="text-red-500">Connection issue: {error}</p>
         <div className="flex gap-4">
@@ -130,12 +142,6 @@ export const Games = () => {
           >
             Retry
           </button>
-          <button
-            className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-            onClick={handleBack}
-          >
-            Back
-          </button>
         </div>
       </div>
     );
@@ -143,6 +149,12 @@ export const Games = () => {
 
   return (
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
+      <button
+        className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+        onClick={handleBack}
+      >
+        &larr; Back
+      </button>
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
         <p className="text-sm opacity-75 mb-4">Live games update every 10 seconds</p>
@@ -181,17 +193,11 @@ export const Games = () => {
       </div>
       <div className="flex items-center justify-center gap-4 mt-3">
         <button
-          className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
+          className="absolute top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
           onClick={handleRefresh}
           disabled={loading}
         >
           {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
-        <button
-          className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={handleBack}
-        >
-          Back
         </button>
       </div>
     </div>

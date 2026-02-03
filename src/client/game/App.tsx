@@ -94,7 +94,7 @@ export const App = () => {
           </div>
         </div>
         <button
-          className="absolute bottom-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
           onClick={handleBack}
         >
           &larr; Back
@@ -133,7 +133,7 @@ export const App = () => {
           </div>
         </div>
         <button
-          className="absolute bottom-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
           onClick={handleBack}
         >
           &larr; Back
@@ -323,6 +323,12 @@ export const App = () => {
           </button>
         </div>
       </div>
+      <button
+        className="absolute bottom-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+        onClick={handleBack}
+      >
+        &larr; Back
+      </button>
     </div>
   );
 };
