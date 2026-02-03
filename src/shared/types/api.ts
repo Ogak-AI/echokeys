@@ -1,3 +1,13 @@
+export type WebSocketGameUpdate = WatchGameResponse;
+
+export type GameEndedMessage = {
+  type: 'gameEnded';
+  username: string;
+  reason?: string;
+};
+
+export type WebSocketMessage = WebSocketGameUpdate | GameEndedMessage;
+
 export type WatchGameResponse = {
   type: 'watchGame';
   username: string;
@@ -10,13 +20,16 @@ export type WatchGameResponse = {
   lastUpdate?: number;
 };
 
+export type SpectatableGame = {
+  username: string; 
+  challenge: DailyChallenge;
+  difficulty: 'easy' | 'medium' | 'hard';
+  isSpectatable: boolean;
+};
+
 export type GetActiveGamesResponse = {
   type: 'activeGames';
-  games: { 
-    username: string; 
-    challenge: DailyChallenge;
-    difficulty: 'easy' | 'medium' | 'hard';
-  }[];
+  games: SpectatableGame[];
 };
 
 export type InitResponse = {
