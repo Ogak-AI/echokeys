@@ -26,24 +26,18 @@ export const App = () => {
     resetGame,
   } = useTypingGame();
 
-  const handleBack = (e: React.MouseEvent) => {
+  const handleBack = async (e: React.MouseEvent) => {
     console.log('Back button clicked in game');
     try {
       // Use requestExpandedMode to go back to splash
-      requestExpandedMode(e.nativeEvent, 'splash');
+      await requestExpandedMode(e.nativeEvent, 'splash');
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback: try standard navigation
-      try {
-        navigateTo('splash');
-      } catch (navError) {
-        console.error('Standard navigation failed:', navError);
-        // Final fallback: browser history or direct navigation
-        if (window.history.length > 1) {
-          window.history.back();
-        } else {
-          window.location.href = 'splash.html';
-        }
+      // Fallback: browser history or direct navigation
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = 'splash.html';
       }
     }
   };

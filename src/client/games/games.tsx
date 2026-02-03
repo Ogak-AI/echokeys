@@ -16,12 +16,12 @@ export const Games = () => {
     console.log('Start Playing button clicked');
     try {
       // Use requestExpandedMode for proper Devvit navigation
-      requestExpandedMode(e.nativeEvent, 'game');
+      void requestExpandedMode(e.nativeEvent, 'game');
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: try standard navigation
       try {
-        navigateTo('game');
+        void navigateTo('game');
       } catch (navError) {
         console.error('Standard navigation failed:', navError);
         window.location.href = 'game.html';
@@ -39,12 +39,12 @@ export const Games = () => {
     console.log('Back button clicked');
     try {
       // Use requestExpandedMode to go back to splash (like in splash.tsx)
-      requestExpandedMode(e.nativeEvent, 'splash');
+      void requestExpandedMode(e.nativeEvent, 'splash');
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: try standard navigation
       try {
-        navigateTo('splash');
+        void navigateTo('splash');
       } catch (navError) {
         console.error('Standard navigation failed:', navError);
         // Final fallback: browser history or direct navigation
@@ -61,12 +61,12 @@ export const Games = () => {
     console.log('Watch game clicked for:', username);
     try {
       // Use requestExpandedMode for proper Devvit navigation
-      requestExpandedMode(e.nativeEvent, `watch?username=${username}`);
+      void requestExpandedMode(e.nativeEvent, `watch?username=${username}`);
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: try standard navigation
       try {
-        navigateTo(`watch?username=${username}`);
+        void navigateTo(`watch?username=${username}`);
       } catch (navError) {
         console.error('Standard navigation failed:', navError);
         window.location.href = `watch.html?username=${username}`;
@@ -168,12 +168,26 @@ export const Games = () => {
                 className="flex items-center justify-between p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
                 onClick={(e) => handleWatchGame(game.username, e)}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-lg font-medium">{game.username}</span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-lg font-medium">{game.username}</span>
+                  </div>
+                  {game.challenge && (
+                    <p className="text-sm opacity-75 max-w-xs truncate">
+                      {game.challenge.text}
+                    </p>
+                  )}
                 </div>
                 <div className="text-sm opacity-75">
-                  <span className="bg-blue-600 px-2 py-1 rounded-full text-xs">LIVE</span>
+                  <span className={`px-2 py-1 rounded-full text-xs 
+                    ${game.difficulty === 'easy' ? 'bg-green-600' : ''}
+                    ${game.difficulty === 'medium' ? 'bg-yellow-600' : ''}
+                    ${game.difficulty === 'hard' ? 'bg-red-600' : ''}
+                  `}>
+                    {game.difficulty.toUpperCase()}
+                  </span>
+                  <span className="ml-2 bg-blue-600 px-2 py-1 rounded-full text-xs">LIVE</span>
                 </div>
               </div>
             ))}

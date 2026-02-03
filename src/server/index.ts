@@ -276,12 +276,13 @@ async function addActivePlayer(username: string): Promise<void> {
     startTime: timestamp.toString(),
     lastActivity: timestamp.toString(),
   });
+  console.log(`Player ${username} added to active players with startTime: ${new Date(timestamp).toISOString()}`);
 }
 
 async function removeActivePlayer(username: string): Promise<void> {
   await context.redis.sRem('active_players', username);
   // Clean up game state and session data
-  await context.redis.hSet(`game:${username}`, {});
+  await context.redis.hSet(`game:${username}`, {}); // Clear game state
   await context.redis.hSet(`player:${username}:session`, {});
 }
 
@@ -296,7 +297,7 @@ async function cleanupStalePlayers(): Promise<void> {
       const lastActivity = parseInt(session.lastActivity || '0');
       
       if (now - lastActivity > staleThreshold) {
-        console.log(`Removing stale player: ${player}`);
+        console.log(`Removing stale player: ${player}. Last activity: ${new Date(lastActivity).toISOString()}, Now: ${new Date(now).toISOString()}`);
         await removeActivePlayer(player);
       }
     }
@@ -306,12 +307,14 @@ async function cleanupStalePlayers(): Promise<void> {
 }
 
 async function updatePlayerActivity(username: string): Promise<void> {
+  const now = Date.now();
   await context.redis.hSet(`player:${username}:session`, {
-    lastActivity: Date.now().toString(),
+    lastActivity: now.toString(),
   });
+  console.log(`Player ${username} activity updated at: ${new Date(now).toISOString()}`);
 }
 
-router.get('/api/init', async (_req, res): Promise<void> => {
+router.post('/api/init', async (_req, res): Promise<void> => {
   const { postId } = context;
 
   if (!postId) {
@@ -351,6 +354,40 @@ router.get('/api/init', async (_req, res): Promise<void> => {
   } catch (error) {
     console.error(`API Init Error for post ${postId}:`, error);
     res.status(500).json({ status: 'error', message: 'Failed to initialize' });
+  }
+});
+
+router.post('/api/start-game', async (req, res): Promise<void> => {
+  try {
+    const { username, challenge, difficulty } = req.body;
+
+    if (!username || !challenge || !difficulty) {
+      res.status(400).json({ status: 'error', message: 'Missing game parameters' });
+      return;
+    }
+
+    const authenticatedUsername = await reddit.getCurrentUsername();
+    if (!authenticatedUsername || authenticatedUsername !== username) {
+      res.status(401).json({ status: 'error', message: 'Unauthorized: username mismatch' });
+      return;
+    }
+
+    // Add player to active players and set initial game state
+    await addActivePlayer(username);
+    await context.redis.hSet(`game:${username}`, {
+      challenge: JSON.stringify(challenge),
+      difficulty: difficulty,
+      currentInput: '',
+      startTime: Date.now().toString(),
+      wpm: '0',
+      accuracy: '0',
+      lastUpdate: Date.now().toString(),
+    });
+
+    res.json({ status: 'success', message: 'Game started and recorded' });
+  } catch (error) {
+    console.error(`Start game error:`, error);
+    res.status(500).json({ status: 'error', message: 'Failed to start game' });
   }
 });
 
@@ -419,6 +456,13 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
 
 router.get('/api/active-games', async (_req, res): Promise<void> => {
   try {
+    
+    if (!context.redis) {
+      console.error('Active games error: Redis client not available in context.');
+      res.status(500).json({ status: 'error', message: 'Redis client not available' });
+      return;
+    }
+    
     // Clean up stale players before returning active games
     await cleanupStalePlayers();
     
@@ -430,10 +474,26 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
       const session = await context.redis.hGetAll(`player:${player}:session`);
       const gameState = await context.redis.hGetAll(`game:${player}`);
       
+      let challenge = null;
+      let difficulty = 'unknown';
+
+      if (gameState.challenge) {
+        try {
+          challenge = JSON.parse(gameState.challenge);
+        } catch (e) {
+          console.error(`Failed to parse challenge for player ${player}:`, e);
+        }
+      }
+      if (gameState.difficulty) {
+        difficulty = gameState.difficulty;
+      }
+
       games.push({
         username: player,
         startTime: parseInt(session.startTime || '0'),
         hasGameState: Object.keys(gameState).length > 0,
+        challenge: challenge,
+        difficulty: difficulty,
       });
     }
     
@@ -442,7 +502,11 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
     
     res.json({
       type: 'activeGames',
-      games: games.map(g => ({ username: g.username })), // Keep API compatible
+      games: games.map(g => ({ 
+        username: g.username, 
+        challenge: g.challenge, 
+        difficulty: g.difficulty 
+      })),
     });
   } catch (error) {
     console.error(`Active games error:`, error);

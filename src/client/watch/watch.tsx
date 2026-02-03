@@ -20,9 +20,9 @@ export const Watch = () => {
       setUsername(usernameParam);
     } else {
       try {
-        requestExpandedMode(new Event('click'), 'games');
+        void requestExpandedMode(new MouseEvent('click'), 'games');
       } catch {
-        navigateTo('games');
+        void navigateTo('games');
       }
       return;
     }
@@ -96,12 +96,12 @@ export const Watch = () => {
     console.log('Back button clicked in watch');
     try {
       // Use requestExpandedMode to go back to games
-      requestExpandedMode(e.nativeEvent, 'games');
+      void requestExpandedMode(e.nativeEvent, 'games');
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: try standard navigation
       try {
-        navigateTo('games');
+        void navigateTo('games');
       } catch (navError) {
         console.error('Standard navigation failed:', navError);
         // Final fallback: browser history or direct navigation
@@ -118,12 +118,12 @@ export const Watch = () => {
     console.log('Back to Active Games button clicked');
     try {
       // Use requestExpandedMode to go back to games
-      requestExpandedMode(e.nativeEvent, 'games');
+      void requestExpandedMode(e.nativeEvent, 'games');
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: try standard navigation
       try {
-        navigateTo('games');
+        void navigateTo('games');
       } catch (navError) {
         console.error('Standard navigation failed:', navError);
         window.location.href = 'games.html';

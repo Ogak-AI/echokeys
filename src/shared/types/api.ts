@@ -12,7 +12,11 @@ export type WatchGameResponse = {
 
 export type GetActiveGamesResponse = {
   type: 'activeGames';
-  games: { username: string }[];
+  games: { 
+    username: string; 
+    challenge: DailyChallenge;
+    difficulty: 'easy' | 'medium' | 'hard';
+  }[];
 };
 
 export type InitResponse = {

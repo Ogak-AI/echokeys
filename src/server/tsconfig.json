@@ -4,7 +4,7 @@
   "compilerOptions": {
     "lib": ["ES2023"],
 
-    "types": ["node"],
+    "types": ["node", "vitest/globals"],
 
     "rootDir": ".",
 
@@ -14,6 +14,6 @@
   },
   // https://github.com/Microsoft/TypeScript/issues/25636
   "include": ["**/*", "**/*.json", "../../package.json"],
-  "exclude": ["**/*.test.ts"],
+  "exclude": [],
   "references": [{ "path": "../shared" }]
 }

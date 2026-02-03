@@ -21,12 +21,12 @@ export const Splash = () => {
           onClick={(e) => {
             console.log('Start Typing button clicked');
             try {
-              requestExpandedMode(e.nativeEvent, 'game');
+              void requestExpandedMode(e.nativeEvent, 'game');
             } catch (error) {
               console.error('Navigation error:', error);
               // Fallback navigation
               try {
-                navigateTo('game');
+                void navigateTo('game');
               } catch (navError) {
                 console.error('Standard navigation failed:', navError);
                 window.location.href = 'game.html';
@@ -43,12 +43,12 @@ export const Splash = () => {
           onClick={(e) => {
             console.log('Watch button clicked');
             try {
-              requestExpandedMode(e.nativeEvent, 'games');
+              void requestExpandedMode(e.nativeEvent, 'games');
             } catch (error) {
               console.error('Navigation error:', error);
               // Fallback navigation
               try {
-                navigateTo('games');
+                void navigateTo('games');
               } catch (navError) {
                 console.error('Standard navigation failed:', navError);
                 window.location.href = 'games.html';

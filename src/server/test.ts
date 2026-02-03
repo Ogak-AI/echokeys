@@ -29,6 +29,6 @@ describe('updateUserStats', () => {
 
     const leaderboard = await redis.zRange('leaderboard', 0, -1);
     expect(leaderboard.length).toBe(1);
-    expect(leaderboard[0].score).toBe(100);
+    expect(leaderboard[0]!.score).toBe(100);
   });
 });
