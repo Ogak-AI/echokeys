@@ -26,6 +26,7 @@ interface GameState {
   selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
   lastSpokenIndex: number;
   isMuted: boolean;
+  isPublic: boolean;
 }
 
 export const useTypingGame = () => {
@@ -47,6 +48,7 @@ export const useTypingGame = () => {
     selectedDifficulty: null,
     lastSpokenIndex: 0,
     isMuted: false,
+    isPublic: false,
   });
 
   // fetch initial data
@@ -138,6 +140,7 @@ export const useTypingGame = () => {
             username: state.username,
             challenge: data.challenge,
             difficulty: difficulty,
+            isPublic: state.isPublic,
           }),
         }).catch((err) => console.error('Failed to record active game:', err));
       }
@@ -293,6 +296,19 @@ export const useTypingGame = () => {
     });
   }, []);
 
+  const toggleIsPublic = useCallback(() => {
+    setState((prev) => {
+      const newIsPublic = !prev.isPublic;
+      // Immediately update the server with the new privacy setting
+      fetch('/api/set-privacy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic: newIsPublic }),
+      }).catch((err) => console.error('Failed to set privacy:', err));
+      return { ...prev, isPublic: newIsPublic };
+    });
+  }, []);
+
   return {
     ...state,
     startGame,
@@ -302,5 +318,6 @@ export const useTypingGame = () => {
     toggleLeaderboard,
     resetGame,
     toggleMute,
+    toggleIsPublic,
   };
 };

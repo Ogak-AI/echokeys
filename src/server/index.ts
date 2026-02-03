@@ -268,11 +268,12 @@ export async function updateUserStats(
   return { newHighScore, rank };
 }
 
-async function addActivePlayer(username: string): Promise<void> {
+async function addActivePlayer(username: string, isPublic: boolean = false): Promise<void> {
   // Add player with timestamp for cleanup
   const timestamp = Date.now();
   await context.redis.sAdd('active_players', username);
   await context.redis.hSet(`player:${username}:session`, {
+    isPublic: isPublic.toString(),
     startTime: timestamp.toString(),
     lastActivity: timestamp.toString(),
   });
@@ -294,10 +295,19 @@ async function cleanupStalePlayers(): Promise<void> {
 
     for (const player of activePlayers) {
       const session = await context.redis.hGetAll(`player:${player}:session`);
+
+      // Skip private games
+      if (session.isPublic !== 'true') {
+        continue;
+      }
       const lastActivity = parseInt(session.lastActivity || '0');
-      
+
       if (now - lastActivity > staleThreshold) {
-        console.log(`Removing stale player: ${player}. Last activity: ${new Date(lastActivity).toISOString()}, Now: ${new Date(now).toISOString()}`);
+        console.log(
+          `Removing stale player: ${player}. Last activity: ${new Date(
+            lastActivity
+          ).toISOString()}, Now: ${new Date(now).toISOString()}`
+        );
         await removeActivePlayer(player);
       }
     }
@@ -308,9 +318,7 @@ async function cleanupStalePlayers(): Promise<void> {
 
 async function updatePlayerActivity(username: string): Promise<void> {
   const now = Date.now();
-  await context.redis.hSet(`player:${username}:session`, {
-    lastActivity: now.toString(),
-  });
+  await context.redis.hSet(`player:${username}:session`, 'lastActivity', now.toString());
   console.log(`Player ${username} activity updated at: ${new Date(now).toISOString()}`);
 }
 
@@ -456,24 +464,28 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
 
 router.get('/api/active-games', async (_req, res): Promise<void> => {
   try {
-    
     if (!context.redis) {
       console.error('Active games error: Redis client not available in context.');
       res.status(500).json({ status: 'error', message: 'Redis client not available' });
       return;
     }
-    
+
     // Clean up stale players before returning active games
     await cleanupStalePlayers();
-    
+
     const activePlayers = await context.redis.sMembers('active_players');
     const games = [];
-    
+
     // Get additional info for each active player
     for (const player of activePlayers) {
       const session = await context.redis.hGetAll(`player:${player}:session`);
+
+      // Skip private games
+      if (session.isPublic !== 'true') {
+        continue;
+      }
+
       const gameState = await context.redis.hGetAll(`game:${player}`);
-      
       let challenge = null;
       let difficulty = 'unknown';
 
@@ -496,16 +508,16 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
         difficulty: difficulty,
       });
     }
-    
+
     // Sort by start time (newest first)
     games.sort((a, b) => b.startTime - a.startTime);
-    
+
     res.json({
       type: 'activeGames',
-      games: games.map(g => ({ 
-        username: g.username, 
-        challenge: g.challenge, 
-        difficulty: g.difficulty 
+      games: games.map((g) => ({
+        username: g.username,
+        challenge: g.challenge,
+        difficulty: g.difficulty,
       })),
     });
   } catch (error) {
@@ -615,19 +627,30 @@ router.post('/api/update-game-state', async (req, res): Promise<void> => {
 router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
   try {
     const { username } = req.params;
-    
+
     if (!username || username.trim() === '') {
       res.status(400).json({ status: 'error', message: 'Username is required' });
       return;
     }
 
+    // Check privacy settings first
+    const playerSession = await context.redis.hGetAll(`player:${username}:session`);
+    if (playerSession.isPublic !== 'true') {
+      res.status(403).json({
+        status: 'error',
+        message: 'This game is private.',
+        gameEnded: true,
+      });
+      return;
+    }
+
     const gameState = await context.redis.hGetAll(`game:${username}`);
-    
+
     if (!gameState || Object.keys(gameState).length === 0) {
-      res.status(404).json({ 
-        status: 'error', 
+      res.status(404).json({
+        status: 'error',
         message: `No active game found for ${username}`,
-        gameEnded: true 
+        gameEnded: true,
       });
       return;
     }
@@ -640,10 +663,10 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
     if (lastUpdate > 0 && now - lastUpdate > staleThreshold) {
       // Clean up stale game data
       await context.redis.hSet(`game:${username}`, {});
-      res.status(404).json({ 
-        status: 'error', 
+      res.status(404).json({
+        status: 'error',
         message: `Game session for ${username} has expired`,
-        gameEnded: true 
+        gameEnded: true,
       });
       return;
     }
@@ -651,17 +674,17 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
     let challenge;
     try {
       challenge = JSON.parse(gameState.challenge || '{}');
-      
+
       // Validate challenge structure
       if (!challenge.text || !challenge.difficulty) {
         throw new Error('Invalid challenge structure');
       }
     } catch (parseError) {
       console.error(`Watch game error: Failed to parse challenge for ${username}:`, parseError);
-      res.status(400).json({ 
-        status: 'error', 
+      res.status(400).json({
+        status: 'error',
         message: 'Invalid challenge data in game state',
-        gameEnded: true 
+        gameEnded: true,
       });
       return;
     }
@@ -684,6 +707,25 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
   } catch (error) {
     console.error(`Watch game error:`, error);
     res.status(500).json({ status: 'error', message: 'Failed to retrieve game state' });
+  }
+});
+
+router.post('/api/set-privacy', async (req, res): Promise<void> => {
+  try {
+    const { isPublic } = req.body;
+    const username = await reddit.getCurrentUsername();
+
+    if (!username) {
+      res.status(401).json({ status: 'error', message: 'Unauthorized' });
+      return;
+    }
+
+    await context.redis.hSet(`player:${username}:session`, 'isPublic', isPublic.toString());
+
+    res.json({ status: 'success', isPublic });
+  } catch (error) {
+    console.error('Set privacy error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to set privacy' });
   }
 });
 
@@ -729,3 +771,4 @@ const port = getServerPort();
 const server = createServer(app);
 server.on('error', (err) => console.error(`server error; ${err.stack}`));
 server.listen(port);
+

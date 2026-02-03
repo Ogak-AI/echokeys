@@ -193,21 +193,35 @@ export const Watch = () => {
   // Display the game state
   const renderText = (fullText: string, typedText: string) => {
     return (
-      <div className="font-mono text-lg leading-relaxed bg-black/30 rounded-lg p-4 text-left">
-        {fullText.split('').map((char, index) => {
-          let colorClass = 'text-gray-400'; // Untyped
-          if (index < typedText.length) {
-            colorClass =
-              char === typedText[index] ? 'text-green-400' : 'text-red-500 line-through';
-          } else if (index === typedText.length) {
-            colorClass = 'bg-white text-black animate-pulse'; // Cursor position
-          }
-          return (
-            <span key={index} className={colorClass}>
-              {char === '\n' ? '↵' : char}
-            </span>
-          );
-        })}
+      <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-base sm:text-lg md:text-xl leading-relaxed min-h-20 sm:min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
+        {(() => {
+          const charIndex = typedText.length;
+          // Show 100-120 characters total, with cursor roughly in the middle
+          const charsToShow = 110; // characters to display
+          const beforeCursor = 40; // characters before cursor
+          const startIdx = Math.max(0, charIndex - beforeCursor);
+          const endIdx = Math.min(fullText.length, startIdx + charsToShow);
+
+          const displayText = fullText.substring(startIdx, endIdx);
+
+          return displayText.split('').map((char, idx) => {
+            const charAbsIndex = startIdx + idx;
+            let className = 'text-gray-300';
+            if (charAbsIndex < typedText.length) {
+              className =
+                typedText[charAbsIndex] === char
+                  ? 'text-white font-semibold'
+                  : 'text-red-500 bg-red-500/30 font-semibold';
+            } else if (charAbsIndex === typedText.length) {
+              className = 'bg-white text-black font-bold animate-pulse';
+            }
+            return (
+              <span key={idx} className={className}>
+                {char === '\n' ? '↵' : char}
+              </span>
+            );
+          });
+        })()}
       </div>
     );
   };
@@ -250,6 +264,12 @@ export const Watch = () => {
             
             <div className="mb-6">
               {renderText(gameState.challenge.text, gameState.currentInput)}
+              <div className="w-full bg-gray-600 rounded-full h-2.5">
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full"
+                  style={{ width: `${(gameState.currentInput.length / gameState.challenge.text.length) * 100}%` }}
+                ></div>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4 text-center bg-white/5 rounded-lg p-4">
