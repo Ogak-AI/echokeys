@@ -17,14 +17,12 @@ export const App = () => {
     showLeaderboard,
     showDifficultySelect,
     isMuted,
-    isPublic,
     startGame,
     selectDifficulty,
     updateInput,
     fetchLeaderboard,
     toggleLeaderboard,
     toggleMute,
-    toggleIsPublic,
     resetGame,
   } = useTypingGame();
 
@@ -210,16 +208,7 @@ export const App = () => {
                 <p className="mb-4 opacity-90 text-sm max-h-20 overflow-hidden">
                   {dailyChallenge.text.substring(0, 150)}...
                 </p>
-                <div className="flex items-center justify-center mb-4">
-                  <input
-                    type="checkbox"
-                    id="isPublic"
-                    checked={isPublic}
-                    onChange={toggleIsPublic}
-                    className="mr-2"
-                  />
-                  <label htmlFor="isPublic">Make game public for spectators</label>
-                </div>
+
                 <button
                   onClick={startGame}
                   className="bg-white text-blue-900 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors"
@@ -280,9 +269,7 @@ export const App = () => {
                   <div className="text-base sm:text-lg md:text-2xl">
                     Accuracy: <span className="font-bold">{accuracy}%</span>
                   </div>
-                  <div className="text-base sm:text-lg md:text-2xl">
-                    Status: <span className="font-bold">{isPublic ? 'Public' : 'Private'}</span>
-                  </div>
+
                 </div>
 
                 {/* Game finished */}

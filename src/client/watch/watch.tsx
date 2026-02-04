@@ -1,9 +1,10 @@
 import '../index.css';
 
 import { navigateTo, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useState, useCallback } from 'react'; // Add useCallback
 import { createRoot } from 'react-dom/client';
 import { WatchGameResponse } from '../../shared/types/api';
+import { io } from 'socket.io-client'; // Import io from socket.io-client
 
 export const Watch = () => {
   const [username, setUsername] = useState<string | null>(null);
@@ -11,14 +12,12 @@ export const Watch = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [gameEnded, setGameEnded] = useState<boolean>(false);
-  const [retryCount, setRetryCount] = useState<number>(0);
+  // Removed retryCount as it was related to polling
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const usernameParam = params.get('username');
-    if (usernameParam) {
-      setUsername(usernameParam);
-    } else {
+    if (!usernameParam) {
       try {
         void requestExpandedMode(new MouseEvent('click'), 'games');
       } catch {
@@ -26,16 +25,40 @@ export const Watch = () => {
       }
       return;
     }
+    setUsername(usernameParam);
+
+    const socket = io(); // Connect to Socket.IO server
+
+    socket.on('connect', () => {
+      console.log('Connected to WebSocket server');
+      socket.emit('joinGame', usernameParam);
+    });
+
+    socket.on('gameStateUpdate', (updatedGame: WatchGameResponse) => {
+      console.log('Received real-time update:', updatedGame);
+      setGameState(updatedGame);
+      setGameEnded(updatedGame.gameCompleted || false);
+      setError(null);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from WebSocket server');
+      setError('Disconnected from game. Attempting to reconnect...');
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('Socket.IO connection error:', err);
+      setError(`Connection error: ${err.message}. Retrying...`);
+    });
 
     const fetchGameState = async () => {
-      if (!usernameParam || gameEnded) return;
-      
+      if (gameEnded) return;
+
       try {
         const response = await fetch(`/api/watch-game/${usernameParam}`);
         const data = await response.json();
-        
+
         if (!response.ok) {
-          // Check if game ended
           if (data.gameEnded) {
             setGameEnded(true);
             setError(`${usernameParam}'s game has ended`);
@@ -43,68 +66,40 @@ export const Watch = () => {
           }
           throw new Error(data.message || `HTTP error! status: ${response.status}`);
         }
-        
+
         const gameData: WatchGameResponse = data;
         setGameState(gameData);
+        setGameEnded(gameData.gameCompleted || false);
         setError(null);
-        setRetryCount(0);
-        
-        // Check if game is completed
-        if (gameData.gameCompleted) {
-          setGameEnded(true);
-          setError(`${usernameParam} has completed the game!`);
-        }
-        
       } catch (e: unknown) {
-        console.error('Watch game fetch error:', e);
-        setRetryCount(prev => prev + 1);
-        
-        if (retryCount >= 3) {
-          setGameEnded(true);
-          if (e instanceof Error) {
-            setError(`Connection lost: ${e.message}`);
-          } else {
-            setError('Connection lost: Unable to watch game');
-          }
+        console.error('Watch game initial fetch error:', e);
+        if (e instanceof Error) {
+          setError(`Error fetching initial game state: ${e.message}`);
         } else {
-          if (e instanceof Error) {
-            setError(`Reconnecting... (${retryCount + 1}/3): ${e.message}`);
-          } else {
-            setError(`Reconnecting... (${retryCount + 1}/3)`);
-          }
+          setError('Unknown error fetching initial game state');
         }
       } finally {
         setLoading(false);
       }
     };
 
-    void fetchGameState(); // Initial fetch
+    void fetchGameState(); // Initial fetch when component mounts
 
-    const interval = setInterval(fetchGameState, 2000); // Poll every 2 seconds
+    return () => {
+      socket.disconnect(); // Disconnect on unmount
+    };
+  }, [gameEnded]);
 
-    return () => clearInterval(interval); // Cleanup on unmount
-  }, [gameEnded, retryCount]);
-
-  const handleRefresh = () => {
-    setError(null);
-    setGameEnded(false);
-    setRetryCount(0);
-    setLoading(true);
-  };
-
-  const handleBack = (e: React.MouseEvent) => {
+  const handleBack = useCallback((e: React.MouseEvent) => {
     console.log('Back button clicked in watch');
     try {
-      // Use requestExpandedMode to go back to games
       void requestExpandedMode(e.nativeEvent, 'games');
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback: try standard navigation
       try {
         void navigateTo('games');
       } catch (navError) {
         console.error('Standard navigation failed:', navError);
-        // Final fallback: browser history or direct navigation
         if (window.history.length > 1) {
           window.history.back();
         } else {
@@ -112,16 +107,14 @@ export const Watch = () => {
         }
       }
     }
-  };
+  }, []);
 
-  const handleBackToGames = (e: React.MouseEvent) => {
+  const handleBackToGames = useCallback((e: React.MouseEvent) => {
     console.log('Back to Active Games button clicked');
     try {
-      // Use requestExpandedMode to go back to games
       void requestExpandedMode(e.nativeEvent, 'games');
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback: try standard navigation
       try {
         void navigateTo('games');
       } catch (navError) {
@@ -129,7 +122,7 @@ export const Watch = () => {
         window.location.href = 'games.html';
       }
     }
-  };
+  }, []);
 
   if (!username) {
     return (
@@ -191,7 +184,7 @@ export const Watch = () => {
   }
 
   // Display the game state
-  const renderText = (fullText: string, typedText: string) => {
+  const renderText = (fullText: string, typedText: string, errorIndexes: number[]) => {
     return (
       <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-base sm:text-lg md:text-xl leading-relaxed min-h-20 sm:min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
         {(() => {
@@ -208,11 +201,12 @@ export const Watch = () => {
             const charAbsIndex = startIdx + idx;
             let className = 'text-gray-300';
             if (charAbsIndex < typedText.length) {
-              className =
-                typedText[charAbsIndex] === char
-                  ? 'text-white font-semibold'
-                  : 'text-red-500 bg-red-500/30 font-semibold';
-            } else if (charAbsIndex === typedText.length) {
+              if (errorIndexes.includes(charAbsIndex)) {
+                className = 'text-red-500 bg-red-500/30 font-semibold';
+              } else if (typedText[charAbsIndex] === char) {
+                className = 'text-white font-semibold';
+              }
+            } else if (charAbsIndex === typedText.length && !gameState?.gameCompleted) {
               className = 'bg-white text-black font-bold animate-pulse';
             }
             return (
@@ -263,7 +257,7 @@ export const Watch = () => {
             </div>
             
             <div className="mb-6">
-              {renderText(gameState.challenge.text, gameState.currentInput)}
+              {renderText(gameState.challenge.text, gameState.currentInput, gameState.errorIndexes || [])}
               <div className="w-full bg-gray-600 rounded-full h-2.5">
                 <div
                   className="bg-blue-600 h-2.5 rounded-full"

@@ -18,6 +18,7 @@ export type WatchGameResponse = {
   accuracy: number;
   gameCompleted?: boolean;
   lastUpdate?: number;
+  errorIndexes?: number[]; // Add errorIndexes
 };
 
 export type SpectatableGame = {
@@ -25,6 +26,7 @@ export type SpectatableGame = {
   challenge: DailyChallenge;
   difficulty: 'easy' | 'medium' | 'hard';
   isSpectatable: boolean;
+  status?: 'active' | 'completed';
 };
 
 export type GetActiveGamesResponse = {

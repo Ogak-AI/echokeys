@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Server } from 'socket.io';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 import { reddit, createServer, context as _context, getServerPort } from '@devvit/web/server';
 import { createPost } from './core/post';
@@ -268,12 +269,13 @@ export async function updateUserStats(
   return { newHighScore, rank };
 }
 
-async function addActivePlayer(username: string, isPublic: boolean = true): Promise<void> {
+async function addActivePlayer(username: string): Promise<void> {
   // Add player with timestamp for cleanup
   const timestamp = Date.now();
   await context.redis.sAdd('active_players', username);
+  await context.redis.sAdd('all_game_players', username); // Add to all game players set
   await context.redis.hSet(`player:${username}:session`, {
-    isPublic: isPublic.toString(),
+    isPublic: 'true',
     startTime: timestamp.toString(),
     lastActivity: timestamp.toString(),
   });
@@ -282,10 +284,8 @@ async function addActivePlayer(username: string, isPublic: boolean = true): Prom
 
 async function removeActivePlayer(username: string): Promise<void> {
   await context.redis.sRem('active_players', username);
-  // Clean up game state and session data
-  await context.redis.hSet(`game:${username}`, {}); // Clear game state
-  await context.redis.hSet(`player:${username}:session`, {});
-  await cleanupStalePlayers();
+  // Do not clear game state here; it should persist for viewing
+  await context.redis.hSet(`player:${username}:session`, {}); // Clear session data
 }
 
 async function cleanupStalePlayers(): Promise<void> {
@@ -301,10 +301,15 @@ async function cleanupStalePlayers(): Promise<void> {
 
       if (now - lastActivity > staleThreshold) {
         console.log(
-          `Removing stale player: ${player}. Last activity: ${new Date(
+          `Marking stale player ${player}'s game as completed. Last activity: ${new Date(
             lastActivity
           ).toISOString()}, Now: ${new Date(now).toISOString()}`
         );
+        // Mark the game as completed
+        const gameState = await context.redis.hGetAll(`game:${player}`);
+        if (gameState.status === 'active') {
+          await context.redis.hSet(`game:${player}`, 'status', 'completed');
+        }
         await removeActivePlayer(player);
       }
     }
@@ -387,6 +392,7 @@ router.post('/api/start-game', async (req, res): Promise<void> => {
       wpm: '0',
       accuracy: '0',
       lastUpdate: Date.now().toString(),
+      status: 'active', // Add status field
     });
 
     res.json({ status: 'success', message: 'Game started and recorded' });
@@ -420,6 +426,9 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
 
     await removeActivePlayer(username);
     const { newHighScore, rank } = await updateUserStats(username, result);
+
+    // Set game status to completed
+    await context.redis.hSet(`game:${username}`, 'status', 'completed');
 
     res.json({
       type: 'submitScore',
@@ -470,21 +479,22 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
     // Clean up stale players before returning active games
     await cleanupStalePlayers();
 
-    const activePlayers = await context.redis.sMembers('active_players');
+    // Get all players who have ever played a game
+    const allGamePlayers = await context.redis.sMembers('all_game_players');
     const games = [];
 
-    // Get additional info for each active player
-    for (const player of activePlayers) {
-      const session = await context.redis.hGetAll(`player:${player}:session`);
+    // Get additional info for each player's game
+    for (const player of allGamePlayers) {
+      const gameState = await context.redis.hGetAll(`game:${player}`);
 
-      // Skip private games
-      if (session.isPublic !== 'true') {
+      // Only include games that have some state
+      if (Object.keys(gameState).length === 0) {
         continue;
       }
 
-      const gameState = await context.redis.hGetAll(`game:${player}`);
       let challenge = null;
       let difficulty = 'unknown';
+      let status = gameState.status || 'unknown'; // Get status
 
       if (gameState.challenge) {
         try {
@@ -499,10 +509,10 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
 
       games.push({
         username: player,
-        startTime: parseInt(session.startTime || '0'),
-        hasGameState: Object.keys(gameState).length > 0,
+        startTime: parseInt(gameState.startTime || '0'), // Use gameState.startTime
         challenge: challenge,
         difficulty: difficulty,
+        status: status,
       });
     }
 
@@ -515,7 +525,8 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
         username: g.username,
         challenge: g.challenge,
         difficulty: g.difficulty,
-        isSpectatable: true, // If it's in this list, it's spectatable
+        status: g.status, // Include status in the response
+        isSpectatable: true,
       })),
     });
   } catch (error) {
@@ -587,10 +598,10 @@ router.post('/api/remove-player', async (_req, res): Promise<void> => {
 
 router.post('/api/update-game-state', async (req, res): Promise<void> => {
   try {
-    const { username, challenge, currentInput, startTime, wpm, accuracy } = req.body;
+    const { username, challenge, currentInput, startTime, wpm, accuracy, errorIndexes } = req.body;
     
     // Validate required fields
-    if (!username || !challenge || currentInput === undefined || startTime === undefined || wpm === undefined || accuracy === undefined) {
+    if (!username || !challenge || currentInput === undefined || startTime === undefined || wpm === undefined || accuracy === undefined || errorIndexes === undefined) {
       res.status(400).json({ status: 'error', message: 'Missing game state parameters' });
       return;
     }
@@ -605,14 +616,29 @@ router.post('/api/update-game-state', async (req, res): Promise<void> => {
     // Update player activity timestamp
     await updatePlayerActivity(username);
 
-    // Store game state in Redis
-    await context.redis.hSet(`game:${username}`, {
+    const gameData = {
       challenge: JSON.stringify(challenge),
       currentInput,
       startTime: startTime.toString(),
       wpm: wpm.toString(),
       accuracy: accuracy.toString(),
       lastUpdate: Date.now().toString(),
+      errorIndexes: JSON.stringify(errorIndexes), // Store errorIndexes
+    };
+
+    // Store game state in Redis
+    await context.redis.hSet(`game:${username}`, gameData);
+
+    // Broadcast update to spectators
+    io.to(`game-${username}`).emit('gameStateUpdate', {
+      username,
+      challenge,
+      currentInput,
+      startTime,
+      wpm,
+      accuracy,
+      errorIndexes, // Include errorIndexes in broadcast
+      gameCompleted: currentInput.length >= challenge.text.length, // Calculate here for real-time
     });
 
     res.json({ status: 'success' });
@@ -628,17 +654,6 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
 
     if (!username || username.trim() === '') {
       res.status(400).json({ status: 'error', message: 'Username is required' });
-      return;
-    }
-
-    // Check privacy settings first
-    const playerSession = await context.redis.hGetAll(`player:${username}:session`);
-    if (playerSession.isPublic !== 'true') {
-      res.status(403).json({
-        status: 'error',
-        message: 'This game is private.',
-        gameEnded: true,
-      });
       return;
     }
 
@@ -660,7 +675,7 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
 
     if (lastUpdate > 0 && now - lastUpdate > staleThreshold) {
       // Clean up stale game data
-      await context.redis.hSet(`game:${username}`, {});
+      // await context.redis.hSet(`game:${username}`, {}); // Don't clear, just mark as ended
       res.status(404).json({
         status: 'error',
         message: `Game session for ${username} has expired`,
@@ -687,9 +702,18 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
       return;
     }
 
+    let errorIndexes: number[] = [];
+    if (gameState.errorIndexes) {
+      try {
+        errorIndexes = JSON.parse(gameState.errorIndexes);
+      } catch (e) {
+        console.error(`Failed to parse errorIndexes for player ${username}:`, e);
+      }
+    }
+
     // Check if game is completed
     const currentInput = gameState.currentInput || '';
-    const isGameCompleted = currentInput.length >= challenge.text.length;
+    const isGameCompleted = currentInput.length >= challenge.text.length || gameState.status === 'completed';
 
     res.json({
       type: 'watchGame',
@@ -701,29 +725,11 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
       accuracy: parseFloat(gameState.accuracy || '0'),
       gameCompleted: isGameCompleted,
       lastUpdate: lastUpdate,
+      errorIndexes: errorIndexes, // Include errorIndexes in response
     });
   } catch (error) {
     console.error(`Watch game error:`, error);
     res.status(500).json({ status: 'error', message: 'Failed to retrieve game state' });
-  }
-});
-
-router.post('/api/set-privacy', async (req, res): Promise<void> => {
-  try {
-    const { isPublic } = req.body;
-    const username = await reddit.getCurrentUsername();
-
-    if (!username) {
-      res.status(401).json({ status: 'error', message: 'Unauthorized' });
-      return;
-    }
-
-    await context.redis.hSet(`player:${username}:session`, 'isPublic', isPublic.toString());
-
-    res.json({ status: 'success', isPublic });
-  } catch (error) {
-    console.error('Set privacy error:', error);
-    res.status(500).json({ status: 'error', message: 'Failed to set privacy' });
   }
 });
 
@@ -766,7 +772,37 @@ app.use(router);
 // Get port from environment variable with fallback
 const port = getServerPort();
 
-const server = createServer(app);
-server.on('error', (err) => console.error(`server error; ${err.stack}`));
-server.listen(port);
+// The Devvit server is the one we should listen on and attach Socket.IO to
+const devvitServer = createServer(app); 
 
+// Initialize Socket.IO server and attach to the Devvit server
+const io = new Server(devvitServer, {
+  cors: {
+    origin: '*', // Adjust this to your client's origin in production
+    methods: ['GET', 'POST'],
+  },
+});
+
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
+
+  socket.on('joinGame', (gameUsername: string) => {
+    // Leave any previously joined rooms
+    socket.rooms.forEach(room => {
+      if (room.startsWith('game-') && room !== socket.id) {
+        socket.leave(room);
+        console.log(`Socket ${socket.id} left room ${room}`);
+      }
+    });
+
+    socket.join(`game-${gameUsername}`);
+    console.log(`Socket ${socket.id} joined game-${gameUsername}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('A user disconnected:', socket.id);
+  });
+});
+
+devvitServer.on('error', (err) => console.error(`server error; ${err.stack}`));
+devvitServer.listen(port);

@@ -29,12 +29,6 @@ export const Games = () => {
     }
   };
 
-  const handleRefresh = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    console.log('Refresh button clicked');
-    await fetchActiveGames();
-  };
-
   const handleBack = (e: React.MouseEvent) => {
     console.log('Back button clicked');
     try {
@@ -103,10 +97,6 @@ export const Games = () => {
 
   useEffect(() => {
     void fetchActiveGames();
-    
-    // Auto-refresh every 10 seconds
-    const interval = setInterval(fetchActiveGames, 10000);
-    return () => clearInterval(interval);
   }, []);
 
   if (loading) {
@@ -135,14 +125,6 @@ export const Games = () => {
         </button>
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
         <p className="text-red-500">Connection issue: {error}</p>
-        <div className="flex gap-4">
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
-            onClick={handleRefresh}
-          >
-            Retry
-          </button>
-        </div>
       </div>
     );
   }
@@ -157,7 +139,6 @@ export const Games = () => {
       </button>
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Active Games</h1>
-        <p className="text-sm opacity-75 mb-4">Live games update every 10 seconds</p>
       </div>
       <div className="mt-4 w-full max-w-md bg-white/5 rounded-lg p-4">
         {activeGames && activeGames.length > 0 ? (
@@ -170,7 +151,9 @@ export const Games = () => {
               >
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    {game.status === 'active' && (
+                      <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    )}
                     <span className="text-lg font-medium">{game.username}</span>
                   </div>
                   {game.challenge && (
@@ -187,7 +170,12 @@ export const Games = () => {
                   `}>
                     {game.difficulty.toUpperCase()}
                   </span>
-                  <span className="ml-2 bg-blue-600 px-2 py-1 rounded-full text-xs">LIVE</span>
+                  {game.status === 'active' && (
+                    <span className="ml-2 bg-blue-600 px-2 py-1 rounded-full text-xs">LIVE</span>
+                  )}
+                  {game.status === 'completed' && (
+                    <span className="ml-2 bg-gray-600 px-2 py-1 rounded-full text-xs">COMPLETED</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -204,15 +192,6 @@ export const Games = () => {
             </button>
           </div>
         )}
-      </div>
-      <div className="flex items-center justify-center gap-4 mt-3">
-        <button
-          className="absolute top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
       </div>
     </div>
   );
