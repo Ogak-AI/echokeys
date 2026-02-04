@@ -4,23 +4,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
-import { reddit, createServer, context as _context, getServerPort } from '@devvit/web/server';
+import { reddit, createServer, context, getServerPort } from '@devvit/web/server';
+import { redis } from '@devvit/redis'; // Import the redis client directly
 import { createPost } from './core/post';
 import challengesData from './challenges.json' assert { type: 'json' };
 
-interface DevvitRedisClient {
-  sAdd(key: string, member: string | string[]): Promise<number>;
-  sRem(key: string, member: string | string[]): Promise<number>;
-  sMembers(key: string): Promise<string[]>;
-  hSet(key: string, field: string, value: string): Promise<number>;
-  hSet(key: string, mapping: { [key: string]: string }): Promise<string>;
-  hGetAll(key: string): Promise<{ [key: string]: string }>;
-  zAdd(key: string, members: { score: number, member: string }[]): Promise<number>;
-  zRange(key: string, min: number, max: number): Promise<{ score: number, member: string }[]>;
-  zRevRank(key: string, member: string): Promise<number | null>;
-}
-
-const context = _context as typeof _context & { redis: DevvitRedisClient };
+// The DevvitRedisClient interface and the context re-assignment are no longer needed.
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -225,7 +214,7 @@ function getDailyChallenge(): DailyChallenge {
 }
 
 async function getUserStats(username: string): Promise<UserStats> {
-  const stats = await context.redis.hGetAll(`user:${username}:stats`);
+  const stats = await redis.hGetAll(`user:${username}:stats`);
   return {
     bestWPM: parseFloat(stats.bestWPM || '0'),
     bestAccuracy: parseFloat(stats.bestAccuracy || '0'),
@@ -251,7 +240,7 @@ export async function updateUserStats(
   // For streak, we'd need to track last play date, but simplify for now
   stats.streak = stats.streak + 1; // Assume daily play
 
-  await context.redis.hSet(`user:${username}:stats`, {
+  await redis.hSet(`user:${username}:stats`, {
     bestWPM: stats.bestWPM.toString(),
     bestAccuracy: stats.bestAccuracy.toString(),
     totalGames: stats.totalGames.toString(),
@@ -260,10 +249,10 @@ export async function updateUserStats(
 
   // Update leaderboard
   const member = `${username}:${Date.now()}:${result.accuracy}`;
-  await context.redis.zAdd('leaderboard', [{ score: result.wpm, member }]);
+  await redis.zAdd('leaderboard', [{ score: result.wpm, member }]);
 
   // Get rank (1-based)
-  const rawRank = await context.redis.zRevRank('leaderboard', member);
+  const rawRank = await redis.zRevRank('leaderboard', member);
   const rank = rawRank !== null ? rawRank + 1 : 0;
 
   return { newHighScore, rank };
@@ -272,9 +261,9 @@ export async function updateUserStats(
 async function addActivePlayer(username: string): Promise<void> {
   // Add player with timestamp for cleanup
   const timestamp = Date.now();
-  await context.redis.sAdd('active_players', username);
-  await context.redis.sAdd('all_game_players', username); // Add to all game players set
-  await context.redis.hSet(`player:${username}:session`, {
+  await redis.sAdd('active_players', username);
+  await redis.sAdd('all_game_players', username); // Add to all game players set
+  await redis.hSet(`player:${username}:session`, {
     isPublic: 'true',
     startTime: timestamp.toString(),
     lastActivity: timestamp.toString(),
@@ -283,19 +272,19 @@ async function addActivePlayer(username: string): Promise<void> {
 }
 
 async function removeActivePlayer(username: string): Promise<void> {
-  await context.redis.sRem('active_players', username);
+  await redis.sRem('active_players', username);
   // Do not clear game state here; it should persist for viewing
-  await context.redis.hSet(`player:${username}:session`, {}); // Clear session data
+  await redis.hSet(`player:${username}:session`, {}); // Clear session data
 }
 
 async function cleanupStalePlayers(): Promise<void> {
   try {
-    const activePlayers = await context.redis.sMembers('active_players');
+    const activePlayers = await redis.sMembers('active_players');
     const now = Date.now();
     const staleThreshold = 15 * 60 * 1000; // 15 minutes
 
     for (const player of activePlayers) {
-      const session = await context.redis.hGetAll(`player:${player}:session`);
+      const session = await redis.hGetAll(`player:${player}:session`);
 
       const lastActivity = parseInt(session.lastActivity || '0');
 
@@ -306,9 +295,9 @@ async function cleanupStalePlayers(): Promise<void> {
           ).toISOString()}, Now: ${new Date(now).toISOString()}`
         );
         // Mark the game as completed
-        const gameState = await context.redis.hGetAll(`game:${player}`);
+        const gameState = await redis.hGetAll(`game:${player}`);
         if (gameState.status === 'active') {
-          await context.redis.hSet(`game:${player}`, 'status', 'completed');
+          await redis.hSet(`game:${player}`, 'status', 'completed');
         }
         await removeActivePlayer(player);
       }
@@ -320,7 +309,7 @@ async function cleanupStalePlayers(): Promise<void> {
 
 async function updatePlayerActivity(username: string): Promise<void> {
   const now = Date.now();
-  await context.redis.hSet(`player:${username}:session`, 'lastActivity', now.toString());
+  await redis.hSet(`player:${username}:session`, 'lastActivity', now.toString());
   console.log(`Player ${username} activity updated at: ${new Date(now).toISOString()}`);
 }
 
@@ -384,7 +373,7 @@ router.post('/api/start-game', async (req, res): Promise<void> => {
 
     // Add player to active players and set initial game state
     await addActivePlayer(username);
-    await context.redis.hSet(`game:${username}`, {
+    await redis.hSet(`game:${username}`, {
       challenge: JSON.stringify(challenge),
       difficulty: difficulty,
       currentInput: '',
@@ -428,7 +417,7 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
     const { newHighScore, rank } = await updateUserStats(username, result);
 
     // Set game status to completed
-    await context.redis.hSet(`game:${username}`, 'status', 'completed');
+    await redis.hSet(`game:${username}`, 'status', 'completed');
 
     res.json({
       type: 'submitScore',
@@ -444,7 +433,7 @@ router.post('/api/submit-score', async (req, res): Promise<void> => {
 
 router.get('/api/leaderboard', async (_req, res): Promise<void> => {
   try {
-    const leaderboardData = await context.redis.zRange('leaderboard', -10, -1);
+    const leaderboardData = await redis.zRange('leaderboard', -10, -1);
     const leaderboard: GetLeaderboardResponse['leaderboard'] = [];
     for (const entry of leaderboardData) {
       const parts = entry.member.split(':');
@@ -470,7 +459,7 @@ router.get('/api/leaderboard', async (_req, res): Promise<void> => {
 
 router.get('/api/active-games', async (_req, res): Promise<void> => {
   try {
-    if (!context.redis) {
+    if (!redis) {
       console.error('Active games error: Redis client not available in context.');
       res.status(500).json({ status: 'error', message: 'Redis client not available' });
       return;
@@ -480,12 +469,12 @@ router.get('/api/active-games', async (_req, res): Promise<void> => {
     await cleanupStalePlayers();
 
     // Get all players who have ever played a game
-    const allGamePlayers = await context.redis.sMembers('all_game_players');
+    const allGamePlayers = await redis.sMembers('all_game_players');
     const games = [];
 
     // Get additional info for each player's game
     for (const player of allGamePlayers) {
-      const gameState = await context.redis.hGetAll(`game:${player}`);
+      const gameState = await redis.hGetAll(`game:${player}`);
 
       // Only include games that have some state
       if (Object.keys(gameState).length === 0) {
@@ -627,7 +616,7 @@ router.post('/api/update-game-state', async (req, res): Promise<void> => {
     };
 
     // Store game state in Redis
-    await context.redis.hSet(`game:${username}`, gameData);
+    await redis.hSet(`game:${username}`, gameData);
 
     // Broadcast update to spectators
     io.to(`game-${username}`).emit('gameStateUpdate', {
@@ -657,7 +646,7 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
       return;
     }
 
-    const gameState = await context.redis.hGetAll(`game:${username}`);
+    const gameState = await redis.hGetAll(`game:${username}`);
 
     if (!gameState || Object.keys(gameState).length === 0) {
       res.status(404).json({
@@ -675,7 +664,7 @@ router.get('/api/watch-game/:username', async (req, res): Promise<void> => {
 
     if (lastUpdate > 0 && now - lastUpdate > staleThreshold) {
       // Clean up stale game data
-      // await context.redis.hSet(`game:${username}`, {}); // Don't clear, just mark as ended
+      // await redis.hSet(`game:${username}`, {}); // Don't clear, just mark as ended
       res.status(404).json({
         status: 'error',
         message: `Game session for ${username} has expired`,

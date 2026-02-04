@@ -24,6 +24,7 @@
     "type-check": "tsc --build"
   },
   "dependencies": {
+    "@devvit/redis": "^0.12.11",
     "@devvit/web": "0.12.10",
     "clsx": "2.1.1",
     "devvit": "^1.0.0",
