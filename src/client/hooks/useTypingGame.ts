@@ -27,6 +27,7 @@ interface GameState {
   lastSpokenIndex: number;
   isMuted: boolean;
   errorIndexes: number[];
+}; // Added semicolon
 
 export const useTypingGame = () => {
   const [state, setState] = useState<GameState>({
