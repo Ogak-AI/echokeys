@@ -1,10 +1,10 @@
 import '../index.css';
 
 import { navigateTo, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode, useEffect, useState, useCallback } from 'react'; // Add useCallback
+import { StrictMode, useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { WatchGameResponse } from '../../shared/types/api';
-import { io } from 'socket.io-client'; // Import io from socket.io-client
+import { io } from 'socket.io-client';
 
 export const Watch = () => {
   const [username, setUsername] = useState<string | null>(null);
@@ -12,7 +12,6 @@ export const Watch = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [gameEnded, setGameEnded] = useState<boolean>(false);
-  // Removed retryCount as it was related to polling
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -27,11 +26,12 @@ export const Watch = () => {
     }
     setUsername(usernameParam);
 
-    const socket = io(); // Connect to Socket.IO server
+    const socket = io();
 
     socket.on('connect', () => {
       console.log('Connected to WebSocket server');
-      socket.emit('joinGame', usernameParam);
+      socket.emit('watchGame', usernameParam);
+      setLoading(false);
     });
 
     socket.on('gameStateUpdate', (updatedGame: WatchGameResponse) => {
@@ -51,44 +51,10 @@ export const Watch = () => {
       setError(`Connection error: ${err.message}. Retrying...`);
     });
 
-    const fetchGameState = async () => {
-      if (gameEnded) return;
-
-      try {
-        const response = await fetch(`/api/watch-game/${usernameParam}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          if (data.gameEnded) {
-            setGameEnded(true);
-            setError(`${usernameParam}'s game has ended`);
-            return;
-          }
-          throw new Error(data.message || `HTTP error! status: ${response.status}`);
-        }
-
-        const gameData: WatchGameResponse = data;
-        setGameState(gameData);
-        setGameEnded(gameData.gameCompleted || false);
-        setError(null);
-      } catch (e: unknown) {
-        console.error('Watch game initial fetch error:', e);
-        if (e instanceof Error) {
-          setError(`Error fetching initial game state: ${e.message}`);
-        } else {
-          setError('Unknown error fetching initial game state');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchGameState(); // Initial fetch when component mounts
-
     return () => {
-      socket.disconnect(); // Disconnect on unmount
+      socket.disconnect();
     };
-  }, [gameEnded]);
+  }, []);
 
   const handleBack = useCallback((e: React.MouseEvent) => {
     console.log('Back button clicked in watch');
@@ -139,7 +105,7 @@ export const Watch = () => {
     );
   }
 
-  if (loading) {
+  if (loading && !gameState) {
     return (
       <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
         <button
@@ -165,14 +131,6 @@ export const Watch = () => {
         </button>
         <h1 className="text-3xl font-bold mb-2">Watching {username}'s Game</h1>
         <p className={`text-lg ${gameEnded ? 'text-yellow-400' : 'text-red-500'}`}>{error}</p>
-        {!gameEnded && (
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
-            onClick={handleRefresh}
-          >
-            Retry Connection
-          </button>
-        )}
         <button
           className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
           onClick={handleBackToGames}
@@ -223,7 +181,7 @@ export const Watch = () => {
   const getGameStatus = () => {
     if (!gameState) return 'Loading...';
     if (gameState.gameCompleted) return 'Game Completed!';
-    
+
     const progress = Math.round((gameState.currentInput.length / gameState.challenge.text.length) * 100);
     return `In Progress (${progress}%)`;
   };
