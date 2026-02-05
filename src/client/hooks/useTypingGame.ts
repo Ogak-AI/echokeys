@@ -29,7 +29,7 @@ interface GameState {
   errorIndexes: number[];
 } // Added semicolon
 
-export const useTypingGame = () => {
+export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
   const [state, setState] = useState<GameState>({
     username: null,
     userStats: null,
@@ -212,19 +212,15 @@ export const useTypingGame = () => {
 
       // Send game state to server for spectators
       if (state.username && challenge && state.startTime) {
-        fetch('/api/update-game-state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: state.username,
-            challenge: challenge,
-            currentInput: input,
-            startTime: state.startTime,
-            wpm,
-            accuracy,
-            errorIndexes: newErrorIndexes,
-          }),
-        }).catch((err) => console.error('Failed to update game state for spectators', err));
+        options?.onUpdate?.({
+          username: state.username,
+          challenge: challenge,
+          currentInput: input,
+          startTime: state.startTime,
+          wpm,
+          accuracy,
+          errorIndexes: newErrorIndexes,
+        });
       }
 
       if (isFinished) {

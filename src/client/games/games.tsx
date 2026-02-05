@@ -35,7 +35,7 @@ const Games = () => {
 
   const handleWatch = (e: React.MouseEvent, username: string) => {
     try {
-      void requestExpandedMode(e.nativeEvent, `watch?username=${username}`);
+      void requestExpandedMode(null, `watch?username=${username}`);
     } catch {
       void navigateTo(`watch?username=${username}`);
     }

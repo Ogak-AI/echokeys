@@ -320,6 +320,34 @@ router.get('/api/stats/:username', async (req, res) => {
   }
 });
 
+// Function to initialize the game
+router.get('/api/init', async (_req, res) => {
+  try {
+    const challenge = getDailyChallenge();
+    const username = context.username || 'anonymous';
+    const userStats = await getUserStats(username);
+    const postId = 'keyscripture_post'; // Placeholder, can be from context or params
+    res.json({ type: 'init', postId, username, userStats, dailyChallenge: challenge });
+  } catch (error) {
+    console.error('Failed to init game:', error);
+    res.status(500).json({ error: 'Failed to initialize game' });
+  }
+});
+
+// Function to submit score
+router.post('/api/submit', async (req, res) => {
+  try {
+    const result: GameResult = req.body;
+    const username = context.username || 'anonymous';
+    const { newHighScore, rank } = await updateUserStats(username, result);
+    const postId = 'keyscripture_post';
+    res.json({ type: 'submitScore', postId, newHighScore, rank });
+  } catch (error) {
+    console.error('Failed to submit score:', error);
+    res.status(500).json({ error: 'Failed to submit score' });
+  }
+});
+
 // Endpoint to get all active games
 router.get('/api/games', async (_req, res) => {
   try {
@@ -353,6 +381,9 @@ router.get('/api/games', async (_req, res) => {
     res.status(500).send('Failed to get active games');
   }
 });
+
+// Mount the router to the app
+app.use(router);
 
 // Initialize Socket.IO server and attach to the Devvit server
 const io = new Server(devvitServer, {

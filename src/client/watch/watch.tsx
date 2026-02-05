@@ -18,7 +18,7 @@ export const Watch = () => {
     const usernameParam = params.get('username');
     if (!usernameParam) {
       try {
-        void requestExpandedMode(new MouseEvent('click'), 'games');
+        void requestExpandedMode(null, 'games');
       } catch {
         void navigateTo('games');
       }
