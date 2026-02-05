@@ -1,21 +1,45 @@
 import '../index.css';
 
-import { navigateTo, requestExpandedMode, connectRealtime } from '@devvit/web/client';
+import { navigateTo, requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { WatchGameResponse } from '../../shared/types/api';
+import { io, Socket } from 'socket.io-client';
+import { GameStateUpdate, PlayerJoined, PlayerLeft, GameFinished } from '../../shared/types/socket';
+
+interface WatchGameState {
+  players: Array<{
+    id: string;
+    username: string;
+    currentInput: string;
+    wpm: number;
+    accuracy: number;
+    startTime: number;
+    errorIndexes: number[];
+    isFinished: boolean;
+  }>;
+  challenge: {
+    id: string;
+    text: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+  };
+  gameCompleted: boolean;
+}
 
 export const Watch = () => {
   const [username, setUsername] = useState<string | null>(null);
-  const [gameState, setGameState] = useState<WatchGameResponse | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [gameState, setGameState] = useState<WatchGameState | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [gameEnded, setGameEnded] = useState<boolean>(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const usernameParam = params.get('username');
-    if (!usernameParam) {
+    const roomIdParam = params.get('roomId');
+
+    if (!usernameParam && !roomIdParam) {
       try {
         void requestExpandedMode({} as any, 'games');
       } catch {
@@ -23,57 +47,79 @@ export const Watch = () => {
       }
       return;
     }
+
     setUsername(usernameParam);
+    setRoomId(roomIdParam);
 
-    // Connect to realtime for game updates
-    const setupRealtime = async () => {
-      const connection = await connectRealtime({
-        channel: 'keyscripture_dev', // This should match the subreddit name used in server
-        onConnect: () => {
-          console.log('Connected to realtime for spectator updates');
-          setLoading(false);
-        },
-        onDisconnect: () => {
-          console.log('Disconnected from realtime');
-          setError('Disconnected from game. Attempting to reconnect...');
-        },
-        onMessage: (message: any) => {
-          console.log('Received realtime message:', message);
-          if (message.type === 'gameUpdate' && message.gameUsername === usernameParam) {
-            const updatedGame: WatchGameResponse = message.data;
-            setGameState(updatedGame);
-            setGameEnded(updatedGame.gameCompleted || false);
-            setError(null);
-          }
-        },
-      });
+    // Connect to Socket.IO server
+    const socketConnection = io();
 
-      return connection;
-    };
+    socketConnection.on('connect', () => {
+      console.log('Connected to Socket.IO server');
+      setLoading(false);
+      setError(null);
 
-    const connectionPromise = setupRealtime();
+      // Join the game as spectator
+      if (roomIdParam) {
+        socketConnection.emit('joinGame', {
+          roomId: roomIdParam,
+          username: usernameParam || 'Anonymous',
+          asSpectator: true
+        });
+      }
+    });
 
-    // Initial fetch of game state
-    fetch(`/api/games`)
-      .then((res) => res.json())
-      .then((games: WatchGameResponse[]) => {
-        const userGame = games.find((game) => game.username === usernameParam);
-        if (userGame) {
-          setGameState(userGame);
-          setGameEnded(userGame.gameCompleted || false);
-        } else {
-          setError('Game not found for this user');
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch initial game state:', err);
-        setError('Failed to load game state');
-        setLoading(false);
-      });
+    socketConnection.on('disconnect', () => {
+      console.log('Disconnected from Socket.IO server');
+      setError('Disconnected from game. Attempting to reconnect...');
+    });
+
+    socketConnection.on('joinedGame', (data: { roomId: string; asSpectator: boolean }) => {
+      console.log('Successfully joined game as spectator:', data);
+    });
+
+    socketConnection.on('message', (message: GameStateUpdate | PlayerJoined | PlayerLeft | GameFinished) => {
+      console.log('Received Socket.IO message:', message);
+
+      if (message.type === 'gameState') {
+        // Convert the game state to our expected format
+        const watchGameState: WatchGameState = {
+          players: message.players,
+          challenge: message.players[0]?.currentInput ? {
+            id: 'current-challenge',
+            text: '', // We don't have the full challenge text in updates
+            difficulty: 'medium' // Default, could be enhanced
+          } : {
+            id: 'current-challenge',
+            text: 'Loading challenge...',
+            difficulty: 'medium'
+          },
+          gameCompleted: message.players.some(p => p.isFinished)
+        };
+        setGameState(watchGameState);
+        setGameEnded(watchGameState.gameCompleted);
+        setError(null);
+      } else if (message.type === 'gameFinished') {
+        setGameEnded(true);
+        setError('Game has finished!');
+      }
+    });
+
+    socketConnection.on('error', (error: { message: string }) => {
+      console.error('Socket.IO error:', error);
+      setError(error.message);
+    });
+
+    setSocket(socketConnection);
+
+    // Initial fetch to get room info if needed
+    if (roomIdParam) {
+      // For now, we'll rely on Socket.IO updates
+      // Could add an API call here to get initial room state
+    }
 
     return () => {
-      connectionPromise.then((connection) => connection.disconnect());
+      socketConnection.disconnect();
     };
   }, []);
 
@@ -163,11 +209,15 @@ export const Watch = () => {
   }
 
   // Display the game state
-  const renderText = (fullText: string, typedText: string, errorIndexes: number[]) => {
+  const renderText = (fullText: string, players: WatchGameState['players']) => {
+    if (!players.length) return <div>No players in this game</div>;
+
+    // For simplicity, show the first player's progress
+    const player = players[0];
     return (
       <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-base sm:text-lg md:text-xl leading-relaxed min-h-20 sm:min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
         {(() => {
-          const charIndex = typedText.length;
+          const charIndex = player.currentInput.length;
           // Show 100-120 characters total, with cursor roughly in the middle
           const charsToShow = 110; // characters to display
           const beforeCursor = 40; // characters before cursor
@@ -179,13 +229,13 @@ export const Watch = () => {
           return displayText.split('').map((char, idx) => {
             const charAbsIndex = startIdx + idx;
             let className = 'text-gray-300';
-            if (charAbsIndex < typedText.length) {
-              if (errorIndexes.includes(charAbsIndex)) {
+            if (charAbsIndex < player.currentInput.length) {
+              if (player.errorIndexes.includes(charAbsIndex)) {
                 className = 'text-red-500 bg-red-500/30 font-semibold';
-              } else if (typedText[charAbsIndex] === char) {
+              } else if (player.currentInput[charAbsIndex] === char) {
                 className = 'text-white font-semibold';
               }
-            } else if (charAbsIndex === typedText.length && !gameState?.gameCompleted) {
+            } else if (charAbsIndex === player.currentInput.length && !player.isFinished) {
               className = 'bg-white text-black font-bold animate-pulse';
             }
             return (
@@ -203,8 +253,11 @@ export const Watch = () => {
     if (!gameState) return 'Loading...';
     if (gameState.gameCompleted) return 'Game Completed!';
 
+    if (gameState.players.length === 0) return 'Waiting for players...';
+
+    const player = gameState.players[0];
     const progress = Math.round(
-      (gameState.currentInput.length / gameState.challenge.text.length) * 100
+      (player.currentInput.length / (gameState.challenge?.text?.length || 1)) * 100
     );
     return `In Progress (${progress}%)`;
   };
@@ -218,63 +271,61 @@ export const Watch = () => {
         &larr; Back
       </button>
       <div className="text-center">
-        <h1 className="text-3xl font-bold mb-2">Watching {username}'s Game</h1>
+        <h1 className="text-3xl font-bold mb-2">Watching Game</h1>
         <div className="text-lg mb-4 opacity-90">{getGameStatus()}</div>
         {gameState ? (
           <div className="mt-4 w-full max-w-4xl bg-white/5 rounded-lg p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Challenge: {gameState.challenge.difficulty}</h2>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  gameState.challenge.difficulty === 'easy'
-                    ? 'bg-blue-600'
-                    : gameState.challenge.difficulty === 'medium'
-                      ? 'bg-blue-700'
-                      : 'bg-red-600'
-                }`}
-              >
-                {gameState.challenge.difficulty}
-              </span>
+              <h2 className="text-xl font-semibold">Live Game</h2>
+              <div className="flex gap-2">
+                {gameState.players.map((player, idx) => (
+                  <span key={player.id} className="px-3 py-1 rounded-full text-sm font-medium bg-blue-600">
+                    {player.username}
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="mb-6">
-              {renderText(
-                gameState.challenge.text,
-                gameState.currentInput,
-                gameState.errorIndexes || []
+              {renderText(gameState.challenge.text || 'Loading challenge...', gameState.players)}
+              {gameState.players.length > 0 && (
+                <div className="w-full bg-gray-600 rounded-full h-2.5">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full"
+                    style={{
+                      width: `${(gameState.players[0].currentInput.length / (gameState.challenge.text?.length || 1)) * 100}%`,
+                    }}
+                  ></div>
+                </div>
               )}
-              <div className="w-full bg-gray-600 rounded-full h-2.5">
-                <div
-                  className="bg-blue-600 h-2.5 rounded-full"
-                  style={{
-                    width: `${(gameState.currentInput.length / gameState.challenge.text.length) * 100}%`,
-                  }}
-                ></div>
-              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-center bg-white/5 rounded-lg p-4">
-              <div>
-                <div className="text-2xl font-bold text-blue-400">{gameState.wpm}</div>
-                <div className="text-sm opacity-75">WPM</div>
+            {gameState.players.length > 0 && (
+              <div className="grid grid-cols-2 gap-4 text-center bg-white/5 rounded-lg p-4">
+                <div>
+                  <div className="text-2xl font-bold text-blue-400">{gameState.players[0].wpm}</div>
+                  <div className="text-sm opacity-75">WPM</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-green-400">{gameState.players[0].accuracy}%</div>
+                  <div className="text-sm opacity-75">Accuracy</div>
+                </div>
               </div>
-              <div>
-                <div className="text-2xl font-bold text-green-400">{gameState.accuracy}%</div>
-                <div className="text-sm opacity-75">Accuracy</div>
-              </div>
-            </div>
+            )}
 
             {gameState.gameCompleted && (
               <div className="mt-4 p-4 bg-green-600/20 border border-green-600/50 rounded-lg">
                 <p className="text-green-400 font-semibold">🎉 Game completed!</p>
-                <p className="text-sm opacity-75">
-                  Final score: {gameState.wpm} WPM at {gameState.accuracy}% accuracy
-                </p>
+                {gameState.players.map(player => (
+                  <p key={player.id} className="text-sm opacity-75">
+                    {player.username}: {player.wpm} WPM at {player.accuracy}% accuracy
+                  </p>
+                ))}
               </div>
             )}
           </div>
         ) : (
-          <p className="text-sm opacity-80">No game data available for {username}.</p>
+          <p className="text-sm opacity-80">No game data available.</p>
         )}
       </div>
       <div className="flex items-center justify-center mt-3">

@@ -3,17 +3,24 @@ import '../index.css';
 import { navigateTo, requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { SpectatableGame } from '../../shared/types/api';
+
+interface ActiveGame {
+  id: string;
+  playerCount: number;
+  spectatorCount: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  status: 'waiting' | 'active' | 'finished';
+}
 
 const Games = () => {
-  const [games, setGames] = useState<SpectatableGame[]>([]);
+  const [games, setGames] = useState<ActiveGame[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchGames = async () => {
       try {
-        const response = await fetch('/api/games');
+        const response = await fetch('/api/active-rooms');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -31,13 +38,17 @@ const Games = () => {
     };
 
     void fetchGames();
+
+    // Refresh games every 10 seconds
+    const interval = setInterval(fetchGames, 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleWatch = (username: string) => {
+  const handleWatch = (roomId: string) => {
     try {
-      void requestExpandedMode({} as any, `watch?username=${username}`);
+      void requestExpandedMode({} as any, `watch?roomId=${roomId}`);
     } catch {
-      void navigateTo(`watch?username=${username}`);
+      void navigateTo(`watch?roomId=${roomId}`);
     }
   };
 
@@ -54,18 +65,22 @@ const Games = () => {
             <ul className="space-y-4">
               {games.map((game) => (
                 <li
-                  key={game.username}
+                  key={game.id}
                   className="bg-gray-800 p-4 rounded-lg flex justify-between items-center"
                 >
                   <div>
-                    <h2 className="text-xl font-semibold">{game.username}'s Game</h2>
-                    <p className="text-gray-400">Difficulty: {game.challenge.difficulty}</p>
+                    <h2 className="text-xl font-semibold">Room {game.id}</h2>
+                    <p className="text-gray-400">
+                      Difficulty: {game.difficulty} | Players: {game.playerCount} | Spectators: {game.spectatorCount}
+                    </p>
+                    <p className="text-sm text-gray-500">Status: {game.status}</p>
                   </div>
                   <button
-                    onClick={() => handleWatch(game.username)}
+                    onClick={() => handleWatch(game.id)}
                     className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
+                    disabled={game.status === 'finished'}
                   >
-                    Watch
+                    {game.status === 'finished' ? 'Finished' : 'Watch'}
                   </button>
                 </li>
               ))}
