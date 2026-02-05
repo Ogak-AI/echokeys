@@ -21,6 +21,7 @@ export default defineConfig({
         format: 'cjs',
         entryFileNames: 'index.cjs',
         inlineDynamicImports: true,
+        exports: 'default',
       },
     },
   },

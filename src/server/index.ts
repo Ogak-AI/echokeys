@@ -234,7 +234,7 @@ async function getUserStats(username: string): Promise<UserStats> {
   }
 }
 
-export async function updateUserStats(
+async function updateUserStats(
   username: string,
   result: GameResult
 ): Promise<{ newHighScore: boolean; rank: number }> {
