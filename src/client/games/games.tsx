@@ -46,7 +46,7 @@ const Games = () => {
 
   const handleWatch = (roomId: string) => {
     try {
-      void requestExpandedMode({} as any, `watch?roomId=${roomId}`);
+      void requestExpandedMode(new MouseEvent('click'), `watch?roomId=${roomId}`);
     } catch {
       void navigateTo(`watch?roomId=${roomId}`);
     }
@@ -71,7 +71,8 @@ const Games = () => {
                   <div>
                     <h2 className="text-xl font-semibold">Room {game.id}</h2>
                     <p className="text-gray-400">
-                      Difficulty: {game.difficulty} | Players: {game.playerCount} | Spectators: {game.spectatorCount}
+                      Difficulty: {game.difficulty} | Players: {game.playerCount} | Spectators:{' '}
+                      {game.spectatorCount}
                     </p>
                     <p className="text-sm text-gray-500">Status: {game.status}</p>
                   </div>

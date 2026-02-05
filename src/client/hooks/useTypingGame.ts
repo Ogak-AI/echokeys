@@ -8,7 +8,7 @@ import type {
   DailyChallenge,
   GameResult,
 } from '../../shared/types/api';
-import { GameStateUpdate, GameChallenge } from '../../shared/types/socket';
+import { GameChallenge } from '../../shared/types/socket';
 
 interface GameState {
   username: string | null;
@@ -34,7 +34,7 @@ interface GameState {
   challenge: GameChallenge | null;
 }
 
-export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
+export const useTypingGame = () => {
   const [state, setState] = useState<GameState>({
     username: null,
     userStats: null,
@@ -63,7 +63,7 @@ export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
   useEffect(() => {
     // Initialize Socket.IO connection
     const socketConnection = io();
-    setState(prev => ({ ...prev, socket: socketConnection }));
+    setState((prev) => ({ ...prev, socket: socketConnection }));
 
     socketConnection.on('connect', () => {
       console.log('Connected to Socket.IO server');
@@ -75,37 +75,37 @@ export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
 
     socketConnection.on('gameCreated', (data: { roomId: string }) => {
       console.log('Game created:', data);
-      setState(prev => ({ ...prev, roomId: data.roomId }));
+      setState((prev) => ({ ...prev, roomId: data.roomId }));
 
       // Join the game as a player
       socketConnection.emit('joinGame', {
         roomId: data.roomId,
         username: state.username || 'Player',
-        asSpectator: false
+        asSpectator: false,
       });
     });
 
     socketConnection.on('joinedGame', (data: { roomId: string; asSpectator: boolean }) => {
       console.log('Joined game:', data);
-      setState(prev => ({ ...prev, roomId: data.roomId }));
+      setState((prev) => ({ ...prev, roomId: data.roomId }));
 
       // For now, we'll need to get the challenge from the server
       // In a full implementation, the server would send the challenge when joining
       // For now, let's fetch it from the old API as a fallback
       if (!data.asSpectator) {
         fetch(`/api/challenge/${state.selectedDifficulty || 'easy'}`)
-          .then(res => res.json())
+          .then((res) => res.json())
           .then((challengeData: DailyChallenge) => {
-            setState(prev => ({
+            setState((prev) => ({
               ...prev,
               challenge: {
                 id: challengeData.id,
                 text: challengeData.text,
-                difficulty: challengeData.difficulty
-              }
+                difficulty: challengeData.difficulty,
+              },
             }));
           })
-          .catch(err => console.error('Failed to fetch challenge:', err));
+          .catch((err) => console.error('Failed to fetch challenge:', err));
       }
     });
 
@@ -149,7 +149,7 @@ export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
     return () => {
       socketConnection.disconnect();
     };
-  }, []);
+  }, [state.selectedDifficulty, state.username]);
 
   const startGame = useCallback(() => {
     setState((prev) => ({
@@ -171,7 +171,7 @@ export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
         // Create a new game room
         state.socket.emit('createGame', {
           username: state.username,
-          difficulty
+          difficulty,
         });
 
         setState((prev) => ({

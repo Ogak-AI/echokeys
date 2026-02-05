@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
-import { createServer, context, getServerPort } from '@devvit/web/server';
+import { createServer, context } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
 import { realtime } from '@devvit/realtime/server';
 import challengesData from './challenges.json' assert { type: 'json' };
@@ -275,14 +275,14 @@ async function addActivePlayer(username: string): Promise<void> {
 
 // The Devvit server is the one we should listen on and attach Socket.IO to
 const server = createServer(app);
-const port = getServerPort();
+// const port = getServerPort();
 
 // Initialize Socket.IO server
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
 });
 
 // Initialize game room manager
@@ -321,27 +321,30 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('updateProgress', (data: {
-    roomId: string;
-    currentInput: string;
-    wpm: number;
-    accuracy: number;
-    errorIndexes: number[];
-  }) => {
-    try {
-      const { roomId, currentInput, wpm, accuracy, errorIndexes } = data;
-      gameRoomManager.updatePlayerProgress(socket.id, roomId, {
-        currentInput,
-        wpm,
-        accuracy,
-        errorIndexes
-      });
-      console.log(`Progress update for ${socket.id} in room ${roomId}`);
-    } catch (error) {
-      console.error('Error updating progress:', error);
-      socket.emit('error', { message: 'Failed to update progress' });
+  socket.on(
+    'updateProgress',
+    (data: {
+      roomId: string;
+      currentInput: string;
+      wpm: number;
+      accuracy: number;
+      errorIndexes: number[];
+    }) => {
+      try {
+        const { roomId, currentInput, wpm, accuracy, errorIndexes } = data;
+        gameRoomManager.updatePlayerProgress(socket.id, roomId, {
+          currentInput,
+          wpm,
+          accuracy,
+          errorIndexes,
+        });
+        console.log(`Progress update for ${socket.id} in room ${roomId}`);
+      } catch (error) {
+        console.error('Error updating progress:', error);
+        socket.emit('error', { message: 'Failed to update progress' });
+      }
     }
-  });
+  );
 
   socket.on('disconnect', () => {
     try {
@@ -387,7 +390,7 @@ router.get('/api/challenge/:difficulty', async (req, res) => {
     }
 
     // Filter challenges by difficulty
-    const filteredChallenges = challenges.filter(c => c.difficulty === difficulty);
+    const filteredChallenges = challenges.filter((c) => c.difficulty === difficulty);
     if (filteredChallenges.length === 0) {
       return res.status(404).json({ error: 'No challenges found for this difficulty' });
     }

@@ -49,11 +49,7 @@ export interface GameFinished {
   finalResults: Player[];
 }
 
-export type SocketMessage =
-  | GameStateUpdate
-  | PlayerJoined
-  | PlayerLeft
-  | GameFinished;
+export type SocketMessage = GameStateUpdate | PlayerJoined | PlayerLeft | GameFinished;
 
 export interface CreateGameRequest {
   username: string;

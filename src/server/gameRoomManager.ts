@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io';
 import { Server as SocketIOServer } from 'socket.io';
-import { GameRoom, Player, GameStateUpdate, PlayerJoined, PlayerLeft, GameFinished } from '../shared/types/socket.js';
+import { GameRoom, Player, GameStateUpdate, PlayerJoined } from '../shared/types/socket.js';
 import { ChallengeManager } from './challengeManager.js';
 
 export class GameRoomManager {
@@ -12,7 +12,7 @@ export class GameRoomManager {
     this.challengeManager = challengeManager;
   }
 
-  createGame(username: string, difficulty: 'easy' | 'medium' | 'hard'): string {
+  createGame(_username: string, difficulty: 'easy' | 'medium' | 'hard'): string {
     const roomId = this.generateRoomId();
     const challenge = this.challengeManager.getRandomChallenge(difficulty);
 
@@ -22,7 +22,7 @@ export class GameRoomManager {
       players: new Map(),
       spectators: new Set(),
       createdAt: Date.now(),
-      status: 'waiting'
+      status: 'waiting',
     };
 
     this.rooms.set(roomId, room);
@@ -31,7 +31,12 @@ export class GameRoomManager {
     return roomId;
   }
 
-  joinGame(socket: Socket, roomId: string, username: string, asSpectator: boolean = false): boolean {
+  joinGame(
+    socket: Socket,
+    roomId: string,
+    username: string,
+    asSpectator: boolean = false
+  ): boolean {
     const room = this.rooms.get(roomId);
     if (!room) {
       return false;
@@ -41,7 +46,7 @@ export class GameRoomManager {
     this.leaveGame(socket.id);
 
     // Join the socket.io room
-    socket.join(roomId);
+    void socket.join(roomId);
     this.socketToRoom.set(socket.id, roomId);
 
     if (asSpectator) {
@@ -60,7 +65,7 @@ export class GameRoomManager {
         accuracy: 100,
         startTime: Date.now(),
         errorIndexes: [],
-        isFinished: false
+        isFinished: false,
       };
 
       room.players.set(socket.id, player);
@@ -76,7 +81,7 @@ export class GameRoomManager {
       const playerJoinedMessage: PlayerJoined = {
         type: 'playerJoined',
         roomId,
-        player
+        player,
       };
 
       socket.to(roomId).emit('message', playerJoinedMessage);
@@ -85,12 +90,16 @@ export class GameRoomManager {
     return true;
   }
 
-  updatePlayerProgress(socketId: string, roomId: string, update: {
-    currentInput: string;
-    wpm: number;
-    accuracy: number;
-    errorIndexes: number[];
-  }): void {
+  updatePlayerProgress(
+    socketId: string,
+    roomId: string,
+    update: {
+      currentInput: string;
+      wpm: number;
+      accuracy: number;
+      errorIndexes: number[];
+    }
+  ): void {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
@@ -108,7 +117,7 @@ export class GameRoomManager {
       player.isFinished = true;
 
       // Check if all players finished
-      const allFinished = Array.from(room.players.values()).every(p => p.isFinished);
+      const allFinished = Array.from(room.players.values()).every((p) => p.isFinished);
       if (allFinished) {
         room.status = 'finished';
         this.endGame(roomId);
@@ -128,11 +137,11 @@ export class GameRoomManager {
       room.players.delete(socketId);
 
       // Notify others
-      const playerLeftMessage: PlayerLeft = {
-        type: 'playerLeft',
-        roomId,
-        playerId: socketId
-      };
+      // const playerLeftMessage: PlayerLeft = {
+      //   type: 'playerLeft',
+      //   roomId,
+      //   playerId: socketId
+      // };
 
       room.players.forEach((_, playerId) => {
         if (playerId !== socketId) {
@@ -159,7 +168,7 @@ export class GameRoomManager {
       type: 'gameState',
       roomId: room.id,
       players,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     socket.emit('message', gameStateUpdate);
@@ -173,7 +182,7 @@ export class GameRoomManager {
           type: 'gameState',
           roomId,
           players,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
 
         io.to(roomId).emit('message', gameStateUpdate);
@@ -186,13 +195,13 @@ export class GameRoomManager {
     if (!room) return;
 
     room.status = 'finished';
-    const finalResults = Array.from(room.players.values());
+    // const finalResults = Array.from(room.players.values());
 
-    const gameFinishedMessage: GameFinished = {
-      type: 'gameFinished',
-      roomId,
-      finalResults
-    };
+    // const gameFinishedMessage: GameFinished = {
+    //   type: 'gameFinished',
+    //   roomId,
+    //   finalResults
+    // };
 
     // Broadcast to all in room
     // Note: In a real implementation, you'd get the io instance
@@ -214,12 +223,12 @@ export class GameRoomManager {
     difficulty: 'easy' | 'medium' | 'hard';
     status: 'waiting' | 'active' | 'finished';
   }> {
-    return Array.from(this.rooms.values()).map(room => ({
+    return Array.from(this.rooms.values()).map((room) => ({
       id: room.id,
       playerCount: room.players.size,
       spectatorCount: room.spectators.size,
       difficulty: room.challenge.difficulty,
-      status: room.status
+      status: room.status,
     }));
   }
 

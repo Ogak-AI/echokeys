@@ -3,7 +3,7 @@ import '../index.css';
 import { navigateTo, requestExpandedMode } from '@devvit/web/client';
 import { StrictMode, useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { GameStateUpdate, PlayerJoined, PlayerLeft, GameFinished } from '../../shared/types/socket';
 
 interface WatchGameState {
@@ -27,12 +27,10 @@ interface WatchGameState {
 
 export const Watch = () => {
   const [username, setUsername] = useState<string | null>(null);
-  const [roomId, setRoomId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<WatchGameState | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [gameEnded, setGameEnded] = useState<boolean>(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -41,7 +39,7 @@ export const Watch = () => {
 
     if (!usernameParam && !roomIdParam) {
       try {
-        void requestExpandedMode({} as any, 'games');
+        void requestExpandedMode(new MouseEvent('click'), 'games');
       } catch {
         void navigateTo('games');
       }
@@ -49,7 +47,6 @@ export const Watch = () => {
     }
 
     setUsername(usernameParam);
-    setRoomId(roomIdParam);
 
     // Connect to Socket.IO server
     const socketConnection = io();
@@ -64,7 +61,7 @@ export const Watch = () => {
         socketConnection.emit('joinGame', {
           roomId: roomIdParam,
           username: usernameParam || 'Anonymous',
-          asSpectator: true
+          asSpectator: true,
         });
       }
     });
@@ -78,39 +75,42 @@ export const Watch = () => {
       console.log('Successfully joined game as spectator:', data);
     });
 
-    socketConnection.on('message', (message: GameStateUpdate | PlayerJoined | PlayerLeft | GameFinished) => {
-      console.log('Received Socket.IO message:', message);
+    socketConnection.on(
+      'message',
+      (message: GameStateUpdate | PlayerJoined | PlayerLeft | GameFinished) => {
+        console.log('Received Socket.IO message:', message);
 
-      if (message.type === 'gameState') {
-        // Convert the game state to our expected format
-        const watchGameState: WatchGameState = {
-          players: message.players,
-          challenge: message.players[0]?.currentInput ? {
-            id: 'current-challenge',
-            text: '', // We don't have the full challenge text in updates
-            difficulty: 'medium' // Default, could be enhanced
-          } : {
-            id: 'current-challenge',
-            text: 'Loading challenge...',
-            difficulty: 'medium'
-          },
-          gameCompleted: message.players.some(p => p.isFinished)
-        };
-        setGameState(watchGameState);
-        setGameEnded(watchGameState.gameCompleted);
-        setError(null);
-      } else if (message.type === 'gameFinished') {
-        setGameEnded(true);
-        setError('Game has finished!');
+        if (message.type === 'gameState') {
+          // Convert the game state to our expected format
+          const watchGameState: WatchGameState = {
+            players: message.players,
+            challenge: message.players[0]?.currentInput
+              ? {
+                  id: 'current-challenge',
+                  text: '', // We don't have the full challenge text in updates
+                  difficulty: 'medium', // Default, could be enhanced
+                }
+              : {
+                  id: 'current-challenge',
+                  text: 'Loading challenge...',
+                  difficulty: 'medium',
+                },
+            gameCompleted: message.players.some((p) => p.isFinished),
+          };
+          setGameState(watchGameState);
+          setGameEnded(watchGameState.gameCompleted);
+          setError(null);
+        } else if (message.type === 'gameFinished') {
+          setGameEnded(true);
+          setError('Game has finished!');
+        }
       }
-    });
+    );
 
     socketConnection.on('error', (error: { message: string }) => {
       console.error('Socket.IO error:', error);
       setError(error.message);
     });
-
-    setSocket(socketConnection);
 
     // Initial fetch to get room info if needed
     if (roomIdParam) {
@@ -213,7 +213,7 @@ export const Watch = () => {
     if (!players.length) return <div>No players in this game</div>;
 
     // For simplicity, show the first player's progress
-    const player = players[0];
+    const player = players[0]!;
     return (
       <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-base sm:text-lg md:text-xl leading-relaxed min-h-20 sm:min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
         {(() => {
@@ -255,7 +255,7 @@ export const Watch = () => {
 
     if (gameState.players.length === 0) return 'Waiting for players...';
 
-    const player = gameState.players[0];
+    const player = gameState.players[0]!;
     const progress = Math.round(
       (player.currentInput.length / (gameState.challenge?.text?.length || 1)) * 100
     );
@@ -278,8 +278,11 @@ export const Watch = () => {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">Live Game</h2>
               <div className="flex gap-2">
-                {gameState.players.map((player, idx) => (
-                  <span key={player.id} className="px-3 py-1 rounded-full text-sm font-medium bg-blue-600">
+                {gameState.players.map((player) => (
+                  <span
+                    key={player.id}
+                    className="px-3 py-1 rounded-full text-sm font-medium bg-blue-600"
+                  >
                     {player.username}
                   </span>
                 ))}
@@ -293,7 +296,7 @@ export const Watch = () => {
                   <div
                     className="bg-blue-600 h-2.5 rounded-full"
                     style={{
-                      width: `${(gameState.players[0].currentInput.length / (gameState.challenge.text?.length || 1)) * 100}%`,
+                      width: `${(gameState.players[0]!.currentInput.length / (gameState.challenge.text?.length || 1)) * 100}%`,
                     }}
                   ></div>
                 </div>
@@ -303,11 +306,15 @@ export const Watch = () => {
             {gameState.players.length > 0 && (
               <div className="grid grid-cols-2 gap-4 text-center bg-white/5 rounded-lg p-4">
                 <div>
-                  <div className="text-2xl font-bold text-blue-400">{gameState.players[0].wpm}</div>
+                  <div className="text-2xl font-bold text-blue-400">
+                    {gameState.players[0]!.wpm}
+                  </div>
                   <div className="text-sm opacity-75">WPM</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-green-400">{gameState.players[0].accuracy}%</div>
+                  <div className="text-2xl font-bold text-green-400">
+                    {gameState.players[0]!.accuracy}%
+                  </div>
                   <div className="text-sm opacity-75">Accuracy</div>
                 </div>
               </div>
@@ -316,7 +323,7 @@ export const Watch = () => {
             {gameState.gameCompleted && (
               <div className="mt-4 p-4 bg-green-600/20 border border-green-600/50 rounded-lg">
                 <p className="text-green-400 font-semibold">🎉 Game completed!</p>
-                {gameState.players.map(player => (
+                {gameState.players.map((player) => (
                   <p key={player.id} className="text-sm opacity-75">
                     {player.username}: {player.wpm} WPM at {player.accuracy}% accuracy
                   </p>

@@ -24,25 +24,13 @@ export const App = () => {
     toggleLeaderboard,
     toggleMute,
     resetGame,
-  } = useTypingGame({
-    onUpdate: async (data) => {
-      try {
-        await fetch('/api/update-game-state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-      } catch (error) {
-        console.error('Failed to update game state:', error);
-      }
-    },
-  });
+  } = useTypingGame();
 
   const handleBack = async () => {
     console.log('Back button clicked in game');
     try {
       // Use requestExpandedMode to go back to splash
-      await requestExpandedMode({} as any, 'splash');
+      await requestExpandedMode(new MouseEvent('click'), 'splash');
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: browser history or direct navigation
