@@ -59,9 +59,7 @@ const Games = () => {
                 >
                   <div>
                     <h2 className="text-xl font-semibold">{game.username}'s Game</h2>
-                    <p className="text-gray-400">
-                      Difficulty: {game.challenge.difficulty}
-                    </p>
+                    <p className="text-gray-400">Difficulty: {game.challenge.difficulty}</p>
                   </div>
                   <button
                     onClick={(e) => handleWatch(e, game.username)}

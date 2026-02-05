@@ -182,7 +182,9 @@ export const Watch = () => {
     if (!gameState) return 'Loading...';
     if (gameState.gameCompleted) return 'Game Completed!';
 
-    const progress = Math.round((gameState.currentInput.length / gameState.challenge.text.length) * 100);
+    const progress = Math.round(
+      (gameState.currentInput.length / gameState.challenge.text.length) * 100
+    );
     return `In Progress (${progress}%)`;
   };
 
@@ -200,30 +202,36 @@ export const Watch = () => {
         {gameState ? (
           <div className="mt-4 w-full max-w-4xl bg-white/5 rounded-lg p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">
-                Challenge: {gameState.challenge.difficulty}
-              </h2>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                gameState.challenge.difficulty === 'easy'
-                  ? 'bg-blue-600'
-                  : gameState.challenge.difficulty === 'medium'
-                    ? 'bg-blue-700'
-                    : 'bg-red-600'
-              }`}>
+              <h2 className="text-xl font-semibold">Challenge: {gameState.challenge.difficulty}</h2>
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  gameState.challenge.difficulty === 'easy'
+                    ? 'bg-blue-600'
+                    : gameState.challenge.difficulty === 'medium'
+                      ? 'bg-blue-700'
+                      : 'bg-red-600'
+                }`}
+              >
                 {gameState.challenge.difficulty}
               </span>
             </div>
-            
+
             <div className="mb-6">
-              {renderText(gameState.challenge.text, gameState.currentInput, gameState.errorIndexes || [])}
+              {renderText(
+                gameState.challenge.text,
+                gameState.currentInput,
+                gameState.errorIndexes || []
+              )}
               <div className="w-full bg-gray-600 rounded-full h-2.5">
                 <div
                   className="bg-blue-600 h-2.5 rounded-full"
-                  style={{ width: `${(gameState.currentInput.length / gameState.challenge.text.length) * 100}%` }}
+                  style={{
+                    width: `${(gameState.currentInput.length / gameState.challenge.text.length) * 100}%`,
+                  }}
                 ></div>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4 text-center bg-white/5 rounded-lg p-4">
               <div>
                 <div className="text-2xl font-bold text-blue-400">{gameState.wpm}</div>
@@ -234,11 +242,13 @@ export const Watch = () => {
                 <div className="text-sm opacity-75">Accuracy</div>
               </div>
             </div>
-            
+
             {gameState.gameCompleted && (
               <div className="mt-4 p-4 bg-green-600/20 border border-green-600/50 rounded-lg">
                 <p className="text-green-400 font-semibold">🎉 Game completed!</p>
-                <p className="text-sm opacity-75">Final score: {gameState.wpm} WPM at {gameState.accuracy}% accuracy</p>
+                <p className="text-sm opacity-75">
+                  Final score: {gameState.wpm} WPM at {gameState.accuracy}% accuracy
+                </p>
               </div>
             )}
           </div>

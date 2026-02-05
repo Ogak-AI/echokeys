@@ -22,7 +22,7 @@ export type WatchGameResponse = {
 };
 
 export type SpectatableGame = {
-  username: string; 
+  username: string;
   challenge: DailyChallenge;
   difficulty: 'easy' | 'medium' | 'hard';
   isSpectatable: boolean;

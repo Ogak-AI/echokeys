@@ -27,7 +27,7 @@ interface GameState {
   lastSpokenIndex: number;
   isMuted: boolean;
   errorIndexes: number[];
-}; // Added semicolon
+} // Added semicolon
 
 export const useTypingGame = () => {
   const [state, setState] = useState<GameState>({
@@ -58,7 +58,7 @@ export const useTypingGame = () => {
         console.log('Attempting to fetch /api/init...');
         console.log('Devvit context available:', context);
         console.log('Devvit context username:', context?.username);
-        
+
         const res = await fetch('/api/init');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
@@ -75,11 +75,11 @@ export const useTypingGame = () => {
       } catch (err) {
         console.error('Failed to init game', err);
         console.log('Devvit context username:', context?.username);
-        setState((prev) => ({ 
-          ...prev, 
-          loading: false, 
+        setState((prev) => ({
+          ...prev,
+          loading: false,
           showDifficultySelect: true,
-          username: context?.username || 'Player' // Try Devvit context first, then fallback
+          username: context?.username || 'Player', // Try Devvit context first, then fallback
         }));
       }
     };
@@ -119,34 +119,37 @@ export const useTypingGame = () => {
     }));
   }, []);
 
-  const selectDifficulty = useCallback(async (difficulty: 'easy' | 'medium' | 'hard') => {
-    try {
-      const res = await fetch(`/api/challenge/${difficulty}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: { challenge: DailyChallenge } = await res.json();
-      setState((prev) => ({
-        ...prev,
-        selectedDifficulty: difficulty,
-        dailyChallenge: data.challenge,
-        showDifficultySelect: false,
-      }));
+  const selectDifficulty = useCallback(
+    async (difficulty: 'easy' | 'medium' | 'hard') => {
+      try {
+        const res = await fetch(`/api/challenge/${difficulty}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: { challenge: DailyChallenge } = await res.json();
+        setState((prev) => ({
+          ...prev,
+          selectedDifficulty: difficulty,
+          dailyChallenge: data.challenge,
+          showDifficultySelect: false,
+        }));
 
-      // Record the game as active on the server
-      if (state.username && data.challenge) {
-        fetch('/api/start-game', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: state.username,
-            challenge: data.challenge,
-            difficulty: difficulty,
-          }),
-        }).catch((err) => console.error('Failed to record active game:', err));
+        // Record the game as active on the server
+        if (state.username && data.challenge) {
+          fetch('/api/start-game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: state.username,
+              challenge: data.challenge,
+              difficulty: difficulty,
+            }),
+          }).catch((err) => console.error('Failed to record active game:', err));
+        }
+      } catch (err) {
+        console.error('Failed to fetch challenge for difficulty', err);
       }
-    } catch (err) {
-      console.error('Failed to fetch challenge for difficulty', err);
-    }
-  }, [state.username]);
+    },
+    [state.username]
+  );
 
   const updateInput = useCallback(
     (input: string) => {
@@ -185,7 +188,7 @@ export const useTypingGame = () => {
       const wordsTyped = input.length / 5;
       const wpm = minutes > 0 ? Math.round(wordsTyped / minutes) : 0;
 
-      let newErrorIndexes: number[] = [];
+      const newErrorIndexes: number[] = [];
       let correctChars = 0;
       for (let i = 0; i < input.length; i++) {
         if (input[i] === challenge.text[i]) {
@@ -301,7 +304,6 @@ export const useTypingGame = () => {
       return { ...prev, isMuted: newMutedState };
     });
   }, []);
-
 
   return {
     ...state,

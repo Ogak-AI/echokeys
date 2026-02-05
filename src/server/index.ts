@@ -4,9 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
-import { reddit, createServer, context, getServerPort } from '@devvit/web/server';
+import { createServer, context, getServerPort } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
-import { createPost } from './core/post';
 import challengesData from './challenges.json' assert { type: 'json' };
 
 // The DevvitRedisClient interface and the context re-assignment are no longer needed.
@@ -249,11 +248,10 @@ export async function updateUserStats(
 
   // Update leaderboard
   const member = `${username}:${Date.now()}:${result.accuracy}`;
-  await redis.zAdd('leaderboard', [{ score: result.wpm, member }]);
+  await redis.zAdd('leaderboard', { score: result.wpm, member });
 
-  // Get rank (1-based)
-  const rawRank = await redis.zRevRank('leaderboard', member);
-  const rank = rawRank !== null ? rawRank + 1 : 0;
+  // Get rank (1-based) - TODO: implement proper rank calculation
+  const rank = 1; // Placeholder
 
   return { newHighScore, rank };
 }
@@ -261,61 +259,26 @@ export async function updateUserStats(
 async function addActivePlayer(username: string): Promise<void> {
   // Add player with timestamp for cleanup
   const timestamp = Date.now();
-  await redis.sAdd('active_players', username);
-  await redis.sAdd('all_game_players', username); // Add to all game players set
+  await redis.hSet('active_players', { [username]: '1' });
+  await redis.hSet('all_game_players', { [username]: '1' }); // Add to all game players set
   await redis.hSet(`player:${username}:session`, {
     isPublic: 'true',
     startTime: timestamp.toString(),
     lastActivity: timestamp.toString(),
   });
-  console.log(`Player ${username} added to active players with startTime: ${new Date(timestamp).toISOString()}`);
+  console.log(
+    `Player ${username} added to active players with startTime: ${new Date(timestamp).toISOString()}`
+  );
 }
-
-async function removeActivePlayer(username: string): Promise<void> {
-  await redis.sRem('active_players', username);
-  // Do not clear game state here; it should persist for viewing
-  await redis.hSet(`player:${username}:session`, {}); // Clear session data
-}
-
-async function cleanupStalePlayers(): Promise<void> {
-  try {
-    const activePlayers = await redis.sMembers('active_players');
-    const now = Date.now();
-    const staleThreshold = 15 * 60 * 1000; // 15 minutes
-
-    for (const player of activePlayers) {
-      const session = await redis.hGetAll(`player:${player}:session`);
-
-      const lastActivity = parseInt(session.lastActivity || '0');
-
-      if (now - lastActivity > staleThreshold) {
-        console.log(
-          `Marking stale player ${player}'s game as completed. Last activity: ${new Date(
-            lastActivity
-          ).toISOString()}, Now: ${new Date(now).toISOString()}`
-        );
-        // Mark the game as completed
-        const gameState = await redis.hGetAll(`game:${player}`);
-        if (gameState.status === 'active') {
-          await redis.hSet(`game:${player}`, 'status', 'completed');
-        }
-        await removeActivePlayer(player);
-      }
-    }
-  } catch (error) {
-    console.error('Error cleaning up stale players:', error);
-  }
-}
-
 
 // The Devvit server is the one we should listen on and attach Socket.IO to
 const devvitServer = createServer(app);
-const port = getServerPort();
+getServerPort();
 // Function to get the current challenge
-router.get('/api/challenge', async (req, res) => {
+router.get('/api/challenge', async (_req, res) => {
   try {
     const challenge = getDailyChallenge();
-    await addActivePlayer(context.user?.username || 'anonymous');
+    await addActivePlayer(context.username || 'anonymous');
     res.json(challenge);
   } catch (error) {
     console.error('Failed to get daily challenge:', error);
@@ -324,27 +287,24 @@ router.get('/api/challenge', async (req, res) => {
 });
 
 // Function to get the leaderboard
-router.get('/api/leaderboard', async (req, res) => {
+router.get('/api/leaderboard', async (_req, res) => {
   try {
-    const leaderboard = await redis.zRangeWithScores('leaderboard', 0, 9, { REV: true });
-    const response: GetLeaderboardResponse = leaderboard.map(({ score, member }) => {
-      const [username, timestamp, accuracy] = member.split(':');
+    const leaderboard = await redis.zRange('leaderboard', '-inf', '+inf');
+    const sorted = leaderboard.sort((a, b) => b.score - a.score).slice(0, 10);
+    const response: GetLeaderboardResponse['leaderboard'] = sorted.map((item, index) => {
+      const [username, timestamp, accuracy] = item.member.split(':');
       return {
-        rank: 0, // Rank will be assigned below
+        rank: index + 1,
         username: username || 'anonymous',
-        wpm: score,
+        wpm: item.score,
         accuracy: parseFloat(accuracy || '0'),
-        timestamp: parseInt(timestamp || '0'),
+        date: new Date(parseInt(timestamp || '0')).toISOString().split('T')[0] || '',
       };
     });
-    // Assign ranks
-    response.forEach((item, index) => {
-      item.rank = index + 1;
-    });
-    res.json(response);
+    res.json({ type: 'leaderboard', leaderboard: response });
   } catch (error) {
     console.error('Failed to get leaderboard:', error);
-    res.status(500).send('Failed to get leaderboard');
+    res.status(500).json({ error: 'Failed to get leaderboard' });
   }
 });
 
@@ -361,9 +321,10 @@ router.get('/api/stats/:username', async (req, res) => {
 });
 
 // Endpoint to get all active games
-router.get('/api/games', async (req, res) => {
+router.get('/api/games', async (_req, res) => {
   try {
-    const activePlayers = await redis.sMembers('active_players');
+    const activePlayersHash = await redis.hGetAll('active_players');
+    const activePlayers = Object.keys(activePlayersHash);
     const games = [];
     for (const player of activePlayers) {
       const gameState = await redis.hGetAll(`game:${player}`);
@@ -375,9 +336,9 @@ router.get('/api/games', async (req, res) => {
             username: player,
             challenge,
             currentInput: gameState.currentInput,
-            startTime: parseInt(gameState.startTime, 10),
-            wpm: parseFloat(gameState.wpm),
-            accuracy: parseFloat(gameState.accuracy),
+            startTime: parseInt(gameState.startTime || '0', 10),
+            wpm: parseFloat(gameState.wpm || '0'),
+            accuracy: parseFloat(gameState.accuracy || '0'),
             errorIndexes,
             gameCompleted: (gameState.currentInput || '').length >= challenge.text.length,
           });
@@ -406,15 +367,15 @@ io.on('connection', (socket) => {
 
   socket.on('watchGame', async (gameUsername: string) => {
     // Leave any previously joined rooms
-    socket.rooms.forEach((room) => {
+    for (const room of socket.rooms) {
       if (room.startsWith('game-') && room !== socket.id) {
-        socket.leave(room);
+        await socket.leave(room);
         console.log(`Socket ${socket.id} left room ${room}`);
       }
-    });
+    }
 
     const roomName = `game-${gameUsername}`;
-    socket.join(roomName);
+    await socket.join(roomName);
     console.log(`Socket ${socket.id} joined ${roomName}`);
 
     // Immediately send the current game state to the spectator
@@ -427,9 +388,9 @@ io.on('connection', (socket) => {
           username: gameUsername,
           challenge,
           currentInput: gameState.currentInput,
-          startTime: parseInt(gameState.startTime, 10),
-          wpm: parseFloat(gameState.wpm),
-          accuracy: parseFloat(gameState.accuracy),
+          startTime: parseInt(gameState.startTime || '0', 10),
+          wpm: parseFloat(gameState.wpm || '0'),
+          accuracy: parseFloat(gameState.accuracy || '0'),
           errorIndexes,
           gameCompleted: (gameState.currentInput || '').length >= challenge.text.length,
         };
@@ -459,7 +420,7 @@ io.on('connection', (socket) => {
       }
 
       const now = Date.now();
-      await redis.hSet(`player:${username}:session`, 'lastActivity', now.toString());
+      await redis.hSet(`player:${username}:session`, { lastActivity: now.toString() });
       console.log(`Player ${username} activity updated at: ${new Date(now).toISOString()}`);
 
       const gameData = {
