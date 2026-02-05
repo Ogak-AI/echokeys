@@ -215,13 +215,23 @@ function getDailyChallenge(): DailyChallenge {
 }
 
 async function getUserStats(username: string): Promise<UserStats> {
-  const stats = await redis.hGetAll(`user:${username}:stats`);
-  return {
-    bestWPM: parseFloat(stats.bestWPM || '0'),
-    bestAccuracy: parseFloat(stats.bestAccuracy || '0'),
-    totalGames: parseInt(stats.totalGames || '0'),
-    streak: parseInt(stats.streak || '0'),
-  };
+  try {
+    const stats = await redis.hGetAll(`user:${username}:stats`);
+    return {
+      bestWPM: parseFloat(stats.bestWPM || '0'),
+      bestAccuracy: parseFloat(stats.bestAccuracy || '0'),
+      totalGames: parseInt(stats.totalGames || '0'),
+      streak: parseInt(stats.streak || '0'),
+    };
+  } catch (error) {
+    console.error('Failed to get user stats:', error);
+    return {
+      bestWPM: 0,
+      bestAccuracy: 0,
+      totalGames: 0,
+      streak: 0,
+    };
+  }
 }
 
 export async function updateUserStats(
@@ -553,3 +563,5 @@ app.use(router);
 
 // Initialize Devvit realtime for broadcasting
 // Note: Broadcasting to subreddit for spectator updates
+
+export default server;
