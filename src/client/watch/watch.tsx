@@ -1,10 +1,9 @@
 import '../index.css';
 
-import { navigateTo, requestExpandedMode } from '@devvit/web/client';
+import { navigateTo, requestExpandedMode, connectRealtime } from '@devvit/web/client';
 import { StrictMode, useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { WatchGameResponse } from '../../shared/types/api';
-import { io } from 'socket.io-client';
 
 export const Watch = () => {
   const [username, setUsername] = useState<string | null>(null);
@@ -18,7 +17,7 @@ export const Watch = () => {
     const usernameParam = params.get('username');
     if (!usernameParam) {
       try {
-        void requestExpandedMode(null, 'games');
+        void requestExpandedMode({} as any, 'games');
       } catch {
         void navigateTo('games');
       }
@@ -26,33 +25,55 @@ export const Watch = () => {
     }
     setUsername(usernameParam);
 
-    const socket = io();
+    // Connect to realtime for game updates
+    const setupRealtime = async () => {
+      const connection = await connectRealtime({
+        channel: 'keyscripture_dev', // This should match the subreddit name used in server
+        onConnect: () => {
+          console.log('Connected to realtime for spectator updates');
+          setLoading(false);
+        },
+        onDisconnect: () => {
+          console.log('Disconnected from realtime');
+          setError('Disconnected from game. Attempting to reconnect...');
+        },
+        onMessage: (message: any) => {
+          console.log('Received realtime message:', message);
+          if (message.type === 'gameUpdate' && message.gameUsername === usernameParam) {
+            const updatedGame: WatchGameResponse = message.data;
+            setGameState(updatedGame);
+            setGameEnded(updatedGame.gameCompleted || false);
+            setError(null);
+          }
+        },
+      });
 
-    socket.on('connect', () => {
-      console.log('Connected to WebSocket server');
-      socket.emit('watchGame', usernameParam);
-      setLoading(false);
-    });
+      return connection;
+    };
 
-    socket.on('gameStateUpdate', (updatedGame: WatchGameResponse) => {
-      console.log('Received real-time update:', updatedGame);
-      setGameState(updatedGame);
-      setGameEnded(updatedGame.gameCompleted || false);
-      setError(null);
-    });
+    const connectionPromise = setupRealtime();
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from WebSocket server');
-      setError('Disconnected from game. Attempting to reconnect...');
-    });
-
-    socket.on('connect_error', (err) => {
-      console.error('Socket.IO connection error:', err);
-      setError(`Connection error: ${err.message}. Retrying...`);
-    });
+    // Initial fetch of game state
+    fetch(`/api/games`)
+      .then((res) => res.json())
+      .then((games: WatchGameResponse[]) => {
+        const userGame = games.find((game) => game.username === usernameParam);
+        if (userGame) {
+          setGameState(userGame);
+          setGameEnded(userGame.gameCompleted || false);
+        } else {
+          setError('Game not found for this user');
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch initial game state:', err);
+        setError('Failed to load game state');
+        setLoading(false);
+      });
 
     return () => {
-      socket.disconnect();
+      connectionPromise.then((connection) => connection.disconnect());
     };
   }, []);
 

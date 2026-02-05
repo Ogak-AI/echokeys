@@ -2,10 +2,10 @@ import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Server } from 'socket.io';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 import { createServer, context, getServerPort } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
+import { realtime } from '@devvit/realtime/server';
 import challengesData from './challenges.json' assert { type: 'json' };
 
 // The DevvitRedisClient interface and the context re-assignment are no longer needed.
@@ -272,7 +272,7 @@ async function addActivePlayer(username: string): Promise<void> {
 }
 
 // The Devvit server is the one we should listen on and attach Socket.IO to
-const devvitServer = createServer(app);
+createServer(app);
 getServerPort();
 // Function to get the current challenge
 router.get('/api/challenge', async (_req, res) => {
@@ -282,6 +282,44 @@ router.get('/api/challenge', async (_req, res) => {
     res.json(challenge);
   } catch (error) {
     console.error('Failed to get daily challenge:', error);
+    res.status(500).send('Failed to load challenge');
+  }
+});
+
+// Function to get a challenge by difficulty
+router.get('/api/challenge/:difficulty', async (req, res) => {
+  try {
+    const { difficulty } = req.params;
+    if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+      return res.status(400).json({ error: 'Invalid difficulty level' });
+    }
+
+    // Ensure challenges are loaded
+    if (!challengesLoaded || challenges.length === 0) {
+      return res.status(503).json({ error: 'Challenges are still loading, please try again' });
+    }
+
+    // Filter challenges by difficulty
+    const filteredChallenges = challenges.filter(c => c.difficulty === difficulty);
+    if (filteredChallenges.length === 0) {
+      return res.status(404).json({ error: 'No challenges found for this difficulty' });
+    }
+
+    // Select a random challenge from the filtered list
+    const randomIndex = Math.floor(Math.random() * filteredChallenges.length);
+    const challenge = filteredChallenges[randomIndex];
+
+    // Create a challenge object with ID and date
+    const challengeWithId = {
+      ...challenge,
+      id: `challenge-${difficulty}-${randomIndex}`,
+      date: new Date().toISOString().split('T')[0] || new Date().toDateString(),
+    };
+
+    await addActivePlayer(context.username || 'anonymous');
+    res.json(challengeWithId);
+  } catch (error) {
+    console.error('Failed to get challenge by difficulty:', error);
     res.status(500).send('Failed to load challenge');
   }
 });
@@ -348,6 +386,67 @@ router.post('/api/submit', async (req, res) => {
   }
 });
 
+// Function to update game state for spectators
+router.post('/api/update-game-state', async (req, res) => {
+  try {
+    const { username, challenge, currentInput, startTime, wpm, accuracy, errorIndexes } = req.body;
+
+    // Validate required fields
+    if (
+      !username ||
+      !challenge ||
+      currentInput === undefined ||
+      startTime === undefined ||
+      wpm === undefined ||
+      accuracy === undefined ||
+      errorIndexes === undefined
+    ) {
+      console.error('Missing game state parameters');
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    const now = Date.now();
+    await redis.hSet(`player:${username}:session`, { lastActivity: now.toString() });
+    console.log(`Player ${username} activity updated at: ${new Date(now).toISOString()}`);
+
+    const gameData = {
+      challenge: JSON.stringify(challenge),
+      currentInput,
+      startTime: startTime.toString(),
+      wpm: wpm.toString(),
+      accuracy: accuracy.toString(),
+      lastUpdate: now.toString(),
+      errorIndexes: JSON.stringify(errorIndexes),
+    };
+
+    // Store game state in Redis
+    await redis.hSet(`game:${username}`, gameData);
+
+    // Broadcast update to spectators via Devvit realtime
+    const updatedData = {
+      username,
+      challenge,
+      currentInput,
+      startTime,
+      wpm,
+      accuracy,
+      errorIndexes,
+      gameCompleted: currentInput.length >= challenge.text.length,
+    };
+
+    await realtime.send('keyscripture_dev', {
+      type: 'gameUpdate',
+      gameUsername: username,
+      data: updatedData,
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to update game state:', error);
+    res.status(500).json({ error: 'Failed to update game state' });
+  }
+});
+
 // Endpoint to get all active games
 router.get('/api/games', async (_req, res) => {
   try {
@@ -385,105 +484,5 @@ router.get('/api/games', async (_req, res) => {
 // Mount the router to the app
 app.use(router);
 
-// Initialize Socket.IO server and attach to the Devvit server
-const io = new Server(devvitServer, {
-  cors: {
-    origin: '*', // Adjust this to your client's origin in production
-    methods: ['GET', 'POST'],
-  },
-});
-
-io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
-
-  socket.on('watchGame', async (gameUsername: string) => {
-    // Leave any previously joined rooms
-    for (const room of socket.rooms) {
-      if (room.startsWith('game-') && room !== socket.id) {
-        await socket.leave(room);
-        console.log(`Socket ${socket.id} left room ${room}`);
-      }
-    }
-
-    const roomName = `game-${gameUsername}`;
-    await socket.join(roomName);
-    console.log(`Socket ${socket.id} joined ${roomName}`);
-
-    // Immediately send the current game state to the spectator
-    try {
-      const gameState = await redis.hGetAll(`game:${gameUsername}`);
-      if (gameState && gameState.challenge) {
-        const challenge = JSON.parse(gameState.challenge);
-        const errorIndexes = JSON.parse(gameState.errorIndexes || '[]');
-        const currentGameState = {
-          username: gameUsername,
-          challenge,
-          currentInput: gameState.currentInput,
-          startTime: parseInt(gameState.startTime || '0', 10),
-          wpm: parseFloat(gameState.wpm || '0'),
-          accuracy: parseFloat(gameState.accuracy || '0'),
-          errorIndexes,
-          gameCompleted: (gameState.currentInput || '').length >= challenge.text.length,
-        };
-        socket.emit('gameStateUpdate', currentGameState);
-      }
-    } catch (error) {
-      console.error(`Error sending initial game state for ${gameUsername}:`, error);
-    }
-  });
-
-  socket.on('updateGameState', async (data) => {
-    try {
-      const { username, challenge, currentInput, startTime, wpm, accuracy, errorIndexes } = data;
-
-      // Validate required fields
-      if (
-        !username ||
-        !challenge ||
-        currentInput === undefined ||
-        startTime === undefined ||
-        wpm === undefined ||
-        accuracy === undefined ||
-        errorIndexes === undefined
-      ) {
-        console.error('Missing game state parameters');
-        return;
-      }
-
-      const now = Date.now();
-      await redis.hSet(`player:${username}:session`, { lastActivity: now.toString() });
-      console.log(`Player ${username} activity updated at: ${new Date(now).toISOString()}`);
-
-      const gameData = {
-        challenge: JSON.stringify(challenge),
-        currentInput,
-        startTime: startTime.toString(),
-        wpm: wpm.toString(),
-        accuracy: accuracy.toString(),
-        lastUpdate: Date.now().toString(),
-        errorIndexes: JSON.stringify(errorIndexes), // Store errorIndexes
-      };
-
-      // Store game state in Redis
-      await redis.hSet(`game:${username}`, gameData);
-
-      // Broadcast update to spectators
-      io.to(`game-${username}`).emit('gameStateUpdate', {
-        username,
-        challenge,
-        currentInput,
-        startTime,
-        wpm,
-        accuracy,
-        errorIndexes, // Include errorIndexes in broadcast
-        gameCompleted: currentInput.length >= challenge.text.length, // Calculate here for real-time
-      });
-    } catch (error) {
-      console.error(`Update game state error:`, error);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('A user disconnected:', socket.id);
-  });
-});
+// Initialize Devvit realtime for broadcasting
+// Note: Broadcasting to subreddit for spectator updates

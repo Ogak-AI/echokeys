@@ -124,26 +124,13 @@ export const useTypingGame = (options?: { onUpdate?: (data: any) => void }) => {
       try {
         const res = await fetch(`/api/challenge/${difficulty}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: { challenge: DailyChallenge } = await res.json();
+        const data: DailyChallenge = await res.json();
         setState((prev) => ({
           ...prev,
           selectedDifficulty: difficulty,
-          dailyChallenge: data.challenge,
+          dailyChallenge: data,
           showDifficultySelect: false,
         }));
-
-        // Record the game as active on the server
-        if (state.username && data.challenge) {
-          fetch('/api/start-game', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              username: state.username,
-              challenge: data.challenge,
-              difficulty: difficulty,
-            }),
-          }).catch((err) => console.error('Failed to record active game:', err));
-        }
       } catch (err) {
         console.error('Failed to fetch challenge for difficulty', err);
       }

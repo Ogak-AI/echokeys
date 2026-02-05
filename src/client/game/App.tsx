@@ -1,11 +1,8 @@
 import { navigateTo, context, requestExpandedMode } from '@devvit/web/client';
 
 import { useTypingGame } from '../hooks/useTypingGame';
-import { io } from 'socket.io-client';
 
 export const App = () => {
-  const socket = io();
-
   const {
     username,
     userStats,
@@ -28,16 +25,24 @@ export const App = () => {
     toggleMute,
     resetGame,
   } = useTypingGame({
-    onUpdate: (data) => {
-      socket.emit('updateGameState', data);
+    onUpdate: async (data) => {
+      try {
+        await fetch('/api/update-game-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+      } catch (error) {
+        console.error('Failed to update game state:', error);
+      }
     },
   });
 
-  const handleBack = async (e: React.MouseEvent) => {
+  const handleBack = async () => {
     console.log('Back button clicked in game');
     try {
       // Use requestExpandedMode to go back to splash
-      await requestExpandedMode(null, 'splash');
+      await requestExpandedMode({} as any, 'splash');
     } catch (error) {
       console.error('Navigation error:', error);
       // Fallback: browser history or direct navigation

@@ -33,9 +33,9 @@ const Games = () => {
     void fetchGames();
   }, []);
 
-  const handleWatch = (e: React.MouseEvent, username: string) => {
+  const handleWatch = (username: string) => {
     try {
-      void requestExpandedMode(null, `watch?username=${username}`);
+      void requestExpandedMode({} as any, `watch?username=${username}`);
     } catch {
       void navigateTo(`watch?username=${username}`);
     }
@@ -62,7 +62,7 @@ const Games = () => {
                     <p className="text-gray-400">Difficulty: {game.challenge.difficulty}</p>
                   </div>
                   <button
-                    onClick={(e) => handleWatch(e, game.username)}
+                    onClick={() => handleWatch(game.username)}
                     className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700"
                   >
                     Watch

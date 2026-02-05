@@ -42,5 +42,8 @@
   },
   "dev": {
     "subreddit": "keyscripture_dev"
+  },
+  "permissions": {
+    "realtime": true
   }
 }
