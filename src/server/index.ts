@@ -1,18 +1,9 @@
 import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 import { createServer, context } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
 import challengesData from './challenges.json' assert { type: 'json' };
 import { ChallengeManager } from './challengeManager.js';
-// The DevvitRedisClient interface and the context re-assignment are no longer needed.
-
-const VITE_CLIENT_URL = 'http://localhost:3000';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import type { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 
 const app = express();
 
@@ -63,7 +54,8 @@ let challengesLoaded = false;
 
 async function loadChallenges() {
   try {
-    // First, try to use the embedded challenges data
+    // In Devvit serverless environment, only use embedded challenges data
+    // Filesystem access (fs.readdir, fs.readFile) is NOT available in Devvit
     if (Array.isArray(challengesData) && challengesData.length > 0) {
       challenges = challengesData.map((p) => ({
         text: (p.text || '').trim(),
@@ -74,104 +66,7 @@ async function loadChallenges() {
       return;
     }
 
-    const candidates = [
-      path.join(__dirname, 'challenges'),
-      path.join(__dirname, '..', 'challenges'),
-      path.join(process.cwd(), 'server', 'challenges'),
-      path.join(process.cwd(), 'src', 'server', 'challenges'),
-    ];
-
-    let challengesDir: string | null = null;
-    for (const c of candidates) {
-      try {
-        const s = await fs.stat(c);
-        if (s.isDirectory()) {
-          challengesDir = c;
-          break;
-        }
-      } catch (_) {
-        // ignore
-      }
-    }
-
-    if (challengesDir) {
-      try {
-        const files = await fs.readdir(challengesDir);
-        const challengeFiles = files
-          .filter((f) => f.endsWith('.txt'))
-          .sort()
-          .slice(0, 365); // Limit to 365 challenges for a year
-
-        for (const file of challengeFiles) {
-          const text = await fs.readFile(path.join(challengesDir, file), 'utf-8');
-          let difficulty: 'easy' | 'medium' | 'hard' = 'medium';
-          const difficultyMatch = file.match(/-(easy|medium|hard)\.txt$/i);
-          if (difficultyMatch && difficultyMatch[1]) {
-            difficulty = difficultyMatch[1].toLowerCase() as 'easy' | 'medium' | 'hard';
-          }
-          challenges.push({ text: text.trim(), difficulty });
-        }
-
-        if (challenges.length > 0) {
-          challengesLoaded = true;
-          console.log(`Loaded ${challenges.length} challenges from ${challengesDir}`);
-          return;
-        }
-      } catch (fileErr) {
-        console.warn(
-          'Could not load challenges from files, trying JSON:',
-          fileErr instanceof Error ? fileErr.message : 'Unknown error'
-        );
-      }
-    } else {
-      console.warn('No challenges directory found in any candidate paths, trying JSON');
-    }
-    // Also try JSON challenge files in common locations (single-file bundle)
-    const jsonCandidatesBase = [
-      path.join(__dirname, 'challenges.json'),
-      path.join(__dirname, '..', 'challenges.json'),
-      path.join(process.cwd(), 'server', 'challenges.json'),
-      path.join(process.cwd(), 'src', 'server', 'challenges.json'),
-    ];
-
-    const jsonCandidates: string[] = [...jsonCandidatesBase];
-    // Also try ancestors of __dirname (covers built output locations)
-    for (let i = 1; i <= 5; i++) {
-      const ups = Array(i).fill('..');
-      jsonCandidates.push(path.join(__dirname, ...ups, 'challenges.json'));
-      jsonCandidates.push(path.join(__dirname, ...ups, 'server', 'challenges.json'));
-      jsonCandidates.push(path.join(__dirname, ...ups, 'src', 'server', 'challenges.json'));
-    }
-
-    for (const jc of jsonCandidates) {
-      try {
-        const s = await fs.stat(jc);
-        if (s.isFile()) {
-          try {
-            const raw = await fs.readFile(jc, 'utf-8');
-            const parsed = JSON.parse(raw) as Array<{ text: string; difficulty?: string }>;
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              challenges = parsed.map((p) => ({
-                text: (p.text || '').trim(),
-                difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
-              }));
-              challengesLoaded = true;
-              console.log(`Loaded ${challenges.length} challenges from JSON ${jc}`);
-              return;
-            }
-          } catch (jsonErr) {
-            console.warn(
-              'Failed to parse challenges JSON, trying next candidate:',
-              jsonErr instanceof Error ? jsonErr.message : String(jsonErr)
-            );
-          }
-        }
-      } catch (_) {
-        // ignore missing
-      }
-    }
-
-    // Use fallback challenges if files couldn't be loaded
+    // Fallback if embedded data is empty
     challenges = fallbackChallenges;
     challengesLoaded = true;
     console.log('Using fallback challenges');
@@ -270,16 +165,24 @@ async function updateUserStats(
 async function addActivePlayer(username: string): Promise<void> {
   // Add player with timestamp for cleanup
   const timestamp = Date.now();
-  await redis.hSet('active_players', { [username]: '1' });
-  await redis.hSet('all_game_players', { [username]: '1' }); // Add to all game players set
-  await redis.hSet(`player:${username}:session`, {
-    isPublic: 'true',
-    startTime: timestamp.toString(),
-    lastActivity: timestamp.toString(),
-  });
-  console.log(
-    `Player ${username} added to active players with startTime: ${new Date(timestamp).toISOString()}`
-  );
+  try {
+    if (!redis || typeof redis.hSet !== 'function') {
+      console.warn('Redis client not available; skipping addActivePlayer');
+      return;
+    }
+    await redis.hSet('active_players', { [username]: '1' });
+    await redis.hSet('all_game_players', { [username]: '1' }); // Add to all game players set
+    await redis.hSet(`player:${username}:session`, {
+      isPublic: 'true',
+      startTime: timestamp.toString(),
+      lastActivity: timestamp.toString(),
+    });
+    console.log(
+      `Player ${username} added to active players with startTime: ${new Date(timestamp).toISOString()}`
+    );
+  } catch (err) {
+    console.warn('addActivePlayer failed, continuing without active tracking:', err instanceof Error ? err.message : err);
+  }
 }
 
 // The Devvit server is the one we should listen on
@@ -293,7 +196,11 @@ const challengeManager = new ChallengeManager();
 router.get('/api/challenge', async (_req, res) => {
   try {
     const challenge = getDailyChallenge();
-    await addActivePlayer(context.username || 'anonymous');
+    try {
+      await addActivePlayer((context && (context as any).username) || 'anonymous');
+    } catch (ignore) {
+      // ignore
+    }
     res.json(challenge);
   } catch (error) {
     console.error('Failed to get daily challenge:', error);
@@ -331,7 +238,11 @@ router.get('/api/challenge/:difficulty', async (req, res) => {
       date: new Date().toISOString().split('T')[0] || new Date().toDateString(),
     };
 
-    await addActivePlayer(context.username || 'anonymous');
+    try {
+      await addActivePlayer((context && (context as any).username) || 'anonymous');
+    } catch (ignore) {
+      // ignore
+    }
     res.json(challengeWithId);
   } catch (error) {
     console.error('Failed to get challenge by difficulty:', error);
@@ -342,16 +253,35 @@ router.get('/api/challenge/:difficulty', async (req, res) => {
 // Function to get the leaderboard
 router.get('/api/leaderboard', async (_req, res) => {
   try {
-    const leaderboard = await redis.zRange('leaderboard', '-inf', '+inf');
-    const sorted = leaderboard.sort((a, b) => b.score - a.score).slice(0, 10);
+    let entries: Array<{ member: string; score: number }> = [];
+    try {
+      // Try zRange with scores if available
+      if (redis && typeof (redis as any).zRangeWithScores === 'function') {
+        const withScores = await (redis as any).zRangeWithScores('leaderboard', 0, -1, { REV: true });
+        entries = Array.isArray(withScores) ? withScores.map((e: any) => ({ member: e.value || e.member || e.member, score: e.score || e.score })) : [];
+      } else {
+        // Fallback: try zRange and parse members as plain strings
+        const members = (await redis.zRange('leaderboard', 0, -1)) || [];
+        // members may be strings like 'username:timestamp:accuracy' without scores; we can't determine score reliably
+        entries = members.map((m: string) => ({ member: m, score: 0 }));
+      }
+    } catch (redisErr) {
+      console.warn('Leaderboard read failed, returning empty list:', redisErr instanceof Error ? redisErr.message : redisErr);
+      entries = [];
+    }
+
+    const sorted = entries.slice(0, 10);
     const response: GetLeaderboardResponse['leaderboard'] = sorted.map((item, index) => {
-      const [username, timestamp, accuracy] = item.member.split(':');
+      const parts = (item.member || '').split(':');
+      const username = parts[0] || 'anonymous';
+      const timestamp = parts[1] || '';
+      const accuracy = parts[2] || '0';
       return {
         rank: index + 1,
-        username: username || 'anonymous',
-        wpm: item.score,
-        accuracy: parseFloat(accuracy || '0'),
-        date: new Date(parseInt(timestamp || '0')).toISOString().split('T')[0] || '',
+        username,
+        wpm: item.score || 0,
+        accuracy: parseFloat(accuracy),
+        date: timestamp ? new Date(parseInt(timestamp)).toISOString().split('T')[0] : '',
       };
     });
     res.json({ type: 'leaderboard', leaderboard: response });
@@ -377,7 +307,7 @@ router.get('/api/stats/:username', async (req, res) => {
 router.get('/api/init', async (_req, res) => {
   try {
     const challenge = getDailyChallenge();
-    const username = context.username || 'anonymous';
+    const username = (context && (context as any).username) || 'anonymous';
     // const userStats = await getUserStats(username);
     const userStats = {
       bestWPM: 0,
