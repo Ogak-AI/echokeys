@@ -463,14 +463,8 @@ router.get('/api/stats/:username', async (req, res) => {
 // Function to initialize the game
 router.get('/api/init', async (_req, res) => {
   try {
-    console.log('API_INIT: Getting daily challenge...');
     const challenge = getDailyChallenge();
-    console.log('API_INIT: Daily challenge:', challenge ? `${challenge.id} - ${challenge.difficulty}`: 'is null');
-
-    console.log('API_INIT: Getting username from context...');
     const username = context.username || 'anonymous';
-    console.log('API_INIT: Username:', username);
-    
     // const userStats = await getUserStats(username);
     const userStats = {
       bestWPM: 0,
@@ -479,11 +473,7 @@ router.get('/api/init', async (_req, res) => {
       streak: 0,
     };
     const postId = 'keyscripture_post'; // Placeholder, can be from context or params
-
-    console.log('API_INIT: Sending response...');
     res.json({ type: 'init', postId, username, userStats, dailyChallenge: challenge });
-    console.log('API_INIT: Response sent.');
-
   } catch (error) {
     console.error('Failed to init game:', error);
     res.status(500).json({ error: 'Failed to initialize game' });
@@ -582,4 +572,4 @@ app.use(router);
 // Initialize Devvit realtime for broadcasting
 // Note: Broadcasting to subreddit for spectator updates
 
-export default app;
+export default server;
