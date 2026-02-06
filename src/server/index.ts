@@ -290,20 +290,19 @@ const server = createServer(app);
 // const port = getServerPort();
 
 // Initialize Socket.IO server
-// const io = new SocketIOServer(server, {
-//   cors: {
-//     origin: '*',
-//     methods: ['GET', 'POST'],
-//   },
-// });
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
 
 // Initialize game room manager
 const challengeManager = new ChallengeManager();
 const gameRoomManager = new GameRoomManager(challengeManager);
 
 // Socket.IO event handlers
-// io.on('connection', (socket) => {
-  /*
+io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
   socket.on('createGame', (data: { username: string; difficulty: 'easy' | 'medium' | 'hard' }) => {
@@ -367,17 +366,16 @@ const gameRoomManager = new GameRoomManager(challengeManager);
       console.error('Error handling disconnect:', error);
     }
   });
-  */
-// });
+});
 
 // Broadcast game states every 2 seconds
-// setInterval(() => {
-//   try {
-//     gameRoomManager.broadcastGameStates(io);
-//   } catch (error) {
-//     console.error('Error broadcasting game states:', error);
-//   }
-// }, 2000);
+setInterval(() => {
+  try {
+    gameRoomManager.broadcastGameStates(io);
+  } catch (error) {
+    console.error('Error broadcasting game states:', error);
+  }
+}, 2000);
 // Function to get the current challenge
 router.get('/api/challenge', async (_req, res) => {
   try {
@@ -465,8 +463,14 @@ router.get('/api/stats/:username', async (req, res) => {
 // Function to initialize the game
 router.get('/api/init', async (_req, res) => {
   try {
+    console.log('API_INIT: Getting daily challenge...');
     const challenge = getDailyChallenge();
+    console.log('API_INIT: Daily challenge:', challenge ? `${challenge.id} - ${challenge.difficulty}`: 'is null');
+
+    console.log('API_INIT: Getting username from context...');
     const username = context.username || 'anonymous';
+    console.log('API_INIT: Username:', username);
+    
     // const userStats = await getUserStats(username);
     const userStats = {
       bestWPM: 0,
@@ -475,7 +479,11 @@ router.get('/api/init', async (_req, res) => {
       streak: 0,
     };
     const postId = 'keyscripture_post'; // Placeholder, can be from context or params
+
+    console.log('API_INIT: Sending response...');
     res.json({ type: 'init', postId, username, userStats, dailyChallenge: challenge });
+    console.log('API_INIT: Response sent.');
+
   } catch (error) {
     console.error('Failed to init game:', error);
     res.status(500).json({ error: 'Failed to initialize game' });
