@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 import { createServer, context } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
-import { realtime } from '@devvit/realtime/server';
 import challengesData from './challenges.json' assert { type: 'json' };
 import { Server as SocketIOServer } from 'socket.io';
 import { GameRoomManager } from './gameRoomManager.js';
@@ -542,27 +541,13 @@ router.post('/api/update-game-state', async (req, res) => {
       gameCompleted: currentInput.length >= challenge.text.length,
     };
 
-    await realtime.send('keyscripture_dev', {
-      type: 'gameUpdate',
-      gameUsername: username,
-      data: updatedData,
-    });
+    // Note: Realtime spectator feature has been removed
+    // Previously: await realtime.send('keyscripture_dev', { ... });
 
     res.json({ success: true });
   } catch (error) {
     console.error('Failed to update game state:', error);
     res.status(500).json({ error: 'Failed to update game state' });
-  }
-});
-
-// Endpoint to get all active rooms
-router.get('/api/active-rooms', async (_req, res) => {
-  try {
-    const activeGames = gameRoomManager.getActiveGames();
-    res.json(activeGames);
-  } catch (error) {
-    console.error('Failed to get active rooms:', error);
-    res.status(500).send('Failed to get active rooms');
   }
 });
 

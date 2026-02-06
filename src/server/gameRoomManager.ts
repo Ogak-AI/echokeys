@@ -49,43 +49,41 @@ export class GameRoomManager {
     void socket.join(roomId);
     this.socketToRoom.set(socket.id, roomId);
 
+    // Only allow players, not spectators - simplify
     if (asSpectator) {
-      room.spectators.add(socket.id);
-      console.log(`Spectator ${username} (${socket.id}) joined room ${roomId}`);
-
-      // Send current game state to spectator
-      this.sendCurrentState(socket, room);
-    } else {
-      // Add as player
-      const player: Player = {
-        id: socket.id,
-        username,
-        currentInput: '',
-        wpm: 0,
-        accuracy: 100,
-        startTime: Date.now(),
-        errorIndexes: [],
-        isFinished: false,
-      };
-
-      room.players.set(socket.id, player);
-
-      // Start the game if this is the first player
-      if (room.players.size === 1) {
-        room.status = 'active';
-      }
-
-      console.log(`Player ${username} (${socket.id}) joined room ${roomId}`);
-
-      // Notify all clients in the room
-      const playerJoinedMessage: PlayerJoined = {
-        type: 'playerJoined',
-        roomId,
-        player,
-      };
-
-      socket.to(roomId).emit('message', playerJoinedMessage);
+      console.log(`Spectator ${username} (${socket.id}) attempted to join room ${roomId} - spectators disabled`);
+      return false;
     }
+
+    // Add as player
+    const player: Player = {
+      id: socket.id,
+      username,
+      currentInput: '',
+      wpm: 0,
+      accuracy: 100,
+      startTime: Date.now(),
+      errorIndexes: [],
+      isFinished: false,
+    };
+
+    room.players.set(socket.id, player);
+
+    // Start the game if this is the first player
+    if (room.players.size === 1) {
+      room.status = 'active';
+    }
+
+    console.log(`Player ${username} (${socket.id}) joined room ${roomId}`);
+
+    // Notify all clients in the room
+    const playerJoinedMessage: PlayerJoined = {
+      type: 'playerJoined',
+      roomId,
+      player,
+    };
+
+    socket.to(roomId).emit('message', playerJoinedMessage);
 
     return true;
   }
@@ -162,18 +160,6 @@ export class GameRoomManager {
     console.log(`Client ${socketId} left room ${roomId}`);
   }
 
-  private sendCurrentState(socket: Socket, room: GameRoom): void {
-    const players = Array.from(room.players.values());
-    const gameStateUpdate: GameStateUpdate = {
-      type: 'gameState',
-      roomId: room.id,
-      players,
-      timestamp: Date.now(),
-    };
-
-    socket.emit('message', gameStateUpdate);
-  }
-
   broadcastGameStates(io: SocketIOServer): void {
     for (const [roomId, room] of this.rooms) {
       if (room.status === 'active' && room.players.size > 0) {
@@ -214,22 +200,6 @@ export class GameRoomManager {
       this.rooms.delete(roomId);
       console.log(`Cleaned up room ${roomId}`);
     }, 300000); // 5 minutes
-  }
-
-  getActiveGames(): Array<{
-    id: string;
-    playerCount: number;
-    spectatorCount: number;
-    difficulty: 'easy' | 'medium' | 'hard';
-    status: 'waiting' | 'active' | 'finished';
-  }> {
-    return Array.from(this.rooms.values()).map((room) => ({
-      id: room.id,
-      playerCount: room.players.size,
-      spectatorCount: room.spectators.size,
-      difficulty: room.challenge.difficulty,
-      status: room.status,
-    }));
   }
 
   private generateRoomId(): string {

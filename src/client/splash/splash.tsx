@@ -37,29 +37,6 @@ export const Splash = () => {
           Start Typing!
         </button>
       </div>
-      <div className="flex items-center justify-center mt-3">
-        <button
-          className="bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={(e) => {
-            console.log('Watch button clicked');
-            try {
-              void requestExpandedMode(e.nativeEvent, 'games');
-            } catch (error) {
-              console.error('Navigation error:', error);
-              // Fallback navigation
-              try {
-                void navigateTo('games');
-              } catch (navError) {
-                console.error('Standard navigation failed:', navError);
-                window.location.href = 'games.html';
-              }
-            }
-          }}
-        >
-          Watch
-        </button>
-      </div>
-
       <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-white/80">
         <button
           className="cursor-pointer hover:text-white"
