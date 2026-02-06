@@ -6,8 +6,6 @@ import { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '.
 import { createServer, context } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
 import challengesData from './challenges.json' assert { type: 'json' };
-import { Server as SocketIOServer } from 'socket.io';
-import { GameRoomManager } from './gameRoomManager.js';
 import { ChallengeManager } from './challengeManager.js';
 // The DevvitRedisClient interface and the context re-assignment are no longer needed.
 
@@ -284,97 +282,13 @@ async function addActivePlayer(username: string): Promise<void> {
   );
 }
 
-// The Devvit server is the one we should listen on and attach Socket.IO to
+// The Devvit server is the one we should listen on
 const server = createServer(app);
-// const port = getServerPort();
 
-// Initialize Socket.IO server
-const io = new SocketIOServer(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-});
-
-// Initialize game room manager
+// Initialize challenge manager
 const challengeManager = new ChallengeManager();
-const gameRoomManager = new GameRoomManager(challengeManager);
 
-// Socket.IO event handlers
-io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`);
-
-  socket.on('createGame', (data: { username: string; difficulty: 'easy' | 'medium' | 'hard' }) => {
-    try {
-      const { username, difficulty } = data;
-      const roomId = gameRoomManager.createGame(username, difficulty);
-      socket.emit('gameCreated', { roomId });
-      console.log(`Game created for ${username} with room ${roomId}`);
-    } catch (error) {
-      console.error('Error creating game:', error);
-      socket.emit('error', { message: 'Failed to create game' });
-    }
-  });
-
-  socket.on('joinGame', (data: { roomId: string; username: string; asSpectator?: boolean }) => {
-    try {
-      const { roomId, username, asSpectator = false } = data;
-      const success = gameRoomManager.joinGame(socket, roomId, username, asSpectator);
-      if (success) {
-        socket.emit('joinedGame', { roomId, asSpectator });
-        console.log(`${username} joined room ${roomId} as ${asSpectator ? 'spectator' : 'player'}`);
-      } else {
-        socket.emit('error', { message: 'Failed to join game' });
-      }
-    } catch (error) {
-      console.error('Error joining game:', error);
-      socket.emit('error', { message: 'Failed to join game' });
-    }
-  });
-
-  socket.on(
-    'updateProgress',
-    (data: {
-      roomId: string;
-      currentInput: string;
-      wpm: number;
-      accuracy: number;
-      errorIndexes: number[];
-    }) => {
-      try {
-        const { roomId, currentInput, wpm, accuracy, errorIndexes } = data;
-        gameRoomManager.updatePlayerProgress(socket.id, roomId, {
-          currentInput,
-          wpm,
-          accuracy,
-          errorIndexes,
-        });
-        console.log(`Progress update for ${socket.id} in room ${roomId}`);
-      } catch (error) {
-        console.error('Error updating progress:', error);
-        socket.emit('error', { message: 'Failed to update progress' });
-      }
-    }
-  );
-
-  socket.on('disconnect', () => {
-    try {
-      gameRoomManager.leaveGame(socket.id);
-      console.log(`Client disconnected: ${socket.id}`);
-    } catch (error) {
-      console.error('Error handling disconnect:', error);
-    }
-  });
-});
-
-// Broadcast game states every 2 seconds
-setInterval(() => {
-  try {
-    gameRoomManager.broadcastGameStates(io);
-  } catch (error) {
-    console.error('Error broadcasting game states:', error);
-  }
-}, 2000);
+// No realtime broadcasting — simplified server (no Socket.IO)
 // Function to get the current challenge
 router.get('/api/challenge', async (_req, res) => {
   try {

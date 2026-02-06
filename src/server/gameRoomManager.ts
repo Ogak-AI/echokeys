@@ -12,7 +12,9 @@ export class GameRoomManager {
     this.challengeManager = challengeManager;
   }
 
-  createGame(_username: string, difficulty: 'easy' | 'medium' | 'hard'): string {
+  createGame(_username: string, difficulty: 'easy' | 'medium' | 'hard'):
+    | string
+    | { roomId: string; challenge: GameChallenge } {
     const roomId = this.generateRoomId();
     const challenge = this.challengeManager.getRandomChallenge(difficulty);
 
@@ -28,7 +30,7 @@ export class GameRoomManager {
     this.rooms.set(roomId, room);
     console.log(`Created game room ${roomId} with difficulty ${difficulty}`);
 
-    return roomId;
+    return { roomId, challenge };
   }
 
   joinGame(

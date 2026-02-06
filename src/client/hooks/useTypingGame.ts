@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { context } from '@devvit/web/client';
-import { io, Socket } from 'socket.io-client';
 import type {
   InitResponse,
   GetLeaderboardResponse,
@@ -29,7 +28,6 @@ interface GameState {
   lastSpokenIndex: number;
   isMuted: boolean;
   errorIndexes: number[];
-  socket: Socket | null;
   roomId: string | null;
   challenge: GameChallenge | null;
 }
@@ -54,76 +52,18 @@ export const useTypingGame = () => {
     lastSpokenIndex: 0,
     isMuted: false,
     errorIndexes: [],
-    socket: null,
     roomId: null,
     challenge: null,
   });
 
-  // Initialize Socket.IO and fetch initial data
+  // Fetch initial data (no sockets)
   useEffect(() => {
-    // Initialize Socket.IO connection
-    const socketConnection = io();
-    setState((prev) => ({ ...prev, socket: socketConnection }));
-
-    socketConnection.on('connect', () => {
-      console.log('Connected to Socket.IO server');
-    });
-
-    socketConnection.on('disconnect', () => {
-      console.log('Disconnected from Socket.IO server');
-    });
-
-    socketConnection.on('gameCreated', (data: { roomId: string }) => {
-      console.log('Game created:', data);
-      setState((prev) => ({ ...prev, roomId: data.roomId }));
-
-      // Join the game as a player
-      socketConnection.emit('joinGame', {
-        roomId: data.roomId,
-        username: state.username || 'Player',
-        asSpectator: false,
-      });
-    });
-
-    socketConnection.on('joinedGame', (data: { roomId: string; asSpectator: boolean }) => {
-      console.log('Joined game:', data);
-      setState((prev) => ({ ...prev, roomId: data.roomId }));
-
-      // For now, we'll need to get the challenge from the server
-      // In a full implementation, the server would send the challenge when joining
-      // For now, let's fetch it from the old API as a fallback
-      if (!data.asSpectator) {
-        fetch(`/api/challenge/${state.selectedDifficulty || 'easy'}`)
-          .then((res) => res.json())
-          .then((challengeData: DailyChallenge) => {
-            setState((prev) => ({
-              ...prev,
-              challenge: {
-                id: challengeData.id,
-                text: challengeData.text,
-                difficulty: challengeData.difficulty,
-              },
-            }));
-          })
-          .catch((err) => console.error('Failed to fetch challenge:', err));
-      }
-    });
-
-    socketConnection.on('error', (error: { message: string }) => {
-      console.error('Socket.IO error:', error);
-    });
-
-    // Fetch initial user data
     const init = async () => {
       try {
         console.log('Attempting to fetch /api/init...');
-        console.log('Devvit context available:', context);
-        console.log('Devvit context username:', context?.username);
-
         const res = await fetch('/api/init');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
-        console.log('Received data from /api/init:', data);
         if (data.type !== 'init') throw new Error('Unexpected response');
         setState((prev) => ({
           ...prev,
@@ -135,7 +75,6 @@ export const useTypingGame = () => {
         }));
       } catch (err) {
         console.error('Failed to init game', err);
-        console.log('Devvit context username:', context?.username);
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -145,11 +84,7 @@ export const useTypingGame = () => {
       }
     };
     void init();
-
-    return () => {
-      socketConnection.disconnect();
-    };
-  }, [state.selectedDifficulty, state.username]);
+  }, []);
 
   const startGame = useCallback(() => {
     setState((prev) => ({
@@ -165,25 +100,25 @@ export const useTypingGame = () => {
 
   const selectDifficulty = useCallback(
     async (difficulty: 'easy' | 'medium' | 'hard') => {
-      if (!state.socket || !state.username) return;
-
       try {
-        // Create a new game room
-        state.socket.emit('createGame', {
-          username: state.username,
-          difficulty,
-        });
-
+        const res = await fetch(`/api/challenge/${difficulty}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const challengeData: DailyChallenge = await res.json();
         setState((prev) => ({
           ...prev,
           selectedDifficulty: difficulty,
           showDifficultySelect: false,
+          challenge: {
+            id: challengeData.id,
+            text: challengeData.text,
+            difficulty: challengeData.difficulty as 'easy' | 'medium' | 'hard',
+          },
         }));
       } catch (err) {
-        console.error('Failed to create game', err);
+        console.error('Failed to load challenge for difficulty', err);
       }
     },
-    [state.socket, state.username]
+    []
   );
 
   const updateInput = useCallback(
@@ -245,16 +180,7 @@ export const useTypingGame = () => {
         errorIndexes: newErrorIndexes, // Update state with the new error indexes
       }));
 
-      // Send game progress to server for spectators via Socket.IO
-      if (state.socket && state.roomId && state.username && state.challenge && state.startTime) {
-        state.socket.emit('updateProgress', {
-          roomId: state.roomId,
-          currentInput: input,
-          wpm,
-          accuracy,
-          errorIndexes: newErrorIndexes,
-        });
-      }
+      // No realtime spectators: progress is client-only now
 
       if (isFinished) {
         window.speechSynthesis.cancel(); // Stop any lingering speech

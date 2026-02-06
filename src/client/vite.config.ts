@@ -14,8 +14,7 @@ export default defineConfig({
       input: {
         splash: 'splash.html',
         game: 'game.html',
-        games: 'games.html',
-        watch: 'watch.html',
+        // removed spectator/watch entrypoints
       },
       output: {
         entryFileNames: '[name].js',
