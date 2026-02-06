@@ -12,6 +12,8 @@ import { GameRoomManager } from './gameRoomManager.js';
 import { ChallengeManager } from './challengeManager.js';
 // The DevvitRedisClient interface and the context re-assignment are no longer needed.
 
+const VITE_CLIENT_URL = 'http://localhost:3000';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
