@@ -288,19 +288,20 @@ const server = createServer(app);
 // const port = getServerPort();
 
 // Initialize Socket.IO server
-const io = new SocketIOServer(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-});
+// const io = new SocketIOServer(server, {
+//   cors: {
+//     origin: '*',
+//     methods: ['GET', 'POST'],
+//   },
+// });
 
 // Initialize game room manager
 const challengeManager = new ChallengeManager();
 const gameRoomManager = new GameRoomManager(challengeManager);
 
 // Socket.IO event handlers
-io.on('connection', (socket) => {
+// io.on('connection', (socket) => {
+  /*
   console.log(`Client connected: ${socket.id}`);
 
   socket.on('createGame', (data: { username: string; difficulty: 'easy' | 'medium' | 'hard' }) => {
@@ -364,16 +365,17 @@ io.on('connection', (socket) => {
       console.error('Error handling disconnect:', error);
     }
   });
-});
+  */
+// });
 
 // Broadcast game states every 2 seconds
-setInterval(() => {
-  try {
-    gameRoomManager.broadcastGameStates(io);
-  } catch (error) {
-    console.error('Error broadcasting game states:', error);
-  }
-}, 2000);
+// setInterval(() => {
+//   try {
+//     gameRoomManager.broadcastGameStates(io);
+//   } catch (error) {
+//     console.error('Error broadcasting game states:', error);
+//   }
+// }, 2000);
 // Function to get the current challenge
 router.get('/api/challenge', async (_req, res) => {
   try {
@@ -463,7 +465,13 @@ router.get('/api/init', async (_req, res) => {
   try {
     const challenge = getDailyChallenge();
     const username = context.username || 'anonymous';
-    const userStats = await getUserStats(username);
+    // const userStats = await getUserStats(username);
+    const userStats = {
+      bestWPM: 0,
+      bestAccuracy: 0,
+      totalGames: 0,
+      streak: 0,
+    };
     const postId = 'keyscripture_post'; // Placeholder, can be from context or params
     res.json({ type: 'init', postId, username, userStats, dailyChallenge: challenge });
   } catch (error) {
@@ -564,4 +572,4 @@ app.use(router);
 // Initialize Devvit realtime for broadcasting
 // Note: Broadcasting to subreddit for spectator updates
 
-export default server;
+export default app;
