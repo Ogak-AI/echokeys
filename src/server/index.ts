@@ -51,33 +51,29 @@ const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
 let challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [];
 let challengesLoaded = false;
 
-// Synchronous pre-initialization to validate challengesData immediately
-console.log('[Server Init] IMMEDIATE CHECK - challengesData type:', typeof challengesData);
-console.log('[Server Init] IMMEDIATE CHECK - challengesData is array:', Array.isArray(challengesData));
-if (Array.isArray(challengesData)) {
-  console.log('[Server Init] IMMEDIATE CHECK - challengesData.length:', challengesData.length);
-  if (challengesData.length > 0) {
-    console.log('[Server Init] IMMEDIATE CHECK - First item type:', typeof challengesData[0]);
-    console.log('[Server Init] IMMEDIATE CHECK - First item keys:', Object.keys(challengesData[0] || {}).join(', '));
-  }
-}
-
-async function loadChallenges() {
+// Initialize challenges synchronously from imported JSON
+function initChallengesSync() {
   try {
-    console.log('[Server Startup] Loading challenges...');
-    console.log('[Server Startup] challengesData type:', typeof challengesData, 'is array:', Array.isArray(challengesData));
+    console.log('[Server Init] IMMEDIATE CHECK - challengesData type:', typeof challengesData);
+    console.log('[Server Init] IMMEDIATE CHECK - challengesData is array:', Array.isArray(challengesData));
+    if (Array.isArray(challengesData)) {
+      console.log('[Server Init] IMMEDIATE CHECK - challengesData.length:', challengesData.length);
+      if (challengesData.length > 0) {
+        console.log('[Server Init] IMMEDIATE CHECK - First item type:', typeof challengesData[0]);
+        console.log('[Server Init] IMMEDIATE CHECK - First item keys:', Object.keys(challengesData[0] || {}).join(', '));
+      }
+    }
     
-    // In Devvit serverless environment, only use embedded challenges data
-    // Filesystem access (fs.readdir, fs.readFile) is NOT available in Devvit
+    // Synchronously process challenges from imported data
     if (Array.isArray(challengesData) && challengesData.length > 0) {
-      console.log('[Server Startup] Processing', challengesData.length, 'challenges from embedded data');
+      console.log('[Server Init] Processing', challengesData.length, 'challenges from embedded data');
       challenges = challengesData.map((p, idx) => {
         const processed = {
           text: (p.text || '').trim(),
           difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
         };
         if (idx === 0) {
-          console.log('[Server Startup] Sample challenge[0]:', {
+          console.log('[Server Init] Sample challenge[0]:', {
             textLength: processed.text.length,
             difficulty: processed.difficulty,
             textPreview: processed.text.substring(0, 50) + '...',
@@ -86,44 +82,32 @@ async function loadChallenges() {
         return processed;
       });
       challengesLoaded = true;
-      console.log(`[Server Startup] Successfully loaded ${challenges.length} challenges from embedded data`);
+      console.log(`[Server Init] Successfully loaded ${challenges.length} challenges synchronously`);
       
       // Log distribution
       const dist = { easy: 0, medium: 0, hard: 0 };
       challenges.forEach(c => {
         if (c.difficulty in dist) dist[c.difficulty as keyof typeof dist]++;
       });
-      console.log('[Server Startup] Difficulty distribution:', dist);
+      console.log('[Server Init] Difficulty distribution:', dist);
       return;
     }
-
-    // Fallback if embedded data is empty
-    console.log('[Server Startup] No challenges in embedded data, using fallback');
+    
+    // Fallback if data is empty
+    console.log('[Server Init] No challenges in embedded data, using fallback');
     challenges = fallbackChallenges;
     challengesLoaded = true;
-    console.log('Using fallback challenges');
   } catch (err) {
-    console.error('[Server Startup] CRITICAL ERROR loading challenges:', err instanceof Error ? err.stack : err);
+    console.error('[Server Init] ERROR initializing challenges:', err instanceof Error ? err.stack : err);
     challenges = fallbackChallenges;
     challengesLoaded = true;
-    console.log('[Server Startup] Using fallback challenges due to error');
   }
 }
 
-// Pre-load challenges (awaited to ensure they load before first request)
-void (async () => {
-  try {
-    console.log('[Server Startup] ========== KEYSCRIPTURE SERVER STARTING ==========');
-    console.log('[Server Startup] Loading challenges...');
-    await loadChallenges();
-    console.log('[Server Startup] ========== SERVER READY ==========');
-    console.log('[Server Startup] Challenges ready:', challenges.length > 0 ? `${challenges.length} loaded` : 'FAILED - using fallback');
-  } catch (err) {
-    console.error('[Server Startup] CRITICAL: Failed to pre-load challenges:', err instanceof Error ? err.stack : err);
-    challenges = fallbackChallenges;
-    challengesLoaded = true;
-  }
-})();
+// Call synchronous initialization immediately
+initChallengesSync();
+
+
 
 function getDailyChallenge(): DailyChallenge {
   if (!challengesLoaded || challenges.length === 0) {
