@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io';
 import { Server as SocketIOServer } from 'socket.io';
-import { GameRoom, Player, GameStateUpdate, PlayerJoined } from '../shared/types/socket.js';
+import { GameRoom, Player, GameStateUpdate, PlayerJoined, GameChallenge } from '../shared/types/socket.js';
 import { ChallengeManager } from './challengeManager.js';
 
 export class GameRoomManager {

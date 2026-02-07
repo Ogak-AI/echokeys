@@ -2,7 +2,6 @@ import express from 'express';
 import { createServer, context } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
 import challengesData from './challenges.json' assert { type: 'json' };
-import { ChallengeManager } from './challengeManager.js';
 import type { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 
 const app = express();
@@ -52,37 +51,77 @@ const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
 let challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [];
 let challengesLoaded = false;
 
+// Synchronous pre-initialization to validate challengesData immediately
+console.log('[Server Init] IMMEDIATE CHECK - challengesData type:', typeof challengesData);
+console.log('[Server Init] IMMEDIATE CHECK - challengesData is array:', Array.isArray(challengesData));
+if (Array.isArray(challengesData)) {
+  console.log('[Server Init] IMMEDIATE CHECK - challengesData.length:', challengesData.length);
+  if (challengesData.length > 0) {
+    console.log('[Server Init] IMMEDIATE CHECK - First item type:', typeof challengesData[0]);
+    console.log('[Server Init] IMMEDIATE CHECK - First item keys:', Object.keys(challengesData[0] || {}).join(', '));
+  }
+}
+
 async function loadChallenges() {
   try {
+    console.log('[Server Startup] Loading challenges...');
+    console.log('[Server Startup] challengesData type:', typeof challengesData, 'is array:', Array.isArray(challengesData));
+    
     // In Devvit serverless environment, only use embedded challenges data
     // Filesystem access (fs.readdir, fs.readFile) is NOT available in Devvit
     if (Array.isArray(challengesData) && challengesData.length > 0) {
-      challenges = challengesData.map((p) => ({
-        text: (p.text || '').trim(),
-        difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
-      }));
+      console.log('[Server Startup] Processing', challengesData.length, 'challenges from embedded data');
+      challenges = challengesData.map((p, idx) => {
+        const processed = {
+          text: (p.text || '').trim(),
+          difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
+        };
+        if (idx === 0) {
+          console.log('[Server Startup] Sample challenge[0]:', {
+            textLength: processed.text.length,
+            difficulty: processed.difficulty,
+            textPreview: processed.text.substring(0, 50) + '...',
+          });
+        }
+        return processed;
+      });
       challengesLoaded = true;
-      console.log(`Loaded ${challenges.length} challenges from embedded data`);
+      console.log(`[Server Startup] Successfully loaded ${challenges.length} challenges from embedded data`);
+      
+      // Log distribution
+      const dist = { easy: 0, medium: 0, hard: 0 };
+      challenges.forEach(c => {
+        if (c.difficulty in dist) dist[c.difficulty as keyof typeof dist]++;
+      });
+      console.log('[Server Startup] Difficulty distribution:', dist);
       return;
     }
 
     // Fallback if embedded data is empty
+    console.log('[Server Startup] No challenges in embedded data, using fallback');
     challenges = fallbackChallenges;
     challengesLoaded = true;
     console.log('Using fallback challenges');
   } catch (err) {
-    console.error('Failed to load challenges:', err);
+    console.error('[Server Startup] CRITICAL ERROR loading challenges:', err instanceof Error ? err.stack : err);
     challenges = fallbackChallenges;
     challengesLoaded = true;
+    console.log('[Server Startup] Using fallback challenges due to error');
   }
 }
 
 // Pre-load challenges (awaited to ensure they load before first request)
 void (async () => {
   try {
+    console.log('[Server Startup] ========== KEYSCRIPTURE SERVER STARTING ==========');
+    console.log('[Server Startup] Loading challenges...');
     await loadChallenges();
+    console.log('[Server Startup] ========== SERVER READY ==========');
+    console.log('[Server Startup] Challenges ready:', challenges.length > 0 ? `${challenges.length} loaded` : 'FAILED - using fallback');
   } catch (err) {
-    console.error('Failed to pre-load challenges:', err);
+    console.error('[Server Startup] CRITICAL: Failed to pre-load challenges:', err instanceof Error ? err.stack : err);
+    challenges = fallbackChallenges;
+    challengesLoaded = true;
   }
 })();
 
@@ -189,13 +228,16 @@ async function addActivePlayer(username: string): Promise<void> {
 const server = createServer(app);
 
 // Initialize challenge manager
-const challengeManager = new ChallengeManager();
+// const challengeManager = new ChallengeManager();
 
 // No realtime broadcasting — simplified server (no Socket.IO)
 // Function to get the current challenge
 router.get('/api/challenge', async (_req, res) => {
   try {
+    console.log('[/api/challenge] Getting daily challenge');
+    console.log('[/api/challenge] challengesLoaded:', challengesLoaded, 'challenges.length:', challenges.length);
     const challenge = getDailyChallenge();
+    console.log('[/api/challenge] Daily challenge:', challenge.id);
     try {
       await addActivePlayer((context && (context as any).username) || 'anonymous');
     } catch (ignore) {
@@ -203,8 +245,11 @@ router.get('/api/challenge', async (_req, res) => {
     }
     res.json(challenge);
   } catch (error) {
-    console.error('Failed to get daily challenge:', error);
-    res.status(500).send('Failed to load challenge');
+    console.error('[/api/challenge] ERROR:', error instanceof Error ? error.stack : error);
+    res.status(500).json({ 
+      error: 'Failed to load challenge',
+      details: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 
@@ -212,28 +257,38 @@ router.get('/api/challenge', async (_req, res) => {
 router.get('/api/challenge/:difficulty', async (req, res) => {
   try {
     const { difficulty } = req.params;
+    console.log(`[/api/challenge/${difficulty}] Request received`);
+    console.log('[/api/challenge] challengesLoaded:', challengesLoaded, 'total challenges:', challenges.length);
+    
     if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+      console.warn(`[/api/challenge] Invalid difficulty: ${difficulty}`);
       return res.status(400).json({ error: 'Invalid difficulty level' });
     }
 
     // Ensure challenges are loaded
     if (!challengesLoaded || challenges.length === 0) {
+      console.warn(`[/api/challenge] Challenges not loaded yet. challengesLoaded=${challengesLoaded}, length=${challenges.length}`);
       return res.status(503).json({ error: 'Challenges are still loading, please try again' });
     }
 
     // Filter challenges by difficulty
     const filteredChallenges = challenges.filter((c) => c.difficulty === difficulty);
+    console.log(`[/api/challenge] Found ${filteredChallenges.length} challenges for difficulty: ${difficulty}`);
+    
     if (filteredChallenges.length === 0) {
+      console.warn(`[/api/challenge] No challenges found for difficulty: ${difficulty}`);
+      console.log(`[/api/challenge] Available difficulties: ${challenges.map(c => c.difficulty).filter((d, i, a) => a.indexOf(d) === i).join(', ')}`);
       return res.status(404).json({ error: 'No challenges found for this difficulty' });
     }
 
     // Select a random challenge from the filtered list
     const randomIndex = Math.floor(Math.random() * filteredChallenges.length);
-    const challenge = filteredChallenges[randomIndex];
+    const selectedChallenge = filteredChallenges[randomIndex];
+    console.log(`[/api/challenge] Selected challenge index: ${randomIndex}, text length: ${selectedChallenge?.text?.length || 0}`);
 
     // Create a challenge object with ID and date
     const challengeWithId = {
-      ...challenge,
+      ...selectedChallenge,
       id: `challenge-${difficulty}-${randomIndex}`,
       date: new Date().toISOString().split('T')[0] || new Date().toDateString(),
     };
@@ -243,10 +298,14 @@ router.get('/api/challenge/:difficulty', async (req, res) => {
     } catch (ignore) {
       // ignore
     }
+    console.log(`[/api/challenge] Returning challenge with ID: ${challengeWithId.id}`);
     res.json(challengeWithId);
   } catch (error) {
-    console.error('Failed to get challenge by difficulty:', error);
-    res.status(500).send('Failed to load challenge');
+    console.error(`[/api/challenge] ERROR:`, error instanceof Error ? error.stack : error);
+    res.status(500).json({ 
+      error: 'Failed to load challenge',
+      details: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 
@@ -263,7 +322,10 @@ router.get('/api/leaderboard', async (_req, res) => {
         // Fallback: try zRange and parse members as plain strings
         const members = (await redis.zRange('leaderboard', 0, -1)) || [];
         // members may be strings like 'username:timestamp:accuracy' without scores; we can't determine score reliably
-        entries = members.map((m: string) => ({ member: m, score: 0 }));
+        entries = (members as unknown as Array<any>).map((m: any) => ({ 
+          member: typeof m === 'string' ? m : m.member || '', 
+          score: 0 
+        }));
       }
     } catch (redisErr) {
       console.warn('Leaderboard read failed, returning empty list:', redisErr instanceof Error ? redisErr.message : redisErr);
@@ -281,7 +343,7 @@ router.get('/api/leaderboard', async (_req, res) => {
         username,
         wpm: item.score || 0,
         accuracy: parseFloat(accuracy),
-        date: timestamp ? new Date(parseInt(timestamp)).toISOString().split('T')[0] : '',
+        date: timestamp ? new Date(parseInt(timestamp)).toISOString().split('T')[0] || '' : '',
       };
     });
     res.json({ type: 'leaderboard', leaderboard: response });
@@ -306,20 +368,46 @@ router.get('/api/stats/:username', async (req, res) => {
 // Function to initialize the game
 router.get('/api/init', async (_req, res) => {
   try {
+    console.log('[/api/init] ===== REQUEST RECEIVED =====');
+    console.log('[/api/init] challengesLoaded:', challengesLoaded);
+    console.log('[/api/init] challenges.length:', challenges.length);
+    
+    if (!challengesLoaded || challenges.length === 0) {
+      console.warn('[/api/init] WARNING: Challenges not ready yet');
+      return res.status(503).json({ 
+        error: 'Challenges still loading',
+        details: `challengesLoaded=${challengesLoaded}, length=${challenges.length}`
+      });
+    }
+
     const challenge = getDailyChallenge();
+    console.log('[/api/init] Got daily challenge:', challenge.id);
+    
     const username = (context && (context as any).username) || 'anonymous';
-    // const userStats = await getUserStats(username);
+    console.log('[/api/init] Username:', username);
+    
     const userStats = {
       bestWPM: 0,
       bestAccuracy: 0,
       totalGames: 0,
       streak: 0,
     };
-    const postId = 'keyscripture_post'; // Placeholder, can be from context or params
-    res.json({ type: 'init', postId, username, userStats, dailyChallenge: challenge });
+    const postId = 'keyscripture_post';
+    
+    const response = { type: 'init', postId, username, userStats, dailyChallenge: challenge };
+    console.log('[/api/init] ===== RESPONSE OK =====');
+    res.json(response);
   } catch (error) {
-    console.error('Failed to init game:', error);
-    res.status(500).json({ error: 'Failed to initialize game' });
+    console.error('[/api/init] ===== ERROR =====');
+    console.error('[/api/init] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('[/api/init] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[/api/init] Stack:', error instanceof Error ? error.stack : 'N/A');
+    
+    res.status(500).json({ 
+      error: 'Failed to initialize game',
+      details: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
@@ -374,19 +462,9 @@ router.post('/api/update-game-state', async (req, res) => {
     await redis.hSet(`game:${username}`, gameData);
 
     // Broadcast update to spectators via Devvit realtime
-    const updatedData = {
-      username,
-      challenge,
-      currentInput,
-      startTime,
-      wpm,
-      accuracy,
-      errorIndexes,
-      gameCompleted: currentInput.length >= challenge.text.length,
-    };
-
     // Note: Realtime spectator feature has been removed
-    // Previously: await realtime.send('keyscripture_dev', { ... });
+    // Previously: const updatedData = {...};
+    // Previously: await realtime.send(...);
 
     res.json({ success: true });
   } catch (error) {

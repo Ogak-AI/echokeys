@@ -205,7 +205,6 @@ export const useTypingGame = () => {
       state.startTime,
       state.isMuted,
       state.lastSpokenIndex,
-      state.socket,
       state.roomId,
       state.username,
     ]
