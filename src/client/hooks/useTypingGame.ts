@@ -12,7 +12,7 @@ import { GameChallenge } from '../../shared/types/socket';
 interface GameState {
   username: string | null;
   userStats: UserStats | null;
-  dailyChallenge: DailyChallenge | null;
+  challenge: GameChallenge | null; // Unified challenge object
   loading: boolean;
   gameStarted: boolean;
   gameFinished: boolean;
@@ -29,14 +29,13 @@ interface GameState {
   isMuted: boolean;
   errorIndexes: number[];
   roomId: string | null;
-  challenge: GameChallenge | null;
 }
 
 export const useTypingGame = () => {
   const [state, setState] = useState<GameState>({
     username: null,
     userStats: null,
-    dailyChallenge: null,
+    challenge: null, // Unified challenge object
     loading: true,
     gameStarted: false,
     gameFinished: false,
@@ -53,7 +52,6 @@ export const useTypingGame = () => {
     isMuted: false,
     errorIndexes: [],
     roomId: null,
-    challenge: null,
   });
 
   // Fetch initial data (no sockets)
@@ -69,7 +67,13 @@ export const useTypingGame = () => {
           ...prev,
           username: data.username,
           userStats: data.userStats,
-          dailyChallenge: data.dailyChallenge,
+          challenge: data.dailyChallenge
+            ? {
+                id: data.dailyChallenge.id,
+                text: data.dailyChallenge.text,
+                difficulty: data.dailyChallenge.difficulty as 'easy' | 'medium' | 'hard',
+              }
+            : null,
           loading: false,
           showDifficultySelect: true,
         }));

@@ -1,7 +1,6 @@
 import express from 'express';
 import { createServer, context } from '@devvit/web/server';
 import { redis } from '@devvit/redis'; // Import the redis client directly
-import challengesData from './challenges.json' assert { type: 'json' };
 import type { GetLeaderboardResponse, UserStats, DailyChallenge, GameResult } from '../shared/types/api';
 
 const app = express();
@@ -15,15 +14,15 @@ app.use(express.text());
 
 const router = express.Router();
 
-// Fallback challenges if files can't be loaded
-const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
+// Embedded challenges data (hardcoded to ensure it works in serverless environment)
+const embeddedChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
   {
     text: 'Welcome to KeyScripture! Type this simple sentence to get started.',
     difficulty: 'easy',
   },
   {
     text: 'Reddit is a network of communities where people can dive into their interests, hobbies and passions.',
-    difficulty: 'medium',
+    difficulty: 'easy',
   },
   {
     text: 'The quick brown fox jumps over the lazy dog. This pangram contains every letter of the alphabet.',
@@ -31,7 +30,7 @@ const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
   },
   {
     text: 'In the world of programming, typing speed and accuracy are crucial skills for developers.',
-    difficulty: 'hard',
+    difficulty: 'medium',
   },
   {
     text: 'Memes are a huge part of internet culture, spreading joy and humor across social platforms.',
@@ -45,29 +44,25 @@ const fallbackChallenges: Omit<DailyChallenge, 'id' | 'date'>[] = [
     text: 'Community engagement is key to building successful online platforms and fostering meaningful connections.',
     difficulty: 'hard',
   },
+  {
+    text: 'Esther\nChapter 1\n1 Now in the days of Ahasuerus, that is, the Ahasuerus who ruled over 127 provinces from India to Ethiopia, 2 in those days when King Ahasuerus was sitting on his royal throne in Shushan the citadel, 3 in the third year of his reign, he held a banquet for all his princes and his servants.',
+    difficulty: 'hard',
+  },
 ];
 
-// Load daily challenges from challenge files
+// Load daily challenges
 let challenges: Omit<DailyChallenge, 'id' | 'date'>[] = [];
 let challengesLoaded = false;
 
-// Initialize challenges synchronously from imported JSON
+// Initialize challenges synchronously
 function initChallengesSync() {
   try {
-    console.log('[Server Init] IMMEDIATE CHECK - challengesData type:', typeof challengesData);
-    console.log('[Server Init] IMMEDIATE CHECK - challengesData is array:', Array.isArray(challengesData));
-    if (Array.isArray(challengesData)) {
-      console.log('[Server Init] IMMEDIATE CHECK - challengesData.length:', challengesData.length);
-      if (challengesData.length > 0) {
-        console.log('[Server Init] IMMEDIATE CHECK - First item type:', typeof challengesData[0]);
-        console.log('[Server Init] IMMEDIATE CHECK - First item keys:', Object.keys(challengesData[0] || {}).join(', '));
-      }
-    }
+    console.log('[Server Init] Initializing challenges');
     
-    // Synchronously process challenges from imported data
-    if (Array.isArray(challengesData) && challengesData.length > 0) {
-      console.log('[Server Init] Processing', challengesData.length, 'challenges from embedded data');
-      challenges = challengesData.map((p, idx) => {
+    // Use embedded challenges directly
+    if (Array.isArray(embeddedChallenges) && embeddedChallenges.length > 0) {
+      console.log('[Server Init] Processing', embeddedChallenges.length, 'embedded challenges');
+      challenges = embeddedChallenges.map((p, idx) => {
         const processed = {
           text: (p.text || '').trim(),
           difficulty: (p.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
@@ -82,7 +77,7 @@ function initChallengesSync() {
         return processed;
       });
       challengesLoaded = true;
-      console.log(`[Server Init] Successfully loaded ${challenges.length} challenges synchronously`);
+      console.log(`[Server Init] Successfully loaded ${challenges.length} challenges`);
       
       // Log distribution
       const dist = { easy: 0, medium: 0, hard: 0 };
@@ -93,13 +88,13 @@ function initChallengesSync() {
       return;
     }
     
-    // Fallback if data is empty
-    console.log('[Server Init] No challenges in embedded data, using fallback');
-    challenges = fallbackChallenges;
+    // Fallback if data is empty (shouldn't happen)
+    console.log('[Server Init] No challenges available, this should not happen');
+    challenges = embeddedChallenges;
     challengesLoaded = true;
   } catch (err) {
     console.error('[Server Init] ERROR initializing challenges:', err instanceof Error ? err.stack : err);
-    challenges = fallbackChallenges;
+    challenges = embeddedChallenges;
     challengesLoaded = true;
   }
 }
@@ -355,6 +350,7 @@ router.get('/api/init', async (_req, res) => {
     console.log('[/api/init] ===== REQUEST RECEIVED =====');
     console.log('[/api/init] challengesLoaded:', challengesLoaded);
     console.log('[/api/init] challenges.length:', challenges.length);
+    console.log('[/api/init] challenges sample:', challenges.length > 0 ? { text: challenges[0].text?.substring(0, 50), difficulty: challenges[0].difficulty } : 'NO_CHALLENGES');
     
     if (!challengesLoaded || challenges.length === 0) {
       console.warn('[/api/init] WARNING: Challenges not ready yet');
@@ -364,11 +360,31 @@ router.get('/api/init', async (_req, res) => {
       });
     }
 
-    const challenge = getDailyChallenge();
-    console.log('[/api/init] Got daily challenge:', challenge.id);
+    let challenge;
+    try {
+      challenge = getDailyChallenge();
+      console.log('[/api/init] Got daily challenge:', challenge.id);
+    } catch (err) {
+      console.error('[/api/init] Error in getDailyChallenge:', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
     
-    const username = (context && (context as any).username) || 'anonymous';
-    console.log('[/api/init] Username:', username);
+    let username;
+    try {
+      // In Devvit server context, context might not be available in route handlers
+      // Safely try to access it, but default to 'anonymous'
+      username = 'anonymous';
+      if (context && typeof context === 'object') {
+        const contextUsername = (context as any).username;
+        if (typeof contextUsername === 'string') {
+          username = contextUsername;
+        }
+      }
+      console.log('[/api/init] Username:', username);
+    } catch (err) {
+      console.error('[/api/init] Error accessing context:', err instanceof Error ? err.message : String(err));
+      username = 'anonymous';
+    }
     
     const userStats = {
       bestWPM: 0,
@@ -378,7 +394,15 @@ router.get('/api/init', async (_req, res) => {
     };
     const postId = 'keyscripture_post';
     
-    const response = { type: 'init', postId, username, userStats, dailyChallenge: challenge };
+    let response;
+    try {
+      response = { type: 'init', postId, username, userStats, dailyChallenge: challenge };
+      console.log('[/api/init] Response object created');
+    } catch (err) {
+      console.error('[/api/init] Error creating response:', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+    
     console.log('[/api/init] ===== RESPONSE OK =====');
     res.json(response);
   } catch (error) {
@@ -399,7 +423,17 @@ router.get('/api/init', async (_req, res) => {
 router.post('/api/submit', async (req, res) => {
   try {
     const result: GameResult = req.body;
-    const username = context.username || 'anonymous';
+    let username = 'anonymous';
+    try {
+      if (context && typeof context === 'object') {
+        const contextUsername = (context as any).username;
+        if (typeof contextUsername === 'string') {
+          username = contextUsername;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not access context.username:', err instanceof Error ? err.message : String(err));
+    }
     const { newHighScore, rank } = await updateUserStats(username, result);
     const postId = 'keyscripture_post';
     res.json({ type: 'submitScore', postId, newHighScore, rank });

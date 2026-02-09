@@ -6,7 +6,7 @@ export const App = () => {
   const {
     username,
     userStats,
-    dailyChallenge,
+    challenge, // Use unified challenge
     loading,
     gameStarted,
     gameFinished,
@@ -187,28 +187,28 @@ export const App = () => {
           </div>
         )}
 
-        {/* Daily Challenge */}
-        {dailyChallenge && (
+        {/* Current Challenge */}
+        {challenge && (
           <div className="bg-white/20 rounded-lg p-6 mb-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold">Daily Challenge</h2>
+              <h2 className="text-2xl font-semibold">Typing Challenge</h2>
               <span
                 className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  dailyChallenge.difficulty === 'easy'
+                  challenge.difficulty === 'easy'
                     ? 'bg-blue-600'
-                    : dailyChallenge.difficulty === 'medium'
-                      ? 'bg-blue-700'
-                      : 'bg-red-600'
+                    : challenge.difficulty === 'medium'
+                    ? 'bg-blue-700'
+                    : 'bg-red-600'
                 }`}
               >
-                {dailyChallenge.difficulty}
+                {challenge.difficulty}
               </span>
             </div>
 
             {!gameStarted ? (
               <div className="text-center">
                 <p className="mb-4 opacity-90 text-sm max-h-20 overflow-hidden">
-                  {dailyChallenge.text.substring(0, 150)}...
+                  {challenge.text.substring(0, 150)}...
                 </p>
 
                 <button
@@ -228,9 +228,9 @@ export const App = () => {
                     const charsToShow = 110; // characters to display
                     const beforeCursor = 40; // characters before cursor
                     const startIdx = Math.max(0, charIndex - beforeCursor);
-                    const endIdx = Math.min(dailyChallenge.text.length, startIdx + charsToShow);
+                    const endIdx = Math.min(challenge.text.length, startIdx + charsToShow);
 
-                    const displayText = dailyChallenge.text.substring(startIdx, endIdx);
+                    const displayText = challenge.text.substring(startIdx, endIdx);
 
                     return displayText.split('').map((char, idx) => {
                       const charAbsIndex = startIdx + idx;
@@ -329,3 +329,4 @@ export const App = () => {
     </div>
   );
 };
+
