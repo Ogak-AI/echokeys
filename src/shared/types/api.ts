@@ -8,6 +8,29 @@ export type GameEndedMessage = {
 
 export type WebSocketMessage = WebSocketGameUpdate | GameEndedMessage;
 
+export type TypingSnapshot = {
+  userId: string;
+  username: string;
+  typedText: string;
+  cursorPosition: number;
+  wpm: number;
+  accuracy: number;
+  lastUpdateTime: number;
+  status: 'typing' | 'finished';
+};
+
+export type GameSession = {
+  sessionId: string;
+  challengeId: string;
+  challengeText: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  players: string[];
+  typingSnapshots: Record<string, TypingSnapshot>;
+  status: 'waiting' | 'active' | 'finished';
+  startTime: number;
+  endTime?: number;
+};
+
 export type WatchGameResponse = {
   type: 'watchGame';
   username: string;
@@ -19,19 +42,6 @@ export type WatchGameResponse = {
   gameCompleted?: boolean;
   lastUpdate?: number;
   errorIndexes?: number[]; // Add errorIndexes
-};
-
-export type SpectatableGame = {
-  username: string;
-  challenge: DailyChallenge;
-  difficulty: 'easy' | 'medium' | 'hard';
-  isSpectatable: boolean;
-  status?: 'active' | 'completed';
-};
-
-export type GetActiveGamesResponse = {
-  type: 'activeGames';
-  games: SpectatableGame[];
 };
 
 export type InitResponse = {
@@ -69,6 +79,7 @@ export type DailyChallenge = {
 };
 
 export type LeaderboardEntry = {
+  rank: number;
   username: string;
   wpm: number;
   accuracy: number;

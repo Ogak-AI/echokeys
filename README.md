@@ -1,19 +1,18 @@
 # KeyScripture - Social Typing Game for Reddit
 
-KeyScripture is an innovative **social typing game** built on Reddit's Devvit platform that transforms typing practice into an engaging multiplayer experience. Players type through biblical text challenges while competing with the Reddit community in real-time, featuring live spectating, intelligent audio feedback, and comprehensive progress tracking.
+KeyScripture is an innovative **social typing game** built on Reddit's Devvit platform that transforms typing practice into an engaging multiplayer experience. Players type through biblical text challenges while competing with the Reddit community in real-time, featuring intelligent audio feedback, and comprehensive progress tracking.
 
 ## Recent Updates
 
 - **Enhanced Navigation**: Improved navigation system using Devvit's `requestExpandedMode` for seamless transitions between game screens
 - **Optimized Mobile Experience**: Better mobile interface with responsive design and touch-friendly controls
 - **Improved Audio System**: Enhanced word pronunciation with smart speech synthesis and instant mute/unmute functionality
-- **Real-time Spectator Updates**: Live game watching with 2-second refresh intervals and graceful error handling
 
 ## What KeyScripture Is
 
 KeyScripture is a **community-driven typing game** that runs directly within Reddit posts, combining the best of typing practice with social gaming. The game features the complete Book of Esther from the Bible, providing rich narrative content across 10 chapters with varying difficulty levels.
 
-**Core Gameplay:** Players select from three difficulty levels (Easy, Medium, Hard) and type through carefully curated passages. The game provides real-time feedback with visual highlighting, audio pronunciation of completed words, and live performance metrics (WPM and accuracy). Every typing session is broadcast live, allowing other Reddit users to spectate your progress in real-time.
+**Core Gameplay:** Players select from three difficulty levels (Easy, Medium, Hard) and type through carefully curated passages. The game provides real-time feedback with visual highlighting, audio pronunciation of completed words, and live performance metrics (WPM and accuracy).
 
 **Content Overview:**
 
@@ -22,18 +21,16 @@ KeyScripture is a **community-driven typing game** that runs directly within Red
 
 ### Core Game Features
 
-- **Real-time multiplayer spectating** - Watch other Reddit users type live as they play with 2-second updates
 - **Intelligent audio feedback** - Hear each word pronounced as you complete it correctly using Web Speech API with smart word detection
 - **Three-tier difficulty system** - Choose from Easy (practice text), Medium, or Hard challenges from the Book of Esther
 - **Community leaderboards** - Compete directly with fellow Redditors on shared scoreboards with automatic score submission
 - **Seamless Reddit integration** - Play without leaving the Reddit ecosystem using Devvit's native navigation and authentication
-- **Live game discovery** - Browse and spectate active typing sessions from other players with auto-refresh every 10 seconds
 - **Advanced visual interface** - Smart text windowing displaying 110 characters with optimal cursor positioning for readability
 - **Real-time performance metrics** - Live WPM and accuracy calculation with instant visual feedback during gameplay
 
 ### Rich Biblical Content
 
-The game transforms the traditionally solitary act of typing practice into a **social spectator sport** where every keystroke matters and the community can witness your progress in real-time. Players type through carefully selected content:
+Players type through carefully selected content:
 
 - **Easy Mode**: Simple practice text ("The quick brown fox jumps over the lazy dog") for beginners to learn the interface
 - **Medium & Hard Modes**: Complete **Book of Esther** from the Bible, providing rich storytelling with characters, dialogue, and dramatic plot development across 10 chapters
@@ -43,13 +40,7 @@ The game transforms the traditionally solitary act of typing practice into a **s
 
 ## What Makes KeyScripture Innovative
 
-### 1. **Live Spectator System**
 
-- **Real-time game watching**: Other players can watch your typing session live with 2-second automatic updates showing your exact progress, errors, and corrections
-- **Active games browser**: Discover and join ongoing games from community members with auto-refresh every 10 seconds
-- **Live progress visualization**: Spectators see your typing progress with the same color-coded feedback system (white for correct, red for errors)
-- **Game completion notifications**: Spectators are notified when games end with final scores and performance metrics
-- **Graceful error handling**: System shows "No active games right now" instead of technical errors when servers are unavailable
 
 ### 2. **Intelligent Audio Feedback Engine**
 
@@ -69,7 +60,7 @@ The game transforms the traditionally solitary act of typing practice into a **s
 
 ### 4. **Reddit-Native Social Integration**
 
-- **Seamless navigation system**: Enhanced navigation using Devvit's `requestExpandedMode` for smooth transitions between splash, game, spectator, and leaderboard screens
+- **Seamless navigation system**: Enhanced navigation using Devvit's `requestExpandedMode` for smooth transitions between splash, game, and leaderboard screens
 - **Automatic user authentication**: Leverages Reddit's built-in authentication system with fallback to context.username for reliable user identification
 - **Community leaderboards**: Compete directly with fellow Redditors using real usernames with automatic score submission and instant ranking updates
 - **Post-embedded gameplay**: Games live within Reddit posts using Devvit's native navigation system for seamless Reddit integration
@@ -120,19 +111,14 @@ The complete Book of Esther provides extensive, high-quality typing content with
 - **Instant Error Feedback**: Real-time visual highlighting of correct (white) vs incorrect (red) characters with animated cursor
 
 ### Social Features
-
-- **Live Spectator Mode**: Watch other Reddit users type in real-time with 2-second update intervals
-- **Active Games Discovery**: Browse and join ongoing typing sessions from community members
 - **Community Leaderboards**: Compete with fellow Redditors and see global rankings with usernames
-- **Real-time Game Broadcasting**: Your typing session is automatically broadcast for others to spectate
-- **Game Completion Notifications**: Spectators see when games end with final performance scores
+
 
 ### Progress Tracking
 
 - **Personal Statistics Dashboard**: Track your best WPM, highest accuracy percentage, total games played, and current streaks
 - **Historical Performance**: Monitor improvement over time across different difficulty levels
 - **Automatic Score Submission**: Seamless leaderboard integration with instant ranking updates after each game
-- **Session Persistence**: Game state is maintained and broadcast to spectators throughout your typing session
 
 ### Technical Features
 
@@ -142,8 +128,7 @@ The complete Book of Esther provides extensive, high-quality typing content with
 - **Robust Error Handling**: Graceful degradation when servers are unavailable, showing empty game lists instead of error messages
 - **Automatic Cleanup**: Smart session management that removes players from active games when they leave or finish
 - **Cross-Platform Audio**: Web Speech API integration that works across different devices and browsers with smart word detection
-- **Auto-Recovery Systems**: Automatic reconnection and retry mechanisms for network interruptions during spectating
-- **Real-time Broadcasting**: Live game state updates for spectators with 2-second refresh intervals and connection status monitoring
+
 
 ## Tech Stack
 
@@ -178,7 +163,6 @@ The complete Book of Esther provides extensive, high-quality typing content with
 
 1. **Access the Game**: Find a KeyScripture post on Reddit or create one using the moderator menu in your subreddit
 2. **Launch the App**: Click the "Start Typing!" button on the splash screen to open the game in full-screen mode
-3. **Optional - Spectate First**: Click "Watch" to see active games and observe other players before starting your own game
 
 ### Playing a Typing Challenge
 
@@ -194,7 +178,6 @@ When you start the game, you'll see three difficulty options:
 
 - Click "Start Typing!" to begin the selected challenge
 - The timer starts immediately when you type your first character
-- Your game becomes **live and visible** to other players who can spectate in real-time
 - Type the displayed text exactly as shown, including all punctuation, spacing, and capitalization
 - Use the large textarea input field below the text display for typing
 
@@ -225,7 +208,6 @@ When you start the game, you'll see three difficulty options:
 - Type the entire passage to finish the challenge (you must reach 100% completion)
 - Your final WPM and accuracy will be calculated and displayed in a completion summary
 - Your score is **automatically submitted** to the community leaderboard with instant ranking
-- The game ends and you're removed from the "active games" list that spectators see
 - View your performance summary with final metrics and personal best comparisons
 
 #### Step 5: Review Performance and Continue
@@ -242,44 +224,7 @@ When you start the game, you'll see three difficulty options:
 - **"Leaderboard"** = view community rankings and see where you placed among other Reddit users
 - **Return to splash** = go back to the main menu to start fresh or spectate others
 
-### Spectator Mode (Watching Live Games)
-
-#### Discovering Active Games
-
-1. From the splash screen, click **"Watch"** to enter spectator mode
-2. You'll see a list of players currently typing with live indicators and green pulsing dots (or "No active games right now" if no one is playing)
-3. The list **auto-refreshes every 10 seconds** to show current active games with real-time updates
-4. If server issues occur, the system gracefully shows an empty list rather than error messages for better user experience
-5. Click on any username to watch their game in real-time with live updates
-
-#### Watching a Live Typing Session
-
-**Real-Time Spectator View:**
-
-- See the exact text they're typing with **live progress highlighting** using the same color system as the player sees
-- Watch their **current WPM and accuracy** update every 2 seconds as they type
-- Observe their **typing errors and corrections** in real-time with color coding (green for correct, red for errors)
-- View their **progress percentage** through the challenge and difficulty level indicator
-- See the challenge difficulty badge (Easy/Medium/Hard) with appropriate color coding
-
-**Spectator Interface Features:**
-
-- **2-second update intervals** = game state refreshes automatically for smooth viewing experience
-- **Difficulty indicator** = see what challenge level they're attempting with color-coded badges
-- **Connection status** = automatic reconnection with retry counter if connection is lost (up to 3 attempts)
-- **Game completion alerts** = notification when the player finishes with final scores and celebration message
-- **Live status indicators** = green pulsing dots and "LIVE" badges to show active games
-
-#### Spectator Controls
-
-- **Enhanced Navigation**: Seamless navigation using Devvit's `requestExpandedMode` for smooth transitions between screens
-- **"← Back" button**: Return to the active games list with proper navigation handling
-- **"Retry Connection"**: Manually refresh if connection issues occur (appears only when needed)
-- **"Back to Active Games"**: Return to games list when watching completed games with optimized routing
-- **Auto-refresh**: Spectator view updates automatically every 2 seconds without manual intervention
-- **Graceful error handling**: System shows helpful messages like "game has ended" instead of technical errors
-- **Game end handling**: Automatic notification when watched games complete with final performance metrics
-- **Mobile-optimized controls**: Touch-friendly interface that works seamlessly on mobile Reddit browsers
+### Understanding Your Statistics
 
 ### Understanding Your Statistics
 
@@ -320,12 +265,7 @@ When you start the game, you'll see three difficulty options:
 - **Learn from errors** = red highlighting shows mistakes immediately for quick correction and learning
 - **Practice different difficulties** = gradually work up from Easy to Hard challenges to build skills progressively
 
-#### Learning from Others
 
-- **Spectate skilled players** = watch high-performing typists to learn techniques and pacing strategies
-- **Observe error patterns** = see how experienced players handle corrections and difficult passages
-- **Study different approaches** = watch various typing styles and find what works best for your technique
-- **Check leaderboards** = see what WPM and accuracy combinations lead to top scores in the community
 
 ### The Story You're Typing: Book of Esther
 

@@ -14,13 +14,13 @@ function makeRequest(path) {
       path: path,
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+      },
     };
 
     const req = http.request(options, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
@@ -78,7 +78,6 @@ async function test() {
     } else {
       console.log(`   Error:`, hardRes.body);
     }
-
   } catch (error) {
     console.error('Error testing API:', error.message);
     console.error('Make sure the server is running on port 3001');

@@ -19,7 +19,6 @@ export interface GameRoom {
   id: string;
   challenge: GameChallenge;
   players: Map<string, Player>;
-  spectators: Set<string>;
   createdAt: number;
   status: 'waiting' | 'active' | 'finished';
 }
@@ -59,5 +58,4 @@ export interface CreateGameRequest {
 export interface JoinGameRequest {
   roomId: string;
   username: string;
-  asSpectator?: boolean;
 }

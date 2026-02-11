@@ -1,7 +1,11 @@
-import { Socket } from 'socket.io';
-import { Server as SocketIOServer } from 'socket.io';
-import { GameRoom, Player, GameStateUpdate, PlayerJoined, GameChallenge } from '../shared/types/socket.js';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// import { Socket } from 'socket.io';
+// import { Server as SocketIOServer } from 'socket.io';
+import { GameRoom, Player, PlayerJoined, GameChallenge } from '../shared/types/socket.js';
 import { ChallengeManager } from './challengeManager.js';
+
+// Stub type for legacy socket.io code (not used in production)
+type Socket = any;
 
 export class GameRoomManager {
   private rooms: Map<string, GameRoom> = new Map();
@@ -12,9 +16,10 @@ export class GameRoomManager {
     this.challengeManager = challengeManager;
   }
 
-  createGame(_username: string, difficulty: 'easy' | 'medium' | 'hard'):
-    | string
-    | { roomId: string; challenge: GameChallenge } {
+  createGame(
+    _username: string,
+    difficulty: 'easy' | 'medium' | 'hard'
+  ): string | { roomId: string; challenge: GameChallenge } {
     const roomId = this.generateRoomId();
     const challenge = this.challengeManager.getRandomChallenge(difficulty);
 
@@ -22,7 +27,6 @@ export class GameRoomManager {
       id: roomId,
       challenge,
       players: new Map(),
-      spectators: new Set(),
       createdAt: Date.now(),
       status: 'waiting',
     };
@@ -33,12 +37,7 @@ export class GameRoomManager {
     return { roomId, challenge };
   }
 
-  joinGame(
-    socket: Socket,
-    roomId: string,
-    username: string,
-    asSpectator: boolean = false
-  ): boolean {
+  joinGame(socket: Socket, roomId: string, username: string): boolean {
     const room = this.rooms.get(roomId);
     if (!room) {
       return false;
@@ -50,12 +49,6 @@ export class GameRoomManager {
     // Join the socket.io room
     void socket.join(roomId);
     this.socketToRoom.set(socket.id, roomId);
-
-    // Only allow players, not spectators - simplify
-    if (asSpectator) {
-      console.log(`Spectator ${username} (${socket.id}) attempted to join room ${roomId} - spectators disabled`);
-      return false;
-    }
 
     // Add as player
     const player: Player = {
@@ -154,28 +147,12 @@ export class GameRoomManager {
       if (room.players.size === 0) {
         this.endGame(roomId);
       }
-    } else if (room.spectators.has(socketId)) {
-      room.spectators.delete(socketId);
     }
 
     this.socketToRoom.delete(socketId);
     console.log(`Client ${socketId} left room ${roomId}`);
   }
 
-  broadcastGameStates(io: SocketIOServer): void {
-    for (const [roomId, room] of this.rooms) {
-      if (room.status === 'active' && room.players.size > 0) {
-        const players = Array.from(room.players.values());
-        const gameStateUpdate: GameStateUpdate = {
-          type: 'gameState',
-          roomId,
-          players,
-          timestamp: Date.now(),
-        };
-
-        io.to(roomId).emit('message', gameStateUpdate);
-      }
-    }
   }
 
   private endGame(roomId: string): void {

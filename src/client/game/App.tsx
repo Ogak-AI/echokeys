@@ -197,8 +197,8 @@ export const App = () => {
                   challenge.difficulty === 'easy'
                     ? 'bg-blue-600'
                     : challenge.difficulty === 'medium'
-                    ? 'bg-blue-700'
-                    : 'bg-red-600'
+                      ? 'bg-blue-700'
+                      : 'bg-red-600'
                 }`}
               >
                 {challenge.difficulty}
@@ -329,4 +329,3 @@ export const App = () => {
     </div>
   );
 };
-

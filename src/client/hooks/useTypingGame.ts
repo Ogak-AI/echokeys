@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { context } from '@devvit/web/client';
-import type {
-  InitResponse,
-  GetLeaderboardResponse,
-  UserStats,
-  DailyChallenge,
-  GameResult,
-} from '../../shared/types/api';
+import type { GetLeaderboardResponse, UserStats } from '../../shared/types/api';
 import { GameChallenge } from '../../shared/types/socket';
 
 interface GameState {
@@ -54,43 +48,26 @@ export const useTypingGame = () => {
     roomId: null,
   });
 
-  // Fetch initial data (no sockets)
   useEffect(() => {
-    const init = async () => {
-      try {
-        console.log('Attempting to fetch /api/init...');
-        const res = await fetch('/api/init');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: InitResponse = await res.json();
-        if (data.type !== 'init') throw new Error('Unexpected response');
-        setState((prev) => ({
-          ...prev,
-          username: data.username,
-          userStats: data.userStats,
-          challenge: data.dailyChallenge
-            ? {
-                id: data.dailyChallenge.id,
-                text: data.dailyChallenge.text,
-                difficulty: data.dailyChallenge.difficulty as 'easy' | 'medium' | 'hard',
-              }
-            : null,
-          loading: false,
-          showDifficultySelect: true,
-        }));
-      } catch (err) {
-        console.error('Failed to init game', err);
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          showDifficultySelect: true,
-          username: context?.username || 'Player',
-        }));
-      }
-    };
-    void init();
+    // Get username from Devvit context if available
+    const username = context?.username || 'Player';
+
+    setState((prev) => ({
+      ...prev,
+      username,
+      userStats: {
+        bestWPM: 0,
+        bestAccuracy: 0,
+        totalGames: 0,
+        streak: 0,
+      },
+      loading: false,
+      showDifficultySelect: true,
+      challenge: null, // Will be set when difficulty is selected
+    }));
   }, []);
 
-  const startGame = useCallback(() => {
+  const startGame = useCallback(async () => {
     setState((prev) => ({
       ...prev,
       gameStarted: true,
@@ -102,28 +79,25 @@ export const useTypingGame = () => {
     }));
   }, []);
 
-  const selectDifficulty = useCallback(
-    async (difficulty: 'easy' | 'medium' | 'hard') => {
-      try {
-        const res = await fetch(`/api/challenge/${difficulty}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const challengeData: DailyChallenge = await res.json();
-        setState((prev) => ({
-          ...prev,
-          selectedDifficulty: difficulty,
-          showDifficultySelect: false,
-          challenge: {
-            id: challengeData.id,
-            text: challengeData.text,
-            difficulty: challengeData.difficulty as 'easy' | 'medium' | 'hard',
-          },
-        }));
-      } catch (err) {
-        console.error('Failed to load challenge for difficulty', err);
+  const selectDifficulty = useCallback(async (difficulty: 'easy' | 'medium' | 'hard') => {
+    try {
+      const response = await fetch(`/api/challenge?difficulty=${difficulty}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch challenge: ${response.statusText}`);
       }
-    },
-    []
-  );
+      const fetchedChallenge = await response.json();
+      setState((prev) => ({
+        ...prev,
+        selectedDifficulty: difficulty,
+        showDifficultySelect: false,
+        challenge: fetchedChallenge,
+      }));
+    } catch (error) {
+      console.error('Error fetching challenge:', error);
+      // Optionally, show an error message to the user
+      alert('Failed to load challenge. Please try again.');
+    }
+  }, []);
 
   const updateInput = useCallback(
     (input: string) => {
@@ -184,22 +158,10 @@ export const useTypingGame = () => {
         errorIndexes: newErrorIndexes, // Update state with the new error indexes
       }));
 
-      // No realtime spectators: progress is client-only now
-
       if (isFinished) {
         window.speechSynthesis.cancel(); // Stop any lingering speech
-        // Submit score
-        const result: GameResult = {
-          wpm,
-          accuracy,
-          time: timeElapsed,
-          challengeId: challenge.id,
-        };
-        fetch('/api/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(result),
-        }).catch((err) => console.error('Failed to submit score', err));
+        // Score submission disabled - focus on gameplay first
+        console.log('Game finished with WPM:', wpm, 'Accuracy:', accuracy);
       }
     },
     [
@@ -209,20 +171,13 @@ export const useTypingGame = () => {
       state.startTime,
       state.isMuted,
       state.lastSpokenIndex,
-      state.roomId,
-      state.username,
     ]
   );
 
   const fetchLeaderboard = useCallback(async () => {
-    try {
-      const res = await fetch('/api/leaderboard');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: GetLeaderboardResponse = await res.json();
-      setState((prev) => ({ ...prev, leaderboard: data.leaderboard, showLeaderboard: true }));
-    } catch (err) {
-      console.error('Failed to fetch leaderboard', err);
-    }
+    // Leaderboard disabled - focus on core gameplay
+    console.log('Leaderboard feature disabled while stabilizing app');
+    setState((prev) => ({ ...prev, showLeaderboard: false }));
   }, []);
 
   const toggleLeaderboard = useCallback(() => {
@@ -231,11 +186,7 @@ export const useTypingGame = () => {
 
   const resetGame = useCallback(() => {
     window.speechSynthesis.cancel();
-    // Remove player from active games when game is reset
-    fetch('/api/remove-player', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch((err) => console.error('Failed to remove player from active games', err));
+    // Game reset - no network calls needed
 
     setState((prev) => ({
       ...prev,
