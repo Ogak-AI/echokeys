@@ -2,9 +2,6 @@ import { createServer } from '@devvit/web/server';
 import express from 'express'; // Import express
 import challengesData from './challenges.json' assert { type: 'json' }; // New static import
 import { ChallengeManager } from './challengeManager.js'; // Import ChallengeManager
-import { createWebSocketServer, publishGameStarted, publishPlayerProgress, publishGameEnded } from './realtime/websocketServer.js';
-import { globalPubSub } from './realtime/pubsub.js';
-import { attachShutdown } from './realtime/shutdown.js';
 
 interface Challenge {
   id: string;
@@ -115,22 +112,5 @@ app.get('/api/sessions/active', async (req, res) => {
 
 // The Devvit server. Pass the Express app to createServer
 const server = createServer(app);
-
-// Initialize Redis pubsub for this instance
-globalPubSub.init().catch((e) => console.error('PubSub init failed', e));
-
-// Attach WebSocket server to Devvit HTTP server
-try {
-  // `server` from devvit may be or expose an http.Server; guard accordingly
-  // @ts-ignore
-  const httpServer = server?.server ?? server;
-  // Only attempt to create WS if we have a Node http server
-  if (httpServer && typeof httpServer.listen === 'function') {
-    createWebSocketServer(httpServer as any);
-    attachShutdown(httpServer as any);
-  }
-} catch (err) {
-  console.error('Failed to attach WebSocket server', err);
-}
 
 export default server;
