@@ -1,50 +1,11 @@
 import { GameChallenge } from '../shared/types/socket.js';
-import challengesData from './challenges.json' assert { type: 'json' };
 
 export class ChallengeManager {
   private challenges: GameChallenge[] = [];
 
-  constructor() {
-    this.loadChallenges();
-  }
-
-  private loadChallenges(): void {
-    try {
-      // Load challenges from the JSON file
-      if (Array.isArray(challengesData) && challengesData.length > 0) {
-        this.challenges = challengesData.map((challenge: unknown, index: number) => {
-          const c = challenge as { text?: string; difficulty?: string };
-          return {
-            id: `challenge-${index}`,
-            text: (c.text || '').trim(),
-            difficulty: (c.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
-          };
-        });
-        console.log(`Loaded ${this.challenges.length} challenges from JSON`);
-      } else {
-        throw new Error('Invalid challenges data');
-      }
-    } catch (error) {
-      console.error('Failed to load challenges:', error);
-      // Fallback challenges
-      this.challenges = [
-        {
-          id: 'fallback-easy',
-          text: 'The quick brown fox jumps over the lazy dog.',
-          difficulty: 'easy',
-        },
-        {
-          id: 'fallback-medium',
-          text: 'In the beginning was the Word, and the Word was with God, and the Word was God.',
-          difficulty: 'medium',
-        },
-        {
-          id: 'fallback-hard',
-          text: 'Now in the days of Ahasuerus, that is, the Ahasuerus who ruled over 127 provinces from India to Ethiopia.',
-          difficulty: 'hard',
-        },
-      ];
-    }
+  constructor(initialChallenges: GameChallenge[]) {
+    this.challenges = initialChallenges;
+    console.log(`[ChallengeManager] Initialized with ${this.challenges.length} challenges.`);
   }
 
   getRandomChallenge(difficulty: 'easy' | 'medium' | 'hard'): GameChallenge {

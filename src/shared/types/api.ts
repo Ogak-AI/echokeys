@@ -92,3 +92,56 @@ export type GameResult = {
   time: number;
   challengeId: string;
 };
+
+// Spectator System Types
+export type ActiveGameSession = {
+  sessionId: string;
+  username: string;
+  wpm: number;
+  accuracy: number;
+  spectatorCount: number;
+  verseId: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+};
+
+export type SpectatorJoinedMessage = {
+  type: 'JOINED';
+  session: SpectatorGameState;
+};
+
+export type SpectatorGameState = {
+  sessionId: string;
+  username: string;
+  verseText: string;
+  currentText: string;
+  wpm: number;
+  accuracy: number;
+  elapsedTime: number;
+  spectatorCount: number;
+};
+
+export type PlayerProgressMessage = {
+  type: 'PLAYER_PROGRESS';
+  sessionId: string;
+  currentText: string;
+  wpm: number;
+  accuracy: number;
+  elapsedTime: number;
+};
+
+export type GameEndedMessage_Spectator = {
+  type: 'GAME_ENDED';
+  sessionId: string;
+  finalWpm: number;
+  finalAccuracy: number;
+  totalTime: number;
+};
+
+export type GameStartedMessage = {
+  type: 'GAME_STARTED';
+  sessionId: string;
+  username: string;
+  verseText: string;
+  startedAt: number;
+};
+

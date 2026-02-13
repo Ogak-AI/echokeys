@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { context } from '@devvit/web/client';
-import type { GetLeaderboardResponse, UserStats } from '../../shared/types/api';
-import { GameChallenge } from '../../shared/types/socket';
+import type { GameChallenge } from '../../shared/types/socket'; // Removed GetLeaderboardResponse, UserStats
 
 interface GameState {
   username: string | null;
-  userStats: UserStats | null;
+  // userStats: UserStats | null; // Removed
   challenge: GameChallenge | null; // Unified challenge object
   loading: boolean;
   gameStarted: boolean;
@@ -15,8 +14,8 @@ interface GameState {
   endTime: number | null;
   wpm: number;
   accuracy: number;
-  leaderboard: GetLeaderboardResponse['leaderboard'];
-  showLeaderboard: boolean;
+  // leaderboard: GetLeaderboardResponse['leaderboard']; // Removed
+  // showLeaderboard: boolean; // Removed
   showDifficultySelect: boolean;
   selectedDifficulty: 'easy' | 'medium' | 'hard' | null;
   lastSpokenIndex: number;
@@ -25,10 +24,11 @@ interface GameState {
   roomId: string | null;
 }
 
-export const useTypingGame = () => {
+// Accept allChallenges as a prop
+export const useTypingGame = (allChallenges: GameChallenge[]) => {
   const [state, setState] = useState<GameState>({
     username: null,
-    userStats: null,
+    // userStats: null, // Removed
     challenge: null, // Unified challenge object
     loading: true,
     gameStarted: false,
@@ -38,8 +38,8 @@ export const useTypingGame = () => {
     endTime: null,
     wpm: 0,
     accuracy: 0,
-    leaderboard: [],
-    showLeaderboard: false,
+    // leaderboard: [], // Removed
+    // showLeaderboard: false, // Removed
     showDifficultySelect: true,
     selectedDifficulty: null,
     lastSpokenIndex: 0,
@@ -55,12 +55,12 @@ export const useTypingGame = () => {
     setState((prev) => ({
       ...prev,
       username,
-      userStats: {
-        bestWPM: 0,
-        bestAccuracy: 0,
-        totalGames: 0,
-        streak: 0,
-      },
+      // userStats: { // Removed
+      //   bestWPM: 0,
+      //   bestAccuracy: 0,
+      //   totalGames: 0,
+      //   streak: 0,
+      // },
       loading: false,
       showDifficultySelect: true,
       challenge: null, // Will be set when difficulty is selected
@@ -80,24 +80,37 @@ export const useTypingGame = () => {
   }, []);
 
   const selectDifficulty = useCallback(async (difficulty: 'easy' | 'medium' | 'hard') => {
-    try {
-      const response = await fetch(`/api/challenge?difficulty=${difficulty}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch challenge: ${response.statusText}`);
-      }
-      const fetchedChallenge = await response.json();
+    // Filter challenges by difficulty
+    const difficultyChallenges = allChallenges.filter(c => c.difficulty === difficulty);
+
+    if (difficultyChallenges.length === 0) {
+      console.warn(`No challenges found for difficulty: ${difficulty}. Using fallback.`);
+      // Fallback to a generic challenge if none for the selected difficulty
+      // This should ideally not happen if challenges.json is well-populated
       setState((prev) => ({
         ...prev,
         selectedDifficulty: difficulty,
         showDifficultySelect: false,
-        challenge: fetchedChallenge,
+        challenge: {
+          id: 'fallback-client',
+          text: 'The quick brown fox jumps over the lazy dog.',
+          difficulty: 'easy',
+        },
       }));
-    } catch (error) {
-      console.error('Error fetching challenge:', error);
-      // Optionally, show an error message to the user
-      alert('Failed to load challenge. Please try again.');
+      return;
     }
-  }, []);
+
+    // Pick a random challenge from the filtered list
+    const randomIndex = Math.floor(Math.random() * difficultyChallenges.length);
+    const selectedChallenge = difficultyChallenges[randomIndex];
+
+    setState((prev) => ({
+      ...prev,
+      selectedDifficulty: difficulty,
+      showDifficultySelect: false,
+      challenge: selectedChallenge,
+    }));
+  }, [allChallenges]); // allChallenges is a dependency
 
   const updateInput = useCallback(
     (input: string) => {
@@ -174,15 +187,8 @@ export const useTypingGame = () => {
     ]
   );
 
-  const fetchLeaderboard = useCallback(async () => {
-    // Leaderboard disabled - focus on core gameplay
-    console.log('Leaderboard feature disabled while stabilizing app');
-    setState((prev) => ({ ...prev, showLeaderboard: false }));
-  }, []);
-
-  const toggleLeaderboard = useCallback(() => {
-    setState((prev) => ({ ...prev, showLeaderboard: !prev.showLeaderboard }));
-  }, []);
+  // Removed fetchLeaderboard
+  // Removed toggleLeaderboard
 
   const resetGame = useCallback(() => {
     window.speechSynthesis.cancel();
@@ -201,6 +207,7 @@ export const useTypingGame = () => {
       selectedDifficulty: null,
       lastSpokenIndex: 0,
       isMuted: false,
+      // showLeaderboard: false, // Removed
     }));
   }, []);
 
@@ -221,8 +228,8 @@ export const useTypingGame = () => {
     startGame,
     selectDifficulty,
     updateInput,
-    fetchLeaderboard,
-    toggleLeaderboard,
+    // fetchLeaderboard, // Removed
+    // toggleLeaderboard, // Removed
     resetGame,
     toggleMute,
     errorIndexes: state.errorIndexes,

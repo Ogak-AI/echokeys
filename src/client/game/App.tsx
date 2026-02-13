@@ -1,11 +1,11 @@
 import { navigateTo, context, requestExpandedMode } from '@devvit/web/client';
-
+import allChallengesData from '../../server/challenges.json' assert { type: 'json' }; // Import challenges.json
 import { useTypingGame } from '../hooks/useTypingGame';
 
 export const App = () => {
   const {
     username,
-    userStats,
+    // userStats, // Removed
     challenge, // Use unified challenge
     loading,
     gameStarted,
@@ -13,18 +13,18 @@ export const App = () => {
     currentInput,
     wpm,
     accuracy,
-    leaderboard,
-    showLeaderboard,
+    // leaderboard, // Removed
+    // showLeaderboard, // Removed
     showDifficultySelect,
     isMuted,
     startGame,
     selectDifficulty,
     updateInput,
-    fetchLeaderboard,
-    toggleLeaderboard,
+    // fetchLeaderboard, // Removed
+    // toggleLeaderboard, // Removed
     toggleMute,
     resetGame,
-  } = useTypingGame();
+  } = useTypingGame(allChallengesData); // Pass allChallengesData to the hook
 
   const handleBack = async () => {
     console.log('Back button clicked in game');
@@ -50,52 +50,53 @@ export const App = () => {
     );
   }
 
-  if (showLeaderboard) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold text-center mb-6">Leaderboard</h1>
-          <div className="bg-white/10 rounded-lg p-4 mb-4">
-            {leaderboard.length === 0 ? (
-              <p className="text-center">No scores yet!</p>
-            ) : (
-              <div className="space-y-2">
-                {leaderboard.map((entry, index) => (
-                  <div
-                    key={index}
-                    className="flex justify-between items-center bg-white/5 rounded p-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-white">#{index + 1}</span>
-                      <span>{entry.username}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold">{entry.wpm} WPM</div>
-                      <div className="text-sm opacity-75">{entry.accuracy}% acc</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="flex gap-4 justify-center">
-            <button
-              onClick={toggleLeaderboard}
-              className="bg-white text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
-            >
-              Back to Game
-            </button>
-          </div>
-        </div>
-        <button
-          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={handleBack}
-        >
-          &larr; Back
-        </button>
-      </div>
-    );
-  }
+  // Removed showLeaderboard block entirely
+  // if (showLeaderboard) {
+  //   return (
+  //     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
+  //       <div className="max-w-2xl mx-auto">
+  //         <h1 className="text-3xl font-bold text-center mb-6">Leaderboard</h1>
+  //         <div className="bg-white/10 rounded-lg p-4 mb-4">
+  //           {leaderboard.length === 0 ? (
+  //             <p className="text-center">No scores yet!</p>
+  //           ) : (
+  //             <div className="space-y-2">
+  //               {leaderboard.map((entry, index) => (
+  //                 <div
+  //                   key={index}
+  //                   className="flex justify-between items-center bg-white/5 rounded p-2"
+  //                 >
+  //                   <div className="flex items-center gap-3">
+  //                     <span className="font-bold text-white">#{index + 1}</span>
+  //                     <span>{entry.username}</span>
+  //                   </div>
+  //                   <div className="text-right">
+  //                     <div className="font-semibold">{entry.wpm} WPM</div>
+  //                     <div className="text-sm opacity-75">{entry.accuracy}% acc</div>
+  //                   </div>
+  //                 </div>
+  //               ))}
+  //             </div>
+  //           )}
+  //         </div>
+  //         <div className="flex gap-4 justify-center">
+  //           <button
+  //             onClick={toggleLeaderboard}
+  //             className="bg-white text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
+  //           >
+  //             Back to Game
+  //           </button>
+  //         </div>
+  //       </div>
+  //       <button
+  //         className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
+  //         onClick={handleBack}
+  //       >
+  //         &larr; Back
+  //       </button>
+  //     </div>
+  //   );
+  // }
 
   // Difficulty Selection Screen
   if (showDifficultySelect && !gameStarted) {
@@ -162,8 +163,8 @@ export const App = () => {
           </div>
         </div>
 
-        {/* Stats */}
-        {userStats && (
+        {/* Stats - Removed userStats related UI */}
+        {/* {userStats && (
           <div className="bg-white/10 rounded-lg p-4 mb-6">
             <h2 className="text-xl font-semibold mb-3">Your Stats</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
@@ -185,7 +186,7 @@ export const App = () => {
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Current Challenge */}
         {challenge && (
@@ -296,12 +297,13 @@ export const App = () => {
                       >
                         Try Again
                       </button>
-                      <button
+                      {/* Removed leaderboard button */}
+                      {/* <button
                         onClick={() => void fetchLeaderboard()}
                         className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700"
                       >
                         Leaderboard
-                      </button>
+                      </button> */}
                     </div>
                   </div>
                 )}

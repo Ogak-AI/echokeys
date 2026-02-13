@@ -6,6 +6,37 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 export const Splash = () => {
+  const handlePlayGame = (e: React.MouseEvent) => {
+    console.log('Start Typing button clicked');
+    try {
+      void requestExpandedMode(e.nativeEvent, 'game');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback navigation
+      try {
+        void navigateTo('game');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        window.location.href = 'game.html';
+      }
+    }
+  };
+
+  const handleWatchGames = (e: React.MouseEvent) => {
+    console.log('Watch Games button clicked');
+    try {
+      void requestExpandedMode(e.nativeEvent, 'games');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      try {
+        void navigateTo('games');
+      } catch (navError) {
+        console.error('Standard navigation failed:', navError);
+        window.location.href = 'games.html';
+      }
+    }
+  };
+
   return (
     <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
       <div className="text-center">
@@ -15,26 +46,18 @@ export const Splash = () => {
       <div className="flex flex-col items-center gap-2">
         <h2 className="text-xl font-semibold">Welcome, {context.username ?? 'Typist'}!</h2>
       </div>
-      <div className="flex items-center justify-center mt-5">
+      <div className="flex flex-col items-center gap-3 mt-5">
         <button
           className="flex items-center justify-center bg-white text-blue-900 w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-gray-100 hover:scale-105"
-          onClick={(e) => {
-            console.log('Start Typing button clicked');
-            try {
-              void requestExpandedMode(e.nativeEvent, 'game');
-            } catch (error) {
-              console.error('Navigation error:', error);
-              // Fallback navigation
-              try {
-                void navigateTo('game');
-              } catch (navError) {
-                console.error('Standard navigation failed:', navError);
-                window.location.href = 'game.html';
-              }
-            }
-          }}
+          onClick={handlePlayGame}
         >
           Start Typing!
+        </button>
+        <button
+          className="flex items-center justify-center bg-blue-600 text-white w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-blue-700 hover:scale-105"
+          onClick={handleWatchGames}
+        >
+          Watch Live Games
         </button>
       </div>
       <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-white/80">
