@@ -9,6 +9,12 @@
       },
       "game": {
         "entry": "game.html"
+      },
+      "games": {
+        "entry": "games.html"
+      },
+      "watch": {
+        "entry": "watch.html"
       }
     }
   },

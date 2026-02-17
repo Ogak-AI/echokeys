@@ -2,6 +2,7 @@ import { createServer } from '@devvit/web/server';
 import express from 'express'; // Import express
 import challengesData from './challenges.json' assert { type: 'json' }; // New static import
 import { ChallengeManager } from './challengeManager.js'; // Import ChallengeManager
+import { Context } from '@devvit/public-api';
 
 interface Challenge {
   id: string;
@@ -65,6 +66,12 @@ initChallengesSync();
 // Create an Express app
 const app = express();
 
+// Middleware to capture context (must be before routes)
+app.use((req: any, res: any, next: any) => {
+  globalContext = req.context;
+  next();
+});
+
 // New endpoint to serve all challenges
 app.get('/api/challenges/all', (req, res) => {
   try {
@@ -97,16 +104,137 @@ app.get('/api/challenge', async (req, res) => {
   }
 });
 
+// Store context globally for request handlers
+let globalContext: Context | null = null;
+
 // Endpoint to fetch active sessions
 app.get('/api/sessions/active', async (req, res) => {
   try {
-    // For now, return empty array. In production, fetch from Redis keys pattern
-    // keyscripture:session:* and filter for isPublic=true and spectatorCount > 0
-    // This is a stub; implement Redis key scanning if needed
-    return res.status(200).json([]);
+    if (!globalContext?.kv) {
+      console.warn('[API] KV not available, returning empty array');
+      return res.status(200).json([]);
+    }
+
+    // Fetch all sessions from KV with prefix 'session:'
+    const keys = await globalContext.kv.list({ prefix: 'session:' });
+    const activeSessions = [];
+
+    for (const keyInfo of keys) {
+      try {
+        const data = await globalContext.kv.get(keyInfo.key);
+        if (data) {
+          const session = JSON.parse(data);
+          // Only include public sessions
+          if (session.isPublic) {
+            activeSessions.push({
+              sessionId: session.sessionId,
+              username: session.username,
+              wpm: session.wpm || 0,
+              accuracy: session.accuracy || 0,
+              spectatorCount: session.spectatorCount || 0,
+              verseId: session.verseId,
+            });
+          }
+        }
+      } catch (itemErr) {
+        console.error('[API] Error processing session:', itemErr);
+      }
+    }
+
+    console.log(`[API] Returning ${activeSessions.length} active sessions`);
+    return res.status(200).json(activeSessions);
   } catch (error) {
-    console.error('Active sessions API error:', error);
-    return res.status(500).json({ error: 'Failed to fetch active sessions.' });
+    console.error('[API] Active sessions error:', error);
+    return res.status(200).json([]); // Return empty array as fallback
+  }
+});
+
+// Endpoint to get a specific session
+app.get('/api/session/:sessionId', async (req, res) => {
+  try {
+    const sessionId = req.params.sessionId;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+
+    if (!globalContext?.kv) {
+      console.warn('[API] KV not available for session fetch');
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const data = await globalContext.kv.get(`session:${sessionId}`);
+    if (!data) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const session = JSON.parse(data);
+    // Check if public before returning
+    if (!session.isPublic) {
+      return res.status(403).json({ error: 'Session is private' });
+    }
+
+    return res.status(200).json(session);
+  } catch (error) {
+    console.error('[API] Session fetch error:', error);
+    return res.status(500).json({ error: 'Failed to fetch session' });
+  }
+});
+
+// Endpoint for spectator to join
+app.post('/api/spectator/join', async (req, res) => {
+  try {
+    const sessionId = req.body.sessionId;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+
+    if (!globalContext?.kv) {
+      console.warn('[API] KV not available for spectator join');
+      return res.status(200).json({ success: true }); // Graceful fallback
+    }
+
+    const data = await globalContext.kv.get(`session:${sessionId}`);
+    if (!data) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const session = JSON.parse(data);
+    session.spectatorCount = (session.spectatorCount || 0) + 1;
+    await globalContext.kv.put(`session:${sessionId}`, JSON.stringify(session));
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('[API] Spectator join error:', error);
+    return res.status(200).json({ success: true }); // Graceful fallback
+  }
+});
+
+// Endpoint for spectator to leave
+app.post('/api/spectator/leave', async (req, res) => {
+  try {
+    const sessionId = req.body.sessionId;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+
+    if (!globalContext?.kv) {
+      console.warn('[API] KV not available for spectator leave');
+      return res.status(200).json({ success: true }); // Graceful fallback
+    }
+
+    const data = await globalContext.kv.get(`session:${sessionId}`);
+    if (!data) {
+      return res.status(200).json({ success: true }); // Session already gone
+    }
+
+    const session = JSON.parse(data);
+    session.spectatorCount = Math.max(0, (session.spectatorCount || 1) - 1);
+    await globalContext.kv.put(`session:${sessionId}`, JSON.stringify(session));
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('[API] Spectator leave error:', error);
+    return res.status(200).json({ success: true }); // Graceful fallback
   }
 });
 

@@ -3,8 +3,6 @@
  * Handles game event distribution to spectators
  */
 
-import { Context } from '@devvit/public-api';
-
 type RealtimeEvent =
   | { type: 'GAME_STARTED'; sessionId: string; username: string; verseText: string; startedAt: number }
   | { type: 'PLAYER_PROGRESS'; sessionId: string; currentText: string; wpm: number; accuracy: number; elapsedTime: number }
@@ -13,7 +11,7 @@ type RealtimeEvent =
 const CHANNEL_FOR = (sessionId: string) => `session:${sessionId}`;
 
 export async function publishGameStarted(
-  context: Context,
+  context: any,
   sessionId: string,
   payload: { username: string; verseText: string; startedAt: number }
 ) {
@@ -30,7 +28,7 @@ export async function publishGameStarted(
 }
 
 export async function publishPlayerProgress(
-  context: Context,
+  context: any,
   sessionId: string,
   payload: { currentText: string; wpm: number; accuracy: number; elapsedTime: number }
 ) {
@@ -46,7 +44,7 @@ export async function publishPlayerProgress(
 }
 
 export async function publishGameEnded(
-  context: Context,
+  context: any,
   sessionId: string,
   payload: { finalWpm: number; finalAccuracy: number; totalTime: number }
 ) {

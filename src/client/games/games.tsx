@@ -1,6 +1,6 @@
 import '../index.css';
 
-import { requestExpandedMode } from '@devvit/web/client';
+import { requestExpandedMode, context } from '@devvit/web/client';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -13,11 +13,19 @@ export const GamesLobby = () => {
   const fetchActiveSessions = async () => {
     try {
       const resp = await fetch('/api/sessions/active');
-      if (!resp.ok) throw new Error('Failed to fetch sessions');
+      if (!resp.ok) {
+        console.error('[Games] API error:', resp.status);
+        setError('Failed to fetch sessions');
+        setLoading(false);
+        return;
+      }
       const data = await resp.json();
       setGames(Array.isArray(data) ? data : []);
+      setError(null);
     } catch (err: any) {
-      setError(err.message);
+      console.error('[Games] Fetch error:', err);
+      setError(err.message || 'Unknown error');
+      setGames([]);
     } finally {
       setLoading(false);
     }
@@ -27,6 +35,41 @@ export const GamesLobby = () => {
     fetchActiveSessions();
     const interval = setInterval(fetchActiveSessions, 10000); // refresh every 10s
     return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to lobby channel for live updates
+  useEffect(() => {
+    // Check if context.realtime exists before subscribing
+    if (!context?.realtime) {
+      console.warn('[Games] Devvit realtime not available');
+      return;
+    }
+
+    try {
+      const unsubscribe = context.realtime.subscribe('lobby', (event: any) => {
+        try {
+          if (typeof event === 'string') {
+            const msg = JSON.parse(event);
+            if (msg.type === 'LOBBY_UPDATE') {
+              console.log('[Games] Received LOBBY_UPDATE');
+              fetchActiveSessions();
+            }
+          }
+        } catch (parseErr) {
+          console.error('[Games] Failed to parse realtime event:', parseErr);
+        }
+      });
+
+      return () => {
+        try {
+          unsubscribe();
+        } catch (unsubErr) {
+          console.error('[Games] Failed to unsubscribe:', unsubErr);
+        }
+      };
+    } catch (subscribeErr) {
+      console.error('[Games] Failed to subscribe to lobby:', subscribeErr);
+    }
   }, []);
 
   const handleWatch = (sessionId: string) => {

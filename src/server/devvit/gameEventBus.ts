@@ -3,12 +3,11 @@
  * High-level API to manage game lifecycle
  */
 
-import { Context } from '@devvit/public-api';
 import { saveSession, deleteSession, markSessionActive, Session, incrSpectatorCount, decrSpectatorCount } from './sessionManager';
 import { publishGameStarted, publishPlayerProgress, publishGameEnded } from './realtimeBroadcaster';
 
 export async function createGameSession(
-  context: Context,
+  context: any,
   sessionId: string,
   session: Session
 ) {
@@ -22,7 +21,7 @@ export async function createGameSession(
 }
 
 export async function updateGameProgress(
-  context: Context,
+  context: any,
   sessionId: string,
   currentText: string,
   wpm: number,
@@ -52,7 +51,7 @@ export async function updateGameProgress(
 }
 
 export async function finishGameSession(
-  context: Context,
+  context: any,
   sessionId: string,
   finalWpm: number,
   finalAccuracy: number,

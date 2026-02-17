@@ -1,7 +1,7 @@
 import '../index.css';
 
-import { requestExpandedMode } from '@devvit/web/client';
-import { StrictMode, useEffect, useState, useRef } from 'react';
+import { requestExpandedMode, context } from '@devvit/web/client';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 type GameState = {
@@ -23,7 +23,6 @@ export const SpectatorView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
-  const wsRef = useRef<WebSocket | null>(null);
 
   const sessionId = new URLSearchParams(window.location.search).get('sessionId');
 
@@ -34,94 +33,116 @@ export const SpectatorView = () => {
       return;
     }
 
-    const connectWebSocket = () => {
+    const subscribeToGame = async () => {
       try {
-        // Construct WS URL from current location
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/spectator?sessionId=${sessionId}`;
-        
-        const ws = new WebSocket(wsUrl);
+        // Fetch initial session state via REST
+        const resp = await fetch(`/api/session/${sessionId}`);
+        if (!resp.ok) {
+          console.error('[Watch] Session fetch failed:', resp.status);
+          setError('Session not found or unavailable');
+          setLoading(false);
+          return;
+        }
+        const session = await resp.json();
+        setGame(session);
+        setConnectionStatus('connected');
+        setLoading(false);
 
-        ws.onopen = () => {
-          console.log('WebSocket connected');
-          setConnectionStatus('connected');
-          ws.send(JSON.stringify({ type: 'JOIN', sessionId }));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            console.log('Received message:', msg.type);
-
-            if (msg.type === 'JOINED') {
-              setGame(msg.session);
-              setLoading(false);
-            } else if (msg.type === 'PLAYER_PROGRESS') {
-              setGame((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      currentText: msg.currentText,
-                      wpm: msg.wpm,
-                      accuracy: msg.accuracy,
-                      elapsedTime: msg.elapsedTime,
-                    }
-                  : null
-              );
-            } else if (msg.type === 'GAME_ENDED') {
-              setGame((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      isFinished: true,
-                      finalWpm: msg.finalWpm,
-                      finalAccuracy: msg.finalAccuracy,
-                    }
-                  : null
-              );
-            } else if (msg.type === 'ERROR') {
-              setError(msg.message);
-              setLoading(false);
+        // Check if context.realtime exists before subscribing
+        if (!context?.realtime) {
+          console.warn('[Watch] Devvit realtime not available, using polling fallback');
+          // Fallback: poll for updates every 1 second
+          const pollInterval = setInterval(async () => {
+            try {
+              const updateResp = await fetch(`/api/session/${sessionId}`);
+              if (updateResp.ok) {
+                const updated = await updateResp.json();
+                setGame(updated);
+              }
+            } catch (pollErr) {
+              console.error('[Watch] Polling error:', pollErr);
             }
-          } catch (err) {
-            console.error('Failed to parse message', err);
+          }, 1000);
+          return () => clearInterval(pollInterval);
+        }
+
+        // Subscribe to realtime updates
+        try {
+          const unsubscribe = context.realtime.subscribe(`session:${sessionId}`, (event: any) => {
+            try {
+              const msg = typeof event === 'string' ? JSON.parse(event) : event;
+              console.log('[Watch] Received message:', msg.type);
+
+              if (msg.type === 'PLAYER_PROGRESS') {
+                setGame((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        currentText: msg.currentText,
+                        wpm: msg.wpm,
+                        accuracy: msg.accuracy,
+                        elapsedTime: msg.elapsedTime,
+                      }
+                    : null
+                );
+              } else if (msg.type === 'GAME_ENDED') {
+                setGame((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        isFinished: true,
+                        finalWpm: msg.finalWpm,
+                        finalAccuracy: msg.finalAccuracy,
+                      }
+                    : null
+                );
+              }
+            } catch (parseErr) {
+              console.error('[Watch] Failed to parse realtime event:', parseErr);
+            }
+          });
+
+          // Increment spectator count
+          try {
+            const joinResp = await fetch(`/api/spectator/join`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId }),
+            });
+            if (!joinResp.ok) {
+              console.error('[Watch] Failed to join as spectator:', joinResp.status);
+            }
+          } catch (joinErr) {
+            console.error('[Watch] Join error:', joinErr);
           }
-        };
 
-        ws.onerror = (event) => {
-          console.error('WebSocket error', event);
-          setConnectionStatus('error');
-          setError('WebSocket connection error');
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket closed');
-          setConnectionStatus('disconnected');
-          setError('Connection closed');
-        };
-
-        wsRef.current = ws;
+          return () => {
+            try {
+              unsubscribe();
+            } catch (unsubErr) {
+              console.error('[Watch] Failed to unsubscribe:', unsubErr);
+            }
+            // Decrement spectator count
+            fetch(`/api/spectator/leave`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId }),
+            }).catch((err) => console.error('[Watch] Leave error:', err));
+          };
+        } catch (subscribeErr) {
+          console.error('[Watch] Failed to subscribe to session:', subscribeErr);
+        }
       } catch (err) {
-        console.error('Failed to create WebSocket', err);
-        setError('Failed to connect');
+        console.error('[Watch] Setup error:', err);
+        setError('Failed to load game');
         setLoading(false);
       }
     };
 
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
+    subscribeToGame();
   }, [sessionId]);
 
   const handleLeave = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
     try {
       void requestExpandedMode(new MouseEvent('click'), 'games.html');
     } catch {
