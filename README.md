@@ -1,67 +1,75 @@
-# Echokeys (formerly KeyScripture)
+# Echokeys
 
-Echokeys is an innovative **social typing game** built on Reddit's Devvit platform that transforms typing practice into an engaging multiplayer experience. Players type through biblical text challenges while competing with the Reddit community in real-time.
+Echokeys is a Reddit/Devvit typing game where players generate a prompt, receive fresh challenge content, and race to type it as fast and accurately as possible. The app supports multiple content styles, difficulty levels, live leaderboards, and weekly/monthly/yearly historical snapshots.
 
-## Key Features
+## What the app does
 
-- **Real-time Multiplayer:** Compete with other Redditors in live typing challenges.
-- **Multiple Difficulty Levels:** Choose from Easy, Medium, and Hard challenges, with content from the Book of Esther.
-- **Intelligent Audio Feedback:** Hear each word pronounced as you type it correctly.
-- **Community Leaderboards:** See how you rank against other players.
-- **Seamless Reddit Integration:** Play directly within the Reddit interface without leaving the site.
-- **Performance Analytics:** Track your Words Per Minute (WPM), accuracy, and other stats.
+- Generates typing challenges from user prompts
+- Supports code, typing, marketing, legal, creative, and technical prompts
+- Tracks WPM, accuracy, elapsed time, and final score
+- Stores challenge and score history in a local SQLite database
+- Publishes weekly, monthly, and yearly leaderboard snapshots
+- Exposes live leaderboard updates through WebSockets
 
-## Tech Stack
+## Tech stack
 
-- **Platform:** [Devvit](https://developers.reddit.com/)
-- **Frontend:** [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/)
-- **Backend:** [Express.js](https://expressjs.com/) running in the Devvit environment.
-- **Build Tool:** [Vite](https://vitejs.dev/)
-- **Data Storage:** Devvit's built-in Key-Value store for session and leaderboard data.
+- Platform: Devvit for Reddit
+- Frontend: React + TypeScript + Vite
+- Backend: Express + TypeScript
+- Storage: SQLite via better-sqlite3
+- Realtime: Socket.IO
+- Testing: Node.js built-in test runner
 
-## Getting Started
+## Getting started
 
-> **Prerequisite:** You must have Node.js v22 or higher installed.
+### Prerequisites
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/echokeys.git
-    cd echokeys
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Authenticate with Devvit:**
-    ```bash
-    npm run login
-    ```
-4.  **Start the development server:**
-    ```bash
-    npm run dev
-    ```
-5.  To test the app, create a new post in a development subreddit using the moderator menu.
+- Node.js 22+
+- npm
+- A Devvit-enabled Reddit account (for local playtest/deploy)
 
-## Available Scripts
+### Install and run locally
 
--   `npm run dev`: Starts the development server and a `devvit playtest` session.
--   `npm run build`: Compiles the client and server code into the `dist/` directory.
--   `npm run deploy`: Uploads the built application to Devvit.
--   `npm run check`: Runs type checking, linting, and formatting.
--   `npm run login`: Authenticates the Devvit CLI with your Reddit account.
-
-## Project Structure
-
+```bash
+git clone https://github.com/Ogak-AI/echokeys.git
+cd echokeys
+npm install
+npm test
+npm run dev
 ```
-.
-├── src/
-│   ├── client/       # React frontend code
-│   ├── server/       # Express.js backend and Devvit integration
-│   └── shared/       # Shared types and code between client and server
-├── devvit.json       # Devvit application configuration
-└── package.json      # Project dependencies and scripts
+
+### Build for production
+
+```bash
+npm run build
 ```
+
+## Available scripts
+
+- `npm test` — runs the automated tests
+- `npm run dev` — starts the client and server locally
+- `npm run dev:client` — runs the Vite client only
+- `npm run dev:server` — runs the Express server with tsx watch
+- `npm run build` — builds the client and server bundles
+- `npm run check` — runs the TypeScript checker
+- `npm run lint` — runs ESLint
+
+## Project structure
+
+```text
+src/
+  client/      # React UI for the Devvit post experience
+  server/      # Express API, leaderboard logic, scheduling, and DB
+  shared/      # Shared types and utilities
+ tests/        # Automated regression and generator tests
+```
+
+## Notes
+
+- The current implementation uses a local SQLite database for development.
+- Challenge generation falls back to deterministic local content when a remote model token is not configured.
+- The app is structured for Devvit deployment through the configuration in devvit.json.
 
 ## License
 
-This project is licensed under the [LICENSE](LICENSE) file.
+This project is licensed under the BSD-3-Clause license in the repository.
