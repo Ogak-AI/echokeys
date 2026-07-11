@@ -1,7 +1,7 @@
 import '../index.css';
 
-import { navigateTo } from '@devvit/web/client';
-import { context, requestExpandedMode } from '@devvit/web/client';
+import { navigateTo } from '../shims/devvit-web-client';
+import { context, requestExpandedMode } from '../shims/devvit-web-client';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 

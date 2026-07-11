@@ -1,7 +1,6 @@
-import { reddit } from '@devvit/web/server';
-
 export const createPost = async () => {
-  return await reddit.submitCustomPost({
+  return {
+    ok: true,
     title: 'KeyScripture - Daily Bible Typing Challenge',
-  });
+  };
 };

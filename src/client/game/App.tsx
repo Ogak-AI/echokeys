@@ -1,39 +1,46 @@
-import { navigateTo, context, requestExpandedMode } from '@devvit/web/client';
-import allChallengesData from '../../server/challenges.json' assert { type: 'json' }; // Import challenges.json
+import { context, requestExpandedMode } from '../shims/devvit-web-client';
 import { useTypingGame } from '../hooks/useTypingGame';
+import { CONTENT_TYPES, DIFFICULTY_CONFIG, LANGUAGES } from '../../shared/types/index';
+import type { ChallengeContentType, Difficulty, Language } from '../../shared/types/index';
 
 export const App = () => {
   const {
     username,
-    // userStats, // Removed
-    challenge, // Use unified challenge
+    challenge,
     loading,
     gameStarted,
     gameFinished,
     currentInput,
     wpm,
     accuracy,
-    // leaderboard, // Removed
-    // showLeaderboard, // Removed
-    showDifficultySelect,
+    prompt,
+    language,
+    contentType,
+    domain,
+    difficulty,
+    showSetup,
+    timeLeftSeconds,
     isMuted,
+    isGenerating,
+    error,
+    leaderboard,
+    scoreSummary,
     startGame,
-    selectDifficulty,
+    generateChallenge,
+    updatePrompt,
+    updateLanguage,
+    updateContentType,
+    updateDomain,
+    updateDifficulty,
     updateInput,
-    // fetchLeaderboard, // Removed
-    // toggleLeaderboard, // Removed
-    toggleMute,
     resetGame,
-  } = useTypingGame(allChallengesData); // Pass allChallengesData to the hook
+    toggleMute,
+  } = useTypingGame();
 
   const handleBack = async () => {
-    console.log('Back button clicked in game');
     try {
-      // Use requestExpandedMode to go back to splash
       await requestExpandedMode(new MouseEvent('click'), 'splash');
-    } catch (error) {
-      console.error('Navigation error:', error);
-      // Fallback: browser history or direct navigation
+    } catch {
       if (window.history.length > 1) {
         window.history.back();
       } else {
@@ -43,291 +50,197 @@ export const App = () => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
-
-  // Removed showLeaderboard block entirely
-  // if (showLeaderboard) {
-  //   return (
-  //     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
-  //       <div className="max-w-2xl mx-auto">
-  //         <h1 className="text-3xl font-bold text-center mb-6">Leaderboard</h1>
-  //         <div className="bg-white/10 rounded-lg p-4 mb-4">
-  //           {leaderboard.length === 0 ? (
-  //             <p className="text-center">No scores yet!</p>
-  //           ) : (
-  //             <div className="space-y-2">
-  //               {leaderboard.map((entry, index) => (
-  //                 <div
-  //                   key={index}
-  //                   className="flex justify-between items-center bg-white/5 rounded p-2"
-  //                 >
-  //                   <div className="flex items-center gap-3">
-  //                     <span className="font-bold text-white">#{index + 1}</span>
-  //                     <span>{entry.username}</span>
-  //                   </div>
-  //                   <div className="text-right">
-  //                     <div className="font-semibold">{entry.wpm} WPM</div>
-  //                     <div className="text-sm opacity-75">{entry.accuracy}% acc</div>
-  //                   </div>
-  //                 </div>
-  //               ))}
-  //             </div>
-  //           )}
-  //         </div>
-  //         <div className="flex gap-4 justify-center">
-  //           <button
-  //             onClick={toggleLeaderboard}
-  //             className="bg-white text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
-  //           >
-  //             Back to Game
-  //           </button>
-  //         </div>
-  //       </div>
-  //       <button
-  //         className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-  //         onClick={handleBack}
-  //       >
-  //         &larr; Back
-  //       </button>
-  //     </div>
-  //   );
-  // }
-
-  // Difficulty Selection Screen
-  if (showDifficultySelect && !gameStarted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
-        <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-screen">
-          <h1 className="text-4xl font-bold mb-4 text-center">KeyScripture</h1>
-          <p className="text-xl opacity-90 mb-12 text-center">Choose your difficulty level</p>
-
-          <div className="space-y-4 w-full max-w-md">
-            <button
-              onClick={() => selectDifficulty('easy')}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
-            >
-              Easy
-            </button>
-            <button
-              onClick={() => selectDifficulty('medium')}
-              className="w-full bg-blue-700 hover:bg-blue-800 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
-            >
-              Medium
-            </button>
-            <button
-              onClick={() => selectDifficulty('hard')}
-              className="w-full bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
-            >
-              Hard
-            </button>
-          </div>
-        </div>
-        <button
-          className="absolute top-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-          onClick={handleBack}
-        >
-          &larr; Back
-        </button>
-      </div>
-    );
+    return <div className="flex min-h-screen items-center justify-center text-xl">Loading...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-black text-white p-4 relative">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div className="text-left flex-1">
-            <h1 className="text-4xl font-bold mb-2">KeyScripture</h1>
-            <p className="text-lg opacity-90">
-              Welcome, {username || context.username || 'Player'}!
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-950 via-slate-900 to-black p-4 text-white">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <header className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-6 shadow-2xl md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-blue-200">Echokeys</p>
+            <h1 className="text-3xl font-semibold">Developer typing speed game</h1>
+            <p className="mt-2 text-sm text-slate-300">Submit a prompt, generate fresh content, and race to type it accurately.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 justify-end">
-            <button
-              onClick={toggleMute}
-              className="px-3 py-2 rounded-lg font-semibold w-full sm:w-auto"
-              title={isMuted ? 'Unmute' : 'Mute'}
-              style={{
-                backgroundColor: isMuted ? '#666' : '#fff',
-                color: isMuted ? '#fff' : '#1e3a8a',
-              }}
-            >
+          <div className="flex items-center gap-3">
+            <button onClick={toggleMute} className="rounded-full bg-white/15 px-4 py-2 text-sm font-semibold hover:bg-white/25" title={isMuted ? 'Unmute' : 'Mute'}>
               {isMuted ? 'Muted' : 'Sound'}
             </button>
+            <button onClick={handleBack} className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Back</button>
           </div>
-        </div>
+        </header>
 
-        {/* Stats - Removed userStats related UI */}
-        {/* {userStats && (
-          <div className="bg-white/10 rounded-lg p-4 mb-6">
-            <h2 className="text-xl font-semibold mb-3">Your Stats</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-bold">{userStats.bestWPM}</div>
-                <div className="text-sm opacity-75">Best WPM</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{userStats.bestAccuracy}%</div>
-                <div className="text-sm opacity-75">Best Acc</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{userStats.totalGames}</div>
-                <div className="text-sm opacity-75">Games</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{userStats.streak}</div>
-                <div className="text-sm opacity-75">Streak</div>
-              </div>
-            </div>
-          </div>
-        )} */}
-
-        {/* Current Challenge */}
-        {challenge && (
-          <div className="bg-white/20 rounded-lg p-6 mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold">Typing Challenge</h2>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  challenge.difficulty === 'easy'
-                    ? 'bg-blue-600'
-                    : challenge.difficulty === 'medium'
-                      ? 'bg-blue-700'
-                      : 'bg-red-600'
-                }`}
-              >
-                {challenge.difficulty}
-              </span>
-            </div>
-
-            {!gameStarted ? (
-              <div className="text-center">
-                <p className="mb-4 opacity-90 text-sm max-h-20 overflow-hidden">
-                  {challenge.text.substring(0, 150)}...
-                </p>
-
-                <button
-                  onClick={startGame}
-                  className="bg-white text-blue-900 px-8 py-3 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors"
-                >
-                  Start Typing!
+        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-xl">
+            {showSetup && !challenge && !isGenerating && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-2xl font-semibold">Generate your next challenge</h2>
+                  <p className="mt-2 text-sm text-slate-400">Describe what you want generated, pick a context, and start typing.</p>
+                </div>
+                <label className="block text-sm font-medium text-slate-200">
+                  Prompt
+                  <textarea
+                    value={prompt}
+                    onChange={(event) => updatePrompt(event.target.value)}
+                    placeholder="Build a binary search tree in Rust"
+                    className="mt-2 min-h-28 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white outline-none"
+                  />
+                </label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="text-sm font-medium text-slate-200">
+                    Content type
+                    <select value={contentType} onChange={(event) => updateContentType(event.target.value as ChallengeContentType)} className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white">
+                      {Object.entries(CONTENT_TYPES).map(([value, config]) => (
+                        <option key={value} value={value}>{config.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-slate-200">
+                    Difficulty
+                    <select value={difficulty} onChange={(event) => updateDifficulty(event.target.value as Difficulty)} className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white">
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="text-sm font-medium text-slate-200">
+                    Domain
+                    <input value={domain} onChange={(event) => updateDomain(event.target.value)} placeholder="growth, legal, ai, finance" className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white outline-none" />
+                  </label>
+                  {contentType === 'code' && (
+                    <label className="text-sm font-medium text-slate-200">
+                      Language
+                      <select value={language} onChange={(event) => updateLanguage(event.target.value as Language)} className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white">
+                        {Object.entries(LANGUAGES).map(([value, config]) => (
+                          <option key={value} value={value}>{config.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+                <p className="text-sm text-slate-400">{CONTENT_TYPES[contentType].description}</p>
+                {error && <p className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+                <button onClick={() => void generateChallenge()} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500">
+                  {isGenerating ? 'Generating…' : 'Generate challenge'}
                 </button>
               </div>
-            ) : (
-              <div className="flex flex-col h-auto">
-                {/* Typing Area - Shows ~100-120 characters at a time */}
-                <div className="bg-black/30 rounded-lg p-2 sm:p-4 mb-4 font-mono text-base sm:text-lg md:text-xl leading-relaxed min-h-20 sm:min-h-24 overflow-hidden flex-shrink-0 md:flex-none">
-                  {(() => {
-                    const charIndex = currentInput.length;
-                    // Show 100-120 characters total, with cursor roughly in the middle
-                    const charsToShow = 110; // characters to display
-                    const beforeCursor = 40; // characters before cursor
-                    const startIdx = Math.max(0, charIndex - beforeCursor);
-                    const endIdx = Math.min(challenge.text.length, startIdx + charsToShow);
+            )}
 
-                    const displayText = challenge.text.substring(startIdx, endIdx);
+            {isGenerating && (
+              <div className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-8 text-center">
+                <h2 className="text-2xl font-semibold">Building your challenge…</h2>
+                <p className="mt-2 text-slate-300">The generator is preparing a fresh snippet for you to type.</p>
+              </div>
+            )}
 
-                    return displayText.split('').map((char, idx) => {
-                      const charAbsIndex = startIdx + idx;
-                      let className = 'text-gray-300';
-                      if (charAbsIndex < currentInput.length) {
-                        className =
-                          currentInput[charAbsIndex] === char
-                            ? 'text-white font-semibold'
-                            : 'text-red-500 bg-red-500/30 font-semibold';
-                      } else if (charAbsIndex === currentInput.length) {
-                        className = 'bg-white text-black font-bold animate-pulse';
-                      }
-                      return (
-                        <span key={idx} className={className}>
-                          {char === '\n' ? '↵' : char}
-                        </span>
-                      );
-                    });
-                  })()}
-                </div>
-
-                {/* Input */}
-                <textarea
-                  value={currentInput}
-                  onChange={(e) => updateInput(e.target.value)}
-                  onTouchStart={(e) => e.currentTarget.scrollIntoView(false)}
-                  className="w-full bg-white/10 border border-white/20 rounded-lg p-3 sm:p-4 text-lg sm:text-xl md:text-lg text-white placeholder-white/50 focus:outline-none focus:border-white/50 flex-shrink-0 md:flex-none"
-                  placeholder="Start typing here..."
-                  rows={5}
-                  disabled={gameFinished}
-                />
-
-                {/* Stats during game */}
-                <div className="flex justify-between items-center mt-2 flex-shrink-0 md:flex-none">
-                  <div className="text-base sm:text-lg md:text-2xl">
-                    WPM: <span className="font-bold">{wpm}</span>
-                  </div>
-                  <div className="text-base sm:text-lg md:text-2xl">
-                    Accuracy: <span className="font-bold">{accuracy}%</span>
-                  </div>
-                </div>
-
-                {/* Game finished */}
-                {gameFinished && (
-                  <div className="mt-4 text-center">
-                    <div className="bg-white/10 rounded-lg p-4 mb-4">
-                      <h3 className="text-2xl font-bold mb-2">Great job!</h3>
-                      <div className="grid grid-cols-2 gap-4 text-lg">
-                        <div>
-                          <div className="font-semibold">{wpm} WPM</div>
-                          <div className="text-sm opacity-75">Words per minute</div>
-                        </div>
-                        <div>
-                          <div className="font-semibold">{accuracy}%</div>
-                          <div className="text-sm opacity-75">Accuracy</div>
-                        </div>
-                      </div>
+            {!showSetup && challenge && !gameStarted && !gameFinished && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-slate-800/60 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.2em] text-blue-200">Ready</p>
+                      <h2 className="text-xl font-semibold">{challenge.concept || 'Generated challenge'}</h2>
                     </div>
-                    <div className="flex gap-4 justify-center">
-                      <button
-                        onClick={resetGame}
-                        className="bg-white text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-100"
-                      >
-                        Try Again
-                      </button>
-                      {/* Removed leaderboard button */}
-                      {/* <button
-                        onClick={() => void fetchLeaderboard()}
-                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700"
-                      >
-                        Leaderboard
-                      </button> */}
+                    <span className="rounded-full bg-blue-600/70 px-3 py-1 text-sm font-medium uppercase">{challenge.difficulty}</span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">Context: {challenge.language || 'unknown'} • {challenge.lineCount || 0} lines</p>
+                  <p className="mt-2 text-sm text-slate-400">Time limit: {Math.floor(DIFFICULTY_CONFIG[difficulty].timeLimitSeconds / 60)} min</p>
+                </div>
+                <button onClick={startGame} className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-slate-900 hover:bg-slate-100">Start typing</button>
+                <button onClick={resetGame} className="w-full rounded-xl border border-white/15 px-4 py-3 font-semibold text-slate-200 hover:bg-white/10">Generate a different prompt</button>
+              </div>
+            )}
+
+            {gameStarted && challenge && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-slate-400">Type the generated content exactly as shown.</p>
+                    <div className="flex flex-wrap gap-3 text-sm font-medium">
+                      <span>WPM: {wpm}</span>
+                      <span>Accuracy: {accuracy}%</span>
+                      <span>Time left: {Math.floor(timeLeftSeconds / 60)}:{String(timeLeftSeconds % 60).padStart(2, '0')}</span>
                     </div>
                   </div>
-                )}
+                  <div className="min-h-48 rounded-xl border border-white/10 bg-black/50 p-4 font-mono text-sm leading-7">
+                    {challenge.text.split('').map((char, index) => {
+                      const typedChar = currentInput[index];
+                      const isCorrect = typedChar === char;
+                      const isTyped = index < currentInput.length;
+                      const className = isTyped ? (isCorrect ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300';
+                      return <span key={`${char}-${index}`} className={className}>{char}</span>;
+                    })}
+                  </div>
+                </div>
+                <textarea value={currentInput} onChange={(event) => updateInput(event.target.value)} disabled={gameFinished} rows={8} className="w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white outline-none" placeholder="Start typing here..." />
+              </div>
+            )}
+
+            {gameFinished && challenge && (
+              <div className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+                <h2 className="text-2xl font-semibold">Challenge completed</h2>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-xl bg-slate-900/70 p-3">
+                    <p className="text-sm text-slate-400">WPM</p>
+                    <p className="text-2xl font-semibold">{wpm}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-900/70 p-3">
+                    <p className="text-sm text-slate-400">Accuracy</p>
+                    <p className="text-2xl font-semibold">{accuracy}%</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-900/70 p-3">
+                    <p className="text-sm text-slate-400">Score</p>
+                    <p className="text-2xl font-semibold">{scoreSummary?.score ?? 0}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3 text-sm text-slate-300">
+                  <span>Weekly rank: {scoreSummary?.weekly_rank ?? '—'}</span>
+                  <span>All-time rank: {scoreSummary?.all_time_rank ?? '—'}</span>
+                </div>
+                <button onClick={resetGame} className="rounded-xl bg-white px-4 py-3 font-semibold text-slate-900 hover:bg-slate-100">Generate another challenge</button>
               </div>
             )}
           </div>
-        )}
 
-        {/* Footer */}
-        <div className="text-center text-sm opacity-75">
-          <button
-            onClick={() => navigateTo('https://www.reddit.com/r/Devvit')}
-            className="hover:opacity-100"
-          >
-            Powered by Devvit
-          </button>
-        </div>
+          <aside className="space-y-6">
+            <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-xl">
+              <h2 className="text-xl font-semibold">Weekly leaderboard</h2>
+              <p className="mt-2 text-sm text-slate-400">Real-time rankings update as scores are submitted.</p>
+              <div className="mt-4 space-y-2">
+                {leaderboard.length === 0 ? (
+                  <p className="rounded-xl bg-white/5 p-3 text-sm text-slate-400">No scores yet. Be the first to set a weekly record.</p>
+                ) : (
+                  leaderboard.map((entry) => (
+                    <div key={entry.user_id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-sm">
+                      <div>
+                        <p className="font-semibold">#{entry.rank} {entry.username}</p>
+                        <p className="text-slate-400">{entry.challenges_completed} challenges</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold">{entry.score}</p>
+                        <p className="text-slate-400">{entry.accuracy}% • {entry.best_wpm} WPM</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-xl">
+              <h2 className="text-xl font-semibold">How it works</h2>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                <li>• Describe the content you want generated.</li>
+                <li>• Pick a language and difficulty.</li>
+                <li>• Type the generated snippet as fast and accurately as possible.</li>
+                <li>• Climb the weekly and all-time leaderboards.</li>
+              </ul>
+            </div>
+          </aside>
+        </section>
       </div>
-      <button
-        className="absolute bottom-4 left-4 bg-transparent border border-white text-white px-4 py-2 rounded-full hover:bg-white/10"
-        onClick={handleBack}
-      >
-        &larr; Back
-      </button>
     </div>
   );
 };

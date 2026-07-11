@@ -110,7 +110,7 @@ export class GameRoomManager {
       player.isFinished = true;
 
       // Check if all players finished
-      const allFinished = Array.from(room.players.values()).every((p) => p.isFinished);
+      const allFinished = Array.from(room.players.values()).every((p: Player) => p.isFinished);
       if (allFinished) {
         room.status = 'finished';
         this.endGame(roomId);
@@ -136,7 +136,7 @@ export class GameRoomManager {
       //   playerId: socketId
       // };
 
-      room.players.forEach((_, playerId) => {
+      room.players.forEach((_player: Player, playerId: string) => {
         if (playerId !== socketId) {
           // Note: We can't emit directly to specific socket here
           // The socket.io server will handle this
@@ -151,8 +151,6 @@ export class GameRoomManager {
 
     this.socketToRoom.delete(socketId);
     console.log(`Client ${socketId} left room ${roomId}`);
-  }
-
   }
 
   private endGame(roomId: string): void {

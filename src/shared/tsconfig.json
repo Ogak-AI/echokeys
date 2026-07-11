@@ -1,14 +1,17 @@
-// TypeScript config for non-devvit and shared code.
 {
-  "extends": "../../tools/tsconfig-base.json",
   "compilerOptions": {
-    "lib": ["WebWorker", "ES2023"],
-
-    "outDir": "../../dist/types/shared",
-
-    "tsBuildInfoFile": "../../dist/shared/tsconfig.tsbuildinfo"
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "../../dist/shared"
   },
-  // https://github.com/Microsoft/TypeScript/issues/25636
-  "include": ["**/*", "**/*.json"],
-  "exclude": ["**/*.test.ts"]
+  "include": ["./**/*.ts"]
 }

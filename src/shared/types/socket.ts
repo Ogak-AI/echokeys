@@ -2,6 +2,9 @@ export interface GameChallenge {
   id: string;
   text: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  concept?: string;
+  language?: string;
+  lineCount?: number;
 }
 
 export interface Player {
