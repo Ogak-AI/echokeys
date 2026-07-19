@@ -12,8 +12,9 @@ test('client build config includes Devvit entry HTML files', async () => {
   const input = result?.config.build?.rollupOptions?.input as Record<string, string> | undefined;
 
   assert.ok(input, 'Expected Vite build.rollupOptions.input to be configured');
-  assert.equal(input.splash, path.resolve(__dirname, '../src/client/splash.html'));
-  assert.equal(input.game, path.resolve(__dirname, '../src/client/game.html'));
-  assert.equal(input.games, path.resolve(__dirname, '../src/client/games.html'));
-  assert.equal(input.watch, path.resolve(__dirname, '../src/client/watch.html'));
+  
+  const clientDir = path.dirname(configPath);
+  assert.equal(path.resolve(clientDir, input.splash), path.resolve(clientDir, 'splash.html'));
+  assert.equal(path.resolve(clientDir, input.game), path.resolve(clientDir, 'game.html'));
+  assert.equal(path.resolve(clientDir, input.leaderboard), path.resolve(clientDir, 'leaderboard.html'));
 });

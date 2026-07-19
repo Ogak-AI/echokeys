@@ -5,16 +5,16 @@
     "dir": "dist/client",
     "entrypoints": {
       "default": {
-        "entry": "splash.html"
+        "entry": "splash.html",
+        "height": "tall"
       },
       "game": {
-        "entry": "game.html"
+        "entry": "game.html",
+        "height": "tall"
       },
-      "games": {
-        "entry": "games.html"
-      },
-      "watch": {
-        "entry": "watch.html"
+      "leaderboard": {
+        "entry": "leaderboard.html",
+        "height": "tall"
       }
     }
   },
@@ -25,10 +25,103 @@
   "media": {
     "dir": "assets"
   },
+  "permissions": {
+    "http": {
+      "enable": true,
+      "domains": [
+        "api.anthropic.com",
+        "api.groq.com",
+        "api-inference.huggingface.co"
+      ]
+    },
+    "redis": true,
+    "realtime": true,
+    "reddit": {
+      "enable": true,
+      "asUser": ["SUBMIT_POST"]
+    }
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Create Echokeys Challenge",
+        "description": "Generate a typing challenge from a prompt and post it",
+        "location": "subreddit",
+        "forUserType": "user",
+        "endpoint": "/internal/menu/create-challenge",
+        "postFilter": "none"
+      }
+    ]
+  },
+  "forms": {
+    "create-challenge": "/internal/form/create-challenge"
+  },
+  "settings": {
+    "global": {
+      "llm_provider": {
+        "type": "string",
+        "label": "LLM Provider",
+        "helpText": "Select LLM provider: huggingface, groq, or anthropic",
+        "defaultValue": "huggingface"
+      },
+      "huggingface_api_key": {
+        "type": "string",
+        "label": "Hugging Face API Token",
+        "helpText": "Optional but recommended token for Hugging Face serverless inference.",
+        "isSecret": true
+      },
+      "huggingface_model": {
+        "type": "string",
+        "label": "Hugging Face Model",
+        "helpText": "Model repository ID on Hugging Face (e.g. Qwen/Qwen2.5-Coder-7B-Instruct).",
+        "defaultValue": "Qwen/Qwen2.5-Coder-7B-Instruct"
+      },
+      "groq_api_key": {
+        "type": "string",
+        "label": "Groq API Key",
+        "helpText": "API key from console.groq.com.",
+        "isSecret": true
+      },
+      "groq_model": {
+        "type": "string",
+        "label": "Groq Model",
+        "helpText": "Model ID to use on Groq.",
+        "defaultValue": "llama-3.3-70b-versatile"
+      },
+      "anthropic_api_key": {
+        "type": "string",
+        "label": "Anthropic API Key",
+        "helpText": "Claude API key used for challenge content generation.",
+        "isSecret": true
+      },
+      "anthropic_model": {
+        "type": "string",
+        "label": "Anthropic Model",
+        "helpText": "Claude model id for content generation",
+        "defaultValue": "claude-3-5-sonnet-20241022"
+      }
+    }
+  },
+  "scheduler": {
+    "tasks": {
+      "weekly-snapshot": {
+        "endpoint": "/internal/weekly-snapshot",
+        "cron": "0 0 * * 0"
+      },
+      "monthly-snapshot": {
+        "endpoint": "/internal/monthly-snapshot",
+        "cron": "0 0 1 * *"
+      },
+      "yearly-snapshot": {
+        "endpoint": "/internal/yearly-snapshot",
+        "cron": "0 0 1 1 *"
+      }
+    }
+  },
   "triggers": {
     "onAppInstall": "/internal/on-app-install"
   },
   "dev": {
-    "subreddit": "keyscripture_dev"
+    "subreddit": "echokeys_dev"
   }
 }

@@ -1,12 +1,8 @@
 import { defineConfig } from 'vite';
 import { builtinModules } from 'node:module';
-import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 export default defineConfig({
-  ssr: {
-    noExternal: true,
-  },
+  ssr: { noExternal: true },
   logLevel: 'warn',
   build: {
     ssr: 'index.ts',
@@ -16,7 +12,6 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       external: [...builtinModules],
-
       output: {
         format: 'cjs',
         entryFileNames: 'index.cjs',
@@ -25,35 +20,4 @@ export default defineConfig({
       },
     },
   },
-  plugins: [
-    {
-      name: 'copy-challenges',
-      apply: 'build',
-      writeBundle() {
-        // Copy challenges directory to dist
-        const src = resolve(__dirname, 'challenges');
-        const dest = resolve(__dirname, '../../dist/server/challenges');
-        mkdirSync(dest, { recursive: true });
-
-        const files = readdirSync(src);
-        for (const file of files) {
-          if (file.endsWith('.txt')) {
-            copyFileSync(resolve(src, file), resolve(dest, file));
-          }
-        }
-
-        // Copy challenges.json to dist/server
-        try {
-          const jsonSrc = resolve(__dirname, 'challenges.json');
-          const jsonDest = resolve(__dirname, '../../dist/server/challenges.json');
-          copyFileSync(jsonSrc, jsonDest);
-        } catch (err) {
-          console.warn(
-            'Could not copy challenges.json:',
-            err instanceof Error ? err.message : 'Unknown error'
-          );
-        }
-      },
-    },
-  ],
 });

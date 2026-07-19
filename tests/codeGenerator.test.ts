@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateCode } from '../src/server/services/codeGenerator.js';
+import { generateContent } from '../src/server/services/contentGenerator.ts';
 
-test('generateCode falls back to deterministic code when no API token is configured', async () => {
-  delete process.env.HF_API_TOKEN;
+test('generateContent falls back to deterministic code when no API token is configured', async () => {
+  const result = await generateContent('recursive binary search', 'easy', '');
 
-  const result = await generateCode('sum a list of numbers', 'python', 'easy');
-
-  assert.ok(result.code.length > 0);
-  assert.ok(result.lineCount >= 1);
-  assert.match(result.code, /def |class |import /);
+  assert.ok(result.content.length > 0);
+  assert.ok(result.lineCount >= 25 && result.lineCount <= 50);
+  assert.equal(result.domain, 'code');
+  assert.match(result.content, /function |const |console\.log/);
 });

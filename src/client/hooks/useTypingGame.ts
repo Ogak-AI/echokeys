@@ -1,326 +1,140 @@
-import { useCallback, useEffect, useState } from 'react';
-import { context } from '../shims/devvit-web-client';
-import { generateChallenge, getWeeklyLeaderboard, submitScore } from '../services/api';
-import { DIFFICULTY_CONFIG } from '../../shared/types/index';
-import type { ChallengeContentType, Difficulty, Language, LeaderboardEntry } from '../../shared/types/index';
-import type { GameChallenge } from '../../shared/types/socket';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { DIFFICULTY_CONFIG, calculateScore } from '../../shared/types/index';
+import type { Challenge, Difficulty } from '../../shared/types/index';
 
-interface GameState {
-  username: string | null;
-  challenge: GameChallenge | null;
-  loading: boolean;
-  gameStarted: boolean;
-  gameFinished: boolean;
-  currentInput: string;
-  startTime: number | null;
-  endTime: number | null;
+export interface TypingState {
+  phase: 'idle' | 'playing' | 'finished' | 'timeout';
+  input: string;
   wpm: number;
   accuracy: number;
-  prompt: string;
-  language: Language;
-  contentType: ChallengeContentType;
-  domain: string;
-  difficulty: Difficulty;
-  showSetup: boolean;
-  timeLimitSeconds: number;
-  timeLeftSeconds: number;
-  lastSpokenIndex: number;
-  isMuted: boolean;
-  errorIndexes: number[];
-  isGenerating: boolean;
-  error: string | null;
-  leaderboard: LeaderboardEntry[];
-  scoreSummary: { score: number; weekly_rank: number | null; all_time_rank: number | null } | null;
+  elapsed: number;
+  remaining: number;
+  progress: number;
+  score: number;
+  muted: boolean;
+  throttled: boolean;
 }
 
-export const useTypingGame = () => {
-  const [state, setState] = useState<GameState>({
-    username: null,
-    challenge: null,
-    loading: true,
-    gameStarted: false,
-    gameFinished: false,
-    currentInput: '',
-    startTime: null,
-    endTime: null,
-    wpm: 0,
-    accuracy: 0,
-    prompt: '',
-    language: 'python',
-    contentType: 'typing',
-    domain: '',
-    difficulty: 'easy',
-    showSetup: true,
-    timeLimitSeconds: DIFFICULTY_CONFIG.easy.timeLimitSeconds,
-    timeLeftSeconds: DIFFICULTY_CONFIG.easy.timeLimitSeconds,
-    lastSpokenIndex: 0,
-    isMuted: false,
-    errorIndexes: [],
-    isGenerating: false,
-    error: null,
-    leaderboard: [],
-    scoreSummary: null,
+export function useTypingGame(challenge: Challenge | null) {
+  const [state, setState] = useState<TypingState>({
+    phase: 'idle', input: '', wpm: 0, accuracy: 100,
+    elapsed: 0, remaining: 0, progress: 0, score: 0, muted: false, throttled: false,
   });
 
+  const t0 = useRef<number>(0);
+  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const spokenIdx = useRef(0);
+  const isThrottledRef = useRef(false);
+
+  const limit = challenge ? DIFFICULTY_CONFIG[challenge.difficulty as Difficulty].timeSeconds : 600;
+
   useEffect(() => {
-    const username = context?.username || 'Player';
-    setState((prev) => ({ ...prev, username, loading: false }));
-    void loadLeaderboard();
-  }, []);
+    if (state.phase !== 'playing') return;
+    timer.current = setInterval(() => {
+      const sec = Math.floor((Date.now() - t0.current) / 1000);
+      const rem = Math.max(0, limit - sec);
+      setState(p => {
+        if (rem <= 0 && p.phase === 'playing') return { ...p, elapsed: sec, remaining: 0, phase: 'timeout' };
+        return { ...p, elapsed: sec, remaining: rem };
+      });
+    }, 250);
+    return () => clearInterval(timer.current);
+  }, [state.phase, limit]);
 
-  const loadLeaderboard = useCallback(async () => {
-    try {
-      const response = await getWeeklyLeaderboard();
-      setState((prev) => ({ ...prev, leaderboard: response.entries }));
-    } catch (error) {
-      console.error('Failed to load leaderboard', error);
+  useEffect(() => {
+    if (state.phase === 'timeout' || state.phase === 'finished') {
+      clearInterval(timer.current);
+      window.speechSynthesis?.cancel();
     }
-  }, []);
+  }, [state.phase]);
 
-  const startGame = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      gameStarted: true,
-      startTime: Date.now(),
-      currentInput: '',
-      gameFinished: false,
-      wpm: 0,
-      accuracy: 0,
-      endTime: null,
-      errorIndexes: [],
-      lastSpokenIndex: 0,
-      scoreSummary: null,
-      timeLimitSeconds: DIFFICULTY_CONFIG[prev.difficulty].timeLimitSeconds,
-      timeLeftSeconds: DIFFICULTY_CONFIG[prev.difficulty].timeLimitSeconds,
-    }));
-  }, []);
+  const start = useCallback(() => {
+    t0.current = Date.now();
+    spokenIdx.current = 0;
+    isThrottledRef.current = false;
+    setState({ phase: 'playing', input: '', wpm: 0, accuracy: 100, elapsed: 0, remaining: limit, progress: 0, score: 0, muted: false, throttled: false });
+  }, [limit]);
 
-  const generateChallengeForPrompt = useCallback(async () => {
-    if (!state.prompt.trim()) {
-      setState((prev) => ({ ...prev, error: 'Please enter a prompt to generate a challenge.' }));
+  const type = useCallback((val: string) => {
+    if (!challenge || !t0.current || isThrottledRef.current || state.phase !== 'playing') return;
+
+    // Paste protection: if input jump is more than 5 characters, throttle immediately
+    const diff = val.length - state.input.length;
+    if (diff > 5) {
+      isThrottledRef.current = true;
+      setState(p => ({ ...p, throttled: true }));
+      setTimeout(() => {
+        isThrottledRef.current = false;
+        setState(p => ({ ...p, throttled: false }));
+      }, 1500);
       return;
     }
 
-    setState((prev) => ({ ...prev, isGenerating: true, error: null, showSetup: false }));
+    const text = challenge.content;
 
-    try {
-      const response = await generateChallenge({
-        concept: state.prompt.trim(),
-        language: state.language,
-        difficulty: state.difficulty,
-        contentType: state.contentType,
-        domain: state.domain.trim() || undefined,
-      });
+    // Audio pronunciation only for correctly typed words
+    if (val.length > spokenIdx.current && !state.muted) {
+      const chunk = val.slice(spokenIdx.current);
+      for (const m of chunk.matchAll(/([a-zA-Z_]\w*)\W/g)) {
+        if (m[1] && window.speechSynthesis) {
+          const wordStart = spokenIdx.current + (m.index ?? 0);
+          const wordEnd = wordStart + m[1].length;
+          const userWord = val.slice(wordStart, wordEnd);
+          const challengeWord = text.slice(wordStart, wordEnd);
 
-      setState((prev) => ({
-        ...prev,
-        challenge: {
-          id: response.challenge.id,
-          text: response.challenge.code,
-          difficulty: response.challenge.difficulty,
-          concept: response.challenge.concept,
-          language: response.challenge.language,
-          lineCount: response.challenge.line_count,
-        },
-        isGenerating: false,
-        gameStarted: false,
-        gameFinished: false,
-        currentInput: '',
-        startTime: null,
-        endTime: null,
-        wpm: 0,
-        accuracy: 0,
-        errorIndexes: [],
-        lastSpokenIndex: 0,
-        timeLimitSeconds: DIFFICULTY_CONFIG[state.difficulty].timeLimitSeconds,
-        timeLeftSeconds: DIFFICULTY_CONFIG[state.difficulty].timeLimitSeconds,
-      }));
-    } catch (error: any) {
-      setState((prev) => ({
-        ...prev,
-        isGenerating: false,
-        error: error?.message || 'Challenge generation failed.',
-        showSetup: true,
-      }));
-    }
-  }, [state.prompt, state.language, state.difficulty, state.contentType, state.domain]);
-
-  useEffect(() => {
-    if (!state.gameStarted || state.gameFinished || state.timeLeftSeconds <= 0) return;
-
-    const timer = window.setInterval(() => {
-      setState((prev) => {
-        if (!prev.gameStarted || prev.gameFinished) return prev;
-
-        if (prev.timeLeftSeconds <= 1) {
-          if (prev.challenge && !prev.gameFinished) {
-            void submitResult(prev.challenge.id, prev.wpm, prev.accuracy, prev.timeLimitSeconds, false);
+          if (userWord === challengeWord) {
+            const u = new SpeechSynthesisUtterance(m[1]);
+            u.rate = 1.3;
+            u.pitch = 1;
+            window.speechSynthesis.speak(u);
           }
-
-          return {
-            ...prev,
-            timeLeftSeconds: 0,
-            gameFinished: true,
-            endTime: Date.now(),
-          };
         }
-
-        return {
-          ...prev,
-          timeLeftSeconds: prev.timeLeftSeconds - 1,
-        };
-      });
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [state.gameStarted, state.gameFinished, state.timeLeftSeconds, state.challenge, state.wpm, state.accuracy, state.timeLimitSeconds]);
-
-  const updateInput = useCallback((input: string) => {
-    const challenge = state.challenge;
-    if (!challenge || !state.gameStarted || state.gameFinished) return;
-
-    let currentSpokenIndex = state.lastSpokenIndex;
-
-    if (input.length > currentSpokenIndex) {
-      const textSinceLastSpoken = input.slice(currentSpokenIndex);
-      const completedWords = textSinceLastSpoken.matchAll(/([\w']+)[\s.,!?;:\-—]/g);
-
-      for (const match of completedWords) {
-        const completedWord = match[1];
-        if (completedWord && window.speechSynthesis && !state.isMuted) {
-          const utterance = new SpeechSynthesisUtterance(completedWord);
-          utterance.rate = 1.2;
-          utterance.pitch = 1;
-          window.speechSynthesis.speak(utterance);
-        }
-        currentSpokenIndex = currentSpokenIndex + (match.index ?? 0) + match[0].length;
+        spokenIdx.current += (m.index ?? 0) + m[0].length;
       }
     }
 
-    const isFinished = input.length >= challenge.text.length;
-    const endTime = isFinished ? Date.now() : null;
-    const timeElapsed = (endTime || Date.now()) - (state.startTime || Date.now());
-    const minutes = timeElapsed / 60000;
-    const wordsTyped = input.length / 5;
-    const wpm = minutes > 0 ? Math.round(wordsTyped / minutes) : 0;
+    let ok = 0;
+    for (let i = 0; i < val.length; i++) { if (val[i] === text[i]) ok++; }
+    const mins = (Date.now() - t0.current) / 60000;
+    const wpm = mins > 0 ? Math.round((val.length / 5) / mins) : 0;
 
-    const newErrorIndexes: number[] = [];
-    let correctChars = 0;
-    for (let i = 0; i < input.length; i++) {
-      if (input[i] === challenge.text[i]) {
-        correctChars++;
-      } else {
-        newErrorIndexes.push(i);
-      }
+    // Speed throttle: 7 WPS is 420 WPM. Check after 15 chars to ignore initial spikes.
+    if (val.length >= 15 && wpm > 420) {
+      isThrottledRef.current = true;
+      setState(p => ({ ...p, throttled: true, wpm }));
+      setTimeout(() => {
+        isThrottledRef.current = false;
+        setState(p => ({ ...p, throttled: false }));
+      }, 1500);
+      return;
     }
-    const accuracy = input.length > 0 ? Math.round((correctChars / input.length) * 100) : 0;
 
-    setState((prev) => {
-      const next = {
-        ...prev,
-        currentInput: input,
-        endTime,
-        gameFinished: isFinished,
-        wpm,
-        accuracy,
-        lastSpokenIndex: currentSpokenIndex,
-        errorIndexes: newErrorIndexes,
-        timeLeftSeconds: prev.timeLeftSeconds,
-      };
+    const accuracy = val.length > 0 ? Math.round((ok / val.length) * 100) : 100;
+    const progress = Math.min(100, Math.round((val.length / text.length) * 100));
+    const sec = Math.floor((Date.now() - t0.current) / 1000);
+    const score = calculateScore(accuracy / 100, wpm, sec);
+    const done = val.length >= text.length;
 
-      if (isFinished && !prev.gameFinished && prev.challenge) {
-        void submitResult(prev.challenge.id, wpm, accuracy, Math.max(1, Math.round(timeElapsed / 1000)), true);
-      }
-
-      return next;
-    });
-
-    if (isFinished) {
-      window.speechSynthesis.cancel();
-    }
-  }, [state.challenge, state.gameStarted, state.gameFinished, state.startTime, state.isMuted, state.lastSpokenIndex]);
-
-  const submitResult = useCallback(async (challengeId: string, wpm: number, accuracy: number, timeSeconds: number, completed: boolean) => {
-    try {
-      const response = await submitScore({ challenge_id: challengeId, wpm, accuracy, time_seconds: timeSeconds, completed });
-      setState((prev) => ({ ...prev, scoreSummary: response.score ? { score: response.score.score, weekly_rank: response.weekly_rank, all_time_rank: response.all_time_rank } : null }));
-      await loadLeaderboard();
-    } catch (error) {
-      console.error('Score submission failed', error);
-    }
-  }, [loadLeaderboard]);
-
-  const resetGame = useCallback(() => {
-    window.speechSynthesis.cancel();
-    setState((prev) => ({
-      ...prev,
-      challenge: null,
-      gameStarted: false,
-      gameFinished: false,
-      currentInput: '',
-      startTime: null,
-      endTime: null,
-      wpm: 0,
-      accuracy: 0,
-      showSetup: true,
-      lastSpokenIndex: 0,
-      isMuted: false,
-      errorIndexes: [],
-      scoreSummary: null,
-      timeLimitSeconds: DIFFICULTY_CONFIG[prev.difficulty].timeLimitSeconds,
-      timeLeftSeconds: DIFFICULTY_CONFIG[prev.difficulty].timeLimitSeconds,
+    setState(p => ({
+      ...p, input: val, wpm, accuracy, progress,
+      elapsed: sec, remaining: Math.max(0, limit - sec),
+      score, phase: done ? 'finished' : p.phase,
     }));
-  }, []);
+    if (done) window.speechSynthesis?.cancel();
+  }, [challenge, limit, state.input, state.muted, state.phase]);
 
   const toggleMute = useCallback(() => {
-    setState((prev) => {
-      const newMutedState = !prev.isMuted;
-      if (newMutedState) {
-        window.speechSynthesis.cancel();
-      } else {
-        window.speechSynthesis.resume();
-      }
-      return { ...prev, isMuted: newMutedState };
-    });
+    setState(p => { if (!p.muted) window.speechSynthesis?.cancel(); return { ...p, muted: !p.muted }; });
   }, []);
 
-  const updatePrompt = useCallback((prompt: string) => {
-    setState((prev) => ({ ...prev, prompt }));
-  }, []);
+  const reset = useCallback(() => {
+    clearInterval(timer.current);
+    t0.current = 0;
+    spokenIdx.current = 0;
+    isThrottledRef.current = false;
+    window.speechSynthesis?.cancel();
+    setState({ phase: 'idle', input: '', wpm: 0, accuracy: 100, elapsed: 0, remaining: limit, progress: 0, score: 0, muted: false, throttled: false });
+  }, [limit]);
 
-  const updateLanguage = useCallback((language: Language) => {
-    setState((prev) => ({ ...prev, language }));
-  }, []);
-
-  const updateDifficulty = useCallback((difficulty: Difficulty) => {
-    setState((prev) => ({
-      ...prev,
-      difficulty,
-      timeLimitSeconds: DIFFICULTY_CONFIG[difficulty].timeLimitSeconds,
-      timeLeftSeconds: prev.gameStarted ? DIFFICULTY_CONFIG[difficulty].timeLimitSeconds : prev.timeLeftSeconds,
-    }));
-  }, []);
-
-  const updateContentType = useCallback((contentType: ChallengeContentType) => {
-    setState((prev) => ({ ...prev, contentType }));
-  }, []);
-
-  const updateDomain = useCallback((domain: string) => {
-    setState((prev) => ({ ...prev, domain }));
-  }, []);
-
-  return {
-    ...state,
-    startGame,
-    generateChallenge: generateChallengeForPrompt,
-    updatePrompt,
-    updateLanguage,
-    updateContentType,
-    updateDomain,
-    updateDifficulty,
-    updateInput,
-    resetGame,
-    toggleMute,
-    errorIndexes: state.errorIndexes,
-  };
-};
+  return { ...state, start, type, toggleMute, reset };
+}

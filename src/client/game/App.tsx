@@ -1,245 +1,338 @@
-import { context, requestExpandedMode } from '../shims/devvit-web-client';
+import React, { useState, useEffect } from 'react';
 import { useTypingGame } from '../hooks/useTypingGame';
-import { CONTENT_TYPES, DIFFICULTY_CONFIG, LANGUAGES } from '../../shared/types/index';
-import type { ChallengeContentType, Difficulty, Language } from '../../shared/types/index';
+import type { Challenge, Difficulty } from '../../shared/types/index';
+import { context } from '../shims/devvit-web-client';
 
 export const App = () => {
+  const [prompt, setPrompt] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
+  const [loading, setLoading] = useState(false);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [results, setResults] = useState<{ score: number; wpm: number; accuracy: number; rank: number | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const {
-    username,
-    challenge,
-    loading,
-    gameStarted,
-    gameFinished,
-    currentInput,
+    phase,
+    input,
     wpm,
     accuracy,
-    prompt,
-    language,
-    contentType,
-    domain,
-    difficulty,
-    showSetup,
-    timeLeftSeconds,
-    isMuted,
-    isGenerating,
-    error,
-    leaderboard,
-    scoreSummary,
-    startGame,
-    generateChallenge,
-    updatePrompt,
-    updateLanguage,
-    updateContentType,
-    updateDomain,
-    updateDifficulty,
-    updateInput,
-    resetGame,
+    remaining,
+    progress,
+    score,
+    elapsed,
+    muted,
+    throttled,
+    start,
+    type,
     toggleMute,
-  } = useTypingGame();
+    reset,
+  } = useTypingGame(challenge);
 
-  const handleBack = async () => {
+  const username = context?.username ?? 'Player';
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prompt.trim()) return;
+
+    setLoading(true);
+    setError(null);
     try {
-      await requestExpandedMode(new MouseEvent('click'), 'splash');
-    } catch {
-      if (window.history.length > 1) {
-        window.history.back();
-      } else {
-        window.location.href = 'splash.html';
-      }
+      const res = await fetch('/api/challenge/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, difficulty }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate challenge');
+      setChallenge(data.challenge);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during generation');
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Start game when challenge is generated/loaded
+  useEffect(() => {
+    if (challenge) {
+      start();
+    }
+  }, [challenge, start]);
+
+  // Handle game completion
+  useEffect(() => {
+    if (phase === 'finished' || phase === 'timeout') {
+      submitResults();
+    }
+  }, [phase]);
+
+  const submitResults = async () => {
+    if (!challenge) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/score/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          challengeId: challenge.id,
+          wpm,
+          accuracy,
+          timeSeconds: elapsed || 0,
+          completed: phase === 'finished',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit score');
+      setResults({
+        score: data.score.score,
+        wpm: data.score.wpm,
+        accuracy: data.score.accuracy,
+        rank: data.weeklyRank,
+      });
+    } catch (err: any) {
+      console.error('Submit score error:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBack = () => {
+    window.location.href = 'splash.html';
+  };
+
+  const handleTryAgain = () => {
+    setChallenge(null);
+    setResults(null);
+    reset();
+  };
+
+  // Render character by character in the typing interface
+  const renderCodeChars = () => {
+    if (!challenge) return null;
+    const content = challenge.content;
+    return content.split('').map((char, idx) => {
+      let className = 'ch-pending';
+      if (idx < input.length) {
+        className = input[idx] === char ? 'ch-correct' : 'ch-error';
+      } else if (idx === input.length) {
+        className = 'ch-cursor';
+      }
+      return (
+        <span key={idx} className={className}>
+          {char === '\n' ? '↵\n' : char}
+        </span>
+      );
+    });
+  };
+
+  // Formatter for timer
+  const formatTime = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${mins}:${s.toString().padStart(2, '0')}`;
+  };
+
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-xl">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#1e1e1e] text-[#d4d4d4]">
+        <div className="spinner"></div>
+        <p className="loading-text text-sm">Building your challenge using Claude API...</p>
+      </div>
+    );
+  }
+
+  if (results) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#1e1e1e] text-[#d4d4d4]">
+        <div className="w-full max-w-md rounded p-6 bg-[#252526] border border-[#3c3c3c] flex flex-col gap-6">
+          <h2 className="text-2xl font-bold text-center text-[#4ec9b0] mb-2">Challenge Completed!</h2>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="stat-box">
+              <div className="stat-val stat-val-green">{results.score}</div>
+              <div className="stat-lbl">Final Score</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-val">{results.wpm}</div>
+              <div className="stat-lbl">WPM</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-val">{results.accuracy}%</div>
+              <div className="stat-lbl">Accuracy</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-val stat-val-accent">{results.rank ? `#${results.rank}` : 'N/A'}</div>
+              <div className="stat-lbl">Weekly Rank</div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 mt-4">
+            <button onClick={handleTryAgain} className="vsc-btn vsc-btn-lg justify-center w-full">
+              New Challenge
+            </button>
+            <button onClick={handleBack} className="vsc-btn-ghost vsc-btn vsc-btn-lg justify-center w-full">
+              Back to Home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (challenge && (phase === 'playing' || phase === 'idle')) {
+    return (
+      <div className="min-h-screen flex flex-col bg-[#1e1e1e] text-[#d4d4d4]">
+        {/* Top Header Bar */}
+        <div className="flex justify-between items-center px-6 py-3 bg-[#252526] border-b border-[#3c3c3c]">
+          <div className="flex items-center gap-3">
+            <span className="text-[#007acc] font-bold">Echokeys Editor</span>
+            <span className="text-xs px-2 py-0.5 rounded badge-easy" style={{ background: 'rgba(78,201,176,0.15)', color: '#4ec9b0' }}>
+              {challenge.difficulty.toUpperCase()}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={toggleMute} className="vsc-btn vsc-btn-ghost text-xs py-1">
+              {muted ? '🔈 Unmute' : '🔊 Mute Sound'}
+            </button>
+            <button onClick={handleTryAgain} className="vsc-btn vsc-btn-ghost text-xs py-1">
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Editor Layout */}
+        <div className="flex flex-1 flex-col md:flex-row">
+          {/* Main Code Area */}
+          <div className="flex-1 flex flex-col p-4">
+            <div className="editor-panel flex-1 flex flex-col">
+              <div className="editor-titlebar">
+                <span>typing_challenge.txt — {username}</span>
+              </div>
+              <div className="editor-content flex-1 bg-[#181818] p-4 font-mono overflow-y-auto outline-none" style={{ minHeight: '300px' }}>
+                {renderCodeChars()}
+              </div>
+            </div>
+
+            {/* Typing box */}
+            <div className="mt-4">
+              {throttled && (
+                <div className="mb-2 p-2 text-xs rounded bg-red-950/40 text-[#f48771] border border-red-900/60 font-semibold animate-pulse text-center font-mono">
+                  Input Throttled: Speed limit (7 WPS) exceeded or paste detected. Pausing briefly...
+                </div>
+              )}
+              <textarea
+                value={input}
+                onChange={(e) => type(e.target.value)}
+                placeholder={throttled ? "Throttled..." : "Start typing the content above..."}
+                disabled={throttled}
+                className={`w-full h-24 p-3 bg-[#181818] border rounded font-mono focus:outline-none resize-none transition-all duration-150 ${
+                  throttled 
+                    ? 'border-[#f48771] text-[#f48771] opacity-50 cursor-not-allowed' 
+                    : 'border-[#3c3c3c] text-[#d4d4d4] focus:border-[#007acc]'
+                }`}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          {/* Sidebar (Stats) */}
+          <div className="w-full md:w-64 bg-[#252526] border-t md:border-t-0 md:border-l border-[#3c3c3c] p-4 flex flex-col gap-4">
+            <div className="text-center">
+              <span className="text-xs text-[#858585] uppercase tracking-wider">Remaining Time</span>
+              <div className={`timer-display mt-1 ${remaining < 60 ? 'timer-danger' : remaining < 180 ? 'timer-warn' : ''}`}>
+                {formatTime(remaining)}
+              </div>
+            </div>
+
+            <div className="progress-bar my-2">
+              <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
+              <div className="stat-box">
+                <div className="stat-val">{wpm}</div>
+                <div className="stat-lbl">WPM</div>
+              </div>
+              <div className="stat-box">
+                <div className="stat-val">{accuracy}%</div>
+                <div className="stat-lbl">Accuracy</div>
+              </div>
+              <div className="stat-box col-span-2 md:col-span-1">
+                <div className="stat-val stat-val-accent">{score}</div>
+                <div className="stat-lbl">Estimated Score</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-950 via-slate-900 to-black p-4 text-white">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-6 shadow-2xl md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-blue-200">Echokeys</p>
-            <h1 className="text-3xl font-semibold">Developer typing speed game</h1>
-            <p className="mt-2 text-sm text-slate-300">Submit a prompt, generate fresh content, and race to type it accurately.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={toggleMute} className="rounded-full bg-white/15 px-4 py-2 text-sm font-semibold hover:bg-white/25" title={isMuted ? 'Unmute' : 'Mute'}>
-              {isMuted ? 'Muted' : 'Sound'}
+    <div className="min-h-screen flex flex-col bg-[#1e1e1e] text-[#d4d4d4]">
+      {/* Back button */}
+      <div className="p-4">
+        <button onClick={handleBack} className="vsc-btn vsc-btn-ghost text-xs">
+          ← Back
+        </button>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-lg rounded p-6 bg-[#252526] border border-[#3c3c3c]">
+          <h2 className="text-xl font-bold mb-4" style={{ color: '#007acc' }}>Create Typing Challenge</h2>
+
+          <form onSubmit={handleGenerate} className="flex flex-col gap-4">
+            {error && (
+              <div className="p-3 text-xs rounded bg-red-900/30 text-red-400 border border-red-800">
+                {error}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-[#858585]">What content would you like to type?</label>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g. Write binary search in Rust, Draft marketing copy for a new productivity app, Generate a legal contract template..."
+                className="vsc-input h-24 resize-none"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-[#858585]">Difficulty Tier</label>
+              <div className="grid grid-cols-3 gap-3">
+                <div
+                  onClick={() => setDifficulty('easy')}
+                  className={`diff-card diff-card-easy ${difficulty === 'easy' ? 'selected' : ''}`}
+                >
+                  <div className="font-bold text-[#4ec9b0]">Easy</div>
+                  <div className="text-2xs text-[#858585]">25-50 lines / 10m</div>
+                </div>
+                <div
+                  onClick={() => setDifficulty('medium')}
+                  className={`diff-card diff-card-medium ${difficulty === 'medium' ? 'selected' : ''}`}
+                >
+                  <div className="font-bold text-[#dcdcaa]">Medium</div>
+                  <div className="text-2xs text-[#858585]">75-150 lines / 8m</div>
+                </div>
+                <div
+                  onClick={() => setDifficulty('hard')}
+                  className={`diff-card diff-card-hard ${difficulty === 'hard' ? 'selected' : ''}`}
+                >
+                  <div className="font-bold text-[#f48771]">Hard</div>
+                  <div className="text-2xs text-[#858585]">200-300+ lines / 5m</div>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" className="vsc-btn vsc-btn-lg justify-center w-full mt-4 font-semibold">
+              Generate & Start Race
             </button>
-            <button onClick={handleBack} className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">Back</button>
-          </div>
-        </header>
-
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-xl">
-            {showSetup && !challenge && !isGenerating && (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-2xl font-semibold">Generate your next challenge</h2>
-                  <p className="mt-2 text-sm text-slate-400">Describe what you want generated, pick a context, and start typing.</p>
-                </div>
-                <label className="block text-sm font-medium text-slate-200">
-                  Prompt
-                  <textarea
-                    value={prompt}
-                    onChange={(event) => updatePrompt(event.target.value)}
-                    placeholder="Build a binary search tree in Rust"
-                    className="mt-2 min-h-28 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white outline-none"
-                  />
-                </label>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="text-sm font-medium text-slate-200">
-                    Content type
-                    <select value={contentType} onChange={(event) => updateContentType(event.target.value as ChallengeContentType)} className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white">
-                      {Object.entries(CONTENT_TYPES).map(([value, config]) => (
-                        <option key={value} value={value}>{config.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-sm font-medium text-slate-200">
-                    Difficulty
-                    <select value={difficulty} onChange={(event) => updateDifficulty(event.target.value as Difficulty)} className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white">
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="text-sm font-medium text-slate-200">
-                    Domain
-                    <input value={domain} onChange={(event) => updateDomain(event.target.value)} placeholder="growth, legal, ai, finance" className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white outline-none" />
-                  </label>
-                  {contentType === 'code' && (
-                    <label className="text-sm font-medium text-slate-200">
-                      Language
-                      <select value={language} onChange={(event) => updateLanguage(event.target.value as Language)} className="mt-2 w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white">
-                        {Object.entries(LANGUAGES).map(([value, config]) => (
-                          <option key={value} value={value}>{config.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                </div>
-                <p className="text-sm text-slate-400">{CONTENT_TYPES[contentType].description}</p>
-                {error && <p className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
-                <button onClick={() => void generateChallenge()} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500">
-                  {isGenerating ? 'Generating…' : 'Generate challenge'}
-                </button>
-              </div>
-            )}
-
-            {isGenerating && (
-              <div className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-8 text-center">
-                <h2 className="text-2xl font-semibold">Building your challenge…</h2>
-                <p className="mt-2 text-slate-300">The generator is preparing a fresh snippet for you to type.</p>
-              </div>
-            )}
-
-            {!showSetup && challenge && !gameStarted && !gameFinished && (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-slate-800/60 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.2em] text-blue-200">Ready</p>
-                      <h2 className="text-xl font-semibold">{challenge.concept || 'Generated challenge'}</h2>
-                    </div>
-                    <span className="rounded-full bg-blue-600/70 px-3 py-1 text-sm font-medium uppercase">{challenge.difficulty}</span>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-400">Context: {challenge.language || 'unknown'} • {challenge.lineCount || 0} lines</p>
-                  <p className="mt-2 text-sm text-slate-400">Time limit: {Math.floor(DIFFICULTY_CONFIG[difficulty].timeLimitSeconds / 60)} min</p>
-                </div>
-                <button onClick={startGame} className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-slate-900 hover:bg-slate-100">Start typing</button>
-                <button onClick={resetGame} className="w-full rounded-xl border border-white/15 px-4 py-3 font-semibold text-slate-200 hover:bg-white/10">Generate a different prompt</button>
-              </div>
-            )}
-
-            {gameStarted && challenge && (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm text-slate-400">Type the generated content exactly as shown.</p>
-                    <div className="flex flex-wrap gap-3 text-sm font-medium">
-                      <span>WPM: {wpm}</span>
-                      <span>Accuracy: {accuracy}%</span>
-                      <span>Time left: {Math.floor(timeLeftSeconds / 60)}:{String(timeLeftSeconds % 60).padStart(2, '0')}</span>
-                    </div>
-                  </div>
-                  <div className="min-h-48 rounded-xl border border-white/10 bg-black/50 p-4 font-mono text-sm leading-7">
-                    {challenge.text.split('').map((char, index) => {
-                      const typedChar = currentInput[index];
-                      const isCorrect = typedChar === char;
-                      const isTyped = index < currentInput.length;
-                      const className = isTyped ? (isCorrect ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300';
-                      return <span key={`${char}-${index}`} className={className}>{char}</span>;
-                    })}
-                  </div>
-                </div>
-                <textarea value={currentInput} onChange={(event) => updateInput(event.target.value)} disabled={gameFinished} rows={8} className="w-full rounded-xl border border-white/15 bg-slate-800/80 p-3 text-sm text-white outline-none" placeholder="Start typing here..." />
-              </div>
-            )}
-
-            {gameFinished && challenge && (
-              <div className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
-                <h2 className="text-2xl font-semibold">Challenge completed</h2>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl bg-slate-900/70 p-3">
-                    <p className="text-sm text-slate-400">WPM</p>
-                    <p className="text-2xl font-semibold">{wpm}</p>
-                  </div>
-                  <div className="rounded-xl bg-slate-900/70 p-3">
-                    <p className="text-sm text-slate-400">Accuracy</p>
-                    <p className="text-2xl font-semibold">{accuracy}%</p>
-                  </div>
-                  <div className="rounded-xl bg-slate-900/70 p-3">
-                    <p className="text-sm text-slate-400">Score</p>
-                    <p className="text-2xl font-semibold">{scoreSummary?.score ?? 0}</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3 text-sm text-slate-300">
-                  <span>Weekly rank: {scoreSummary?.weekly_rank ?? '—'}</span>
-                  <span>All-time rank: {scoreSummary?.all_time_rank ?? '—'}</span>
-                </div>
-                <button onClick={resetGame} className="rounded-xl bg-white px-4 py-3 font-semibold text-slate-900 hover:bg-slate-100">Generate another challenge</button>
-              </div>
-            )}
-          </div>
-
-          <aside className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-xl">
-              <h2 className="text-xl font-semibold">Weekly leaderboard</h2>
-              <p className="mt-2 text-sm text-slate-400">Real-time rankings update as scores are submitted.</p>
-              <div className="mt-4 space-y-2">
-                {leaderboard.length === 0 ? (
-                  <p className="rounded-xl bg-white/5 p-3 text-sm text-slate-400">No scores yet. Be the first to set a weekly record.</p>
-                ) : (
-                  leaderboard.map((entry) => (
-                    <div key={entry.user_id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-sm">
-                      <div>
-                        <p className="font-semibold">#{entry.rank} {entry.username}</p>
-                        <p className="text-slate-400">{entry.challenges_completed} challenges</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{entry.score}</p>
-                        <p className="text-slate-400">{entry.accuracy}% • {entry.best_wpm} WPM</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-xl">
-              <h2 className="text-xl font-semibold">How it works</h2>
-              <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                <li>• Describe the content you want generated.</li>
-                <li>• Pick a language and difficulty.</li>
-                <li>• Type the generated snippet as fast and accurately as possible.</li>
-                <li>• Climb the weekly and all-time leaderboards.</li>
-              </ul>
-            </div>
-          </aside>
-        </section>
+          </form>
+        </div>
       </div>
     </div>
   );

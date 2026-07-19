@@ -1,32 +1,25 @@
 import { defineConfig } from 'vite';
+import tailwind from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'node:path';
 
 export default defineConfig({
-  plugins: [react()],
-  root: '.',
+  plugins: [react(), tailwind()],
+  logLevel: 'warn',
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,
+    sourcemap: true,
     rollupOptions: {
       input: {
-        splash: resolve(__dirname, 'splash.html'),
-        game: resolve(__dirname, 'game.html'),
-        games: resolve(__dirname, 'games.html'),
-        watch: resolve(__dirname, 'watch.html'),
+        splash: 'splash.html',
+        game: 'game.html',
+        leaderboard: 'leaderboard.html',
       },
-    },
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      '/ws': {
-        target: 'ws://localhost:3001',
-        ws: true,
+      output: {
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+        assetFileNames: '[name][extname]',
+        sourcemapFileNames: '[name].js.map',
       },
     },
   },

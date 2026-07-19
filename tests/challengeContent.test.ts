@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateChallengeContent } from '../src/server/services/challengeContent.ts';
+import { detectContentDomain } from '../src/shared/utils/contentDomain.ts';
 
-test('generateChallengeContent creates domain-aware typing content', () => {
-  const result = generateChallengeContent('draft a launch email', 'marketing', 'growth', 'medium');
-
-  assert.ok(result.text.length > 0);
-  assert.ok(result.lineCount >= 1);
-  assert.match(result.text.toLowerCase(), /marketing|growth|launch|email/);
+test('detectContentDomain correctly identifies domain from prompts', () => {
+  assert.equal(detectContentDomain('Write a recursive binary search in Rust'), 'code');
+  assert.equal(detectContentDomain('Draft a sales contract with a liability clause'), 'legal');
+  assert.equal(detectContentDomain('Create a marketing pitch for productivity app'), 'marketing');
+  assert.equal(detectContentDomain('Explain system architecture technical guide'), 'technical');
+  assert.equal(detectContentDomain('Write a creative story opening'), 'creative');
+  assert.equal(detectContentDomain('Random daily journal entry about typing'), 'prose');
 });

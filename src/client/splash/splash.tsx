@@ -1,93 +1,69 @@
 import '../index.css';
-
-import { navigateTo } from '../shims/devvit-web-client';
 import { context, requestExpandedMode } from '../shims/devvit-web-client';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-export const Splash = () => {
-  const handlePlayGame = (e: React.MouseEvent) => {
-    console.log('Start Typing button clicked');
-    try {
-      void requestExpandedMode(e.nativeEvent, 'game');
-    } catch (error) {
-      console.error('Navigation error:', error);
-      // Fallback navigation
-      try {
-        void navigateTo('game');
-      } catch (navError) {
-        console.error('Standard navigation failed:', navError);
-        window.location.href = 'game.html';
-      }
-    }
+const Splash = () => {
+  const username = context?.username ?? 'Typist';
+
+  const handlePlay = (e: React.MouseEvent) => {
+    void requestExpandedMode(e.nativeEvent, 'game');
   };
 
-  const handleWatchGames = (e: React.MouseEvent) => {
-    console.log('Watch Games button clicked');
-    try {
-      void requestExpandedMode(e.nativeEvent, 'games');
-    } catch (error) {
-      console.error('Navigation error:', error);
-      try {
-        void navigateTo('games');
-      } catch (navError) {
-        console.error('Standard navigation failed:', navError);
-        window.location.href = 'games.html';
-      }
-    }
+  const handleLeaderboard = (e: React.MouseEvent) => {
+    void requestExpandedMode(e.nativeEvent, 'leaderboard');
   };
 
   return (
-    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-gradient-to-br from-blue-900 to-black text-white px-4 sm:px-8">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold mb-2">KeyScripture</h1>
-        <p className="text-base mb-4">Scripture Typing Challenge</p>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4"
+         style={{ background: '#1e1e1e', color: '#d4d4d4' }}>
+
+      {/* Title area */}
+      <div className="text-center mb-8">
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <span className="text-3xl">⌨️</span>
+          <h1 className="text-4xl font-bold tracking-tight" style={{ color: '#007acc' }}>
+            Echokeys
+          </h1>
+        </div>
+        <p className="text-sm" style={{ color: '#858585' }}>
+          Type. Race. Dominate the leaderboard.
+        </p>
       </div>
-      <div className="flex flex-col items-center gap-2">
-        <h2 className="text-xl font-semibold">Welcome, {context.username ?? 'Typist'}!</h2>
+
+      {/* Welcome card */}
+      <div className="w-full max-w-md rounded p-6 mb-6"
+           style={{ background: '#252526', border: '1px solid #3c3c3c' }}>
+        <div className="text-center">
+          <p className="text-lg mb-1">
+            Welcome, <span className="font-semibold" style={{ color: '#4ec9b0' }}>{username}</span>
+          </p>
+          <p className="text-xs" style={{ color: '#858585' }}>
+            Submit a prompt, type the generated content, and compete against other Redditors.
+          </p>
+        </div>
       </div>
-      <div className="flex flex-col items-center gap-3 mt-5">
-        <button
-          className="flex items-center justify-center bg-white text-blue-900 w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-gray-100 hover:scale-105"
-          onClick={handlePlayGame}
-        >
-          Start Typing!
+
+      {/* Action buttons */}
+      <div className="flex flex-col gap-3 w-full max-w-xs">
+        <button onClick={handlePlay}
+                className="vsc-btn vsc-btn-lg w-full justify-center text-base font-semibold">
+          ▶ Start Challenge
         </button>
-        <button
-          className="flex items-center justify-center bg-blue-600 text-white w-auto h-12 rounded-full cursor-pointer transition-all px-6 font-semibold hover:bg-blue-700 hover:scale-105"
-          onClick={handleWatchGames}
-        >
-          Watch Live Games
+        <button onClick={handleLeaderboard}
+                className="vsc-btn-ghost vsc-btn vsc-btn-lg w-full justify-center text-base">
+          🏆 Leaderboard
         </button>
       </div>
-      <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-white/80">
-        <button
-          className="cursor-pointer hover:text-white"
-          onClick={() => navigateTo('https://developers.reddit.com/docs')}
-        >
-          Docs
-        </button>
-        <span className="text-white/50">|</span>
-        <button
-          className="cursor-pointer hover:text-white"
-          onClick={() => navigateTo('https://www.reddit.com/r/Devvit')}
-        >
-          r/Devvit
-        </button>
-        <span className="text-white/50">|</span>
-        <button
-          className="cursor-pointer hover:text-white"
-          onClick={() => navigateTo('https://discord.com/invite/R7yu2wh9Qz')}
-        >
-          Discord
-        </button>
-      </footer>
+
+      {/* Footer */}
+      <p className="mt-10 text-xs" style={{ color: '#3c3c3c' }}>
+        Powered by Devvit • VS Code Dark Theme
+      </p>
     </div>
   );
 };
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Splash />
-  </StrictMode>
+  <StrictMode><Splash /></StrictMode>
 );

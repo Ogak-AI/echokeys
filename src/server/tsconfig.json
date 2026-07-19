@@ -11,8 +11,7 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "../../dist/server",
-    "rootDir": "."
+    "outDir": "../../dist/server"
   },
   "include": ["./**/*.ts"],
   "references": [{ "path": "../shared" }]
