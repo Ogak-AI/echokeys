@@ -73,90 +73,145 @@ const Splash = () => {
     : '';
 
   const hasPostChallenge = Boolean(postMeta?.challengeId);
+  const showStats =
+    (wordsTyped != null && wordsTyped > 0) || (bestWpm != null && bestWpm > 0);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-[#1e1e1e] text-[#d4d4d4]">
-      <div className="text-center mb-8">
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <span className="text-3xl" aria-hidden>
-            ⌨️
-          </span>
-          <h1 className="text-4xl font-bold tracking-tight text-[#007acc]">Echokeys</h1>
+    <div className="app-shell">
+      <div className="app-center" style={{ gap: '0.65rem' }}>
+        {/* Title strip — VS Code status-bar vibe */}
+        <div style={{ textAlign: 'center', width: '100%', maxWidth: '24rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.4rem',
+              marginBottom: '0.2rem',
+            }}
+          >
+            <span style={{ fontSize: '1.15rem', lineHeight: 1 }} aria-hidden>
+              ⌨️
+            </span>
+            <h1
+              style={{
+                fontSize: 'clamp(1.35rem, 5vw, 1.75rem)',
+                fontWeight: 700,
+                color: 'var(--color-vsc-accent)',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+              }}
+            >
+              Echokeys
+            </h1>
+          </div>
+          <p className="muted" style={{ fontSize: '0.75rem' }}>
+            AI writes it. You race typing it.
+          </p>
+          {communityLabel && (
+            <p
+              className="mono"
+              style={{ fontSize: '0.6875rem', color: 'var(--color-vsc-green)', marginTop: '0.25rem' }}
+            >
+              {communityLabel}
+            </p>
+          )}
         </div>
-        <p className="text-sm text-[#858585]">
-          Prompt in. AI writes it. You race the community typing it.
-        </p>
-        {communityLabel && (
-          <p className="text-xs font-mono text-[#4ec9b0] mt-2">{communityLabel}</p>
-        )}
-      </div>
 
-      <div className="w-full max-w-md rounded p-6 mb-6 bg-[#252526] border border-[#3c3c3c]">
-        <div className="text-center">
-          <p className="text-lg mb-1">
-            Welcome,{' '}
-            <span className="font-semibold text-[#4ec9b0]">{username}</span>
-          </p>
-          <p className="text-xs text-[#858585] leading-relaxed">
-            Type AI-generated challenges. Compete on your subreddit&apos;s weekly leaderboard.
-            Accuracy matters most.
-          </p>
+        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: '0.875rem', marginBottom: '0.15rem' }}>
+              Welcome,{' '}
+              <span style={{ fontWeight: 600, color: 'var(--color-vsc-green)' }}>{username}</span>
+            </p>
+            <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
+              Type AI challenges. Climb your sub&apos;s weekly board. Accuracy wins.
+            </p>
+          </div>
 
-          {(wordsTyped != null && wordsTyped > 0) || (bestWpm != null && bestWpm > 0) ? (
-            <div className="flex justify-center gap-6 mt-4 font-mono text-xs">
+          {showStats && (
+            <div
+              className="mono"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: showStats && wordsTyped && bestWpm ? '1fr 1fr' : '1fr',
+                gap: '0.35rem',
+              }}
+            >
               {wordsTyped != null && wordsTyped > 0 && (
-                <div>
-                  <div className="text-[#ce9178] text-base font-bold">
+                <div className="stat-box">
+                  <div className="stat-val" style={{ color: 'var(--color-vsc-orange)', fontSize: '1.05rem' }}>
                     {wordsTyped.toLocaleString()}
                   </div>
-                  <div className="text-[#858585]">words typed</div>
+                  <div className="stat-lbl">Words</div>
                 </div>
               )}
               {bestWpm != null && bestWpm > 0 && (
-                <div>
-                  <div className="text-[#9cdcfe] text-base font-bold">{bestWpm}</div>
-                  <div className="text-[#858585]">best WPM</div>
+                <div className="stat-box">
+                  <div className="stat-val" style={{ fontSize: '1.05rem' }}>
+                    {bestWpm}
+                  </div>
+                  <div className="stat-lbl">Best WPM</div>
                 </div>
               )}
             </div>
-          ) : null}
+          )}
 
           {hasPostChallenge && postMeta?.prompt && (
-            <div className="mt-4 p-3 rounded bg-[#181818] border border-[#3c3c3c] text-left">
-              <p className="text-[10px] uppercase tracking-wider text-[#858585] mb-1">
-                This post&apos;s challenge
+            <div
+              style={{
+                padding: '0.45rem 0.5rem',
+                borderRadius: 2,
+                background: 'var(--color-vsc-bg-darker)',
+                border: '1px solid var(--color-vsc-border)',
+                textAlign: 'left',
+              }}
+            >
+              <p
+                className="muted"
+                style={{
+                  fontSize: '0.5625rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  marginBottom: '0.2rem',
+                }}
+              >
+                This post
               </p>
-              <p className="text-xs text-[#9cdcfe] font-mono leading-relaxed">
-                {postMeta.prompt.length > 140
-                  ? `${postMeta.prompt.slice(0, 137)}…`
+              <p
+                className="mono"
+                style={{
+                  fontSize: '0.6875rem',
+                  color: 'var(--color-vsc-cyan)',
+                  lineHeight: 1.4,
+                  wordBreak: 'break-word',
+                }}
+              >
+                {postMeta.prompt.length > 100
+                  ? `${postMeta.prompt.slice(0, 97)}…`
                   : postMeta.prompt}
               </p>
               {postMeta.domain && (
-                <p className="text-[10px] text-[#858585] mt-1 capitalize">{postMeta.domain}</p>
+                <p className="muted" style={{ fontSize: '0.5625rem', marginTop: '0.2rem', textTransform: 'capitalize' }}>
+                  {postMeta.domain}
+                </p>
               )}
             </div>
           )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <button ref={playBtnRef} className="vsc-btn vsc-btn-lg" style={{ width: '100%' }}>
+              {hasPostChallenge ? '▶ Play Challenge' : '▶ Start Challenge'}
+            </button>
+            <button ref={lbBtnRef} className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }}>
+              🏆 Leaderboard
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-col gap-3 w-full max-w-xs">
-        <button
-          ref={playBtnRef}
-          className="vsc-btn vsc-btn-lg w-full justify-center text-base font-semibold"
-        >
-          {hasPostChallenge ? '▶ Play This Challenge' : '▶ Start Challenge'}
-        </button>
-        <button
-          ref={lbBtnRef}
-          className="vsc-btn-ghost vsc-btn vsc-btn-lg w-full justify-center text-base"
-        >
-          🏆 Community Leaderboard
-        </button>
-      </div>
-
-      <div className="mt-10 text-center text-[11px] text-[#3c3c3c] space-y-1">
-        <p>Score = (Accuracy% × 100) + WPM − (time/60)</p>
-        <p>Free &amp; open source · Devvit · VS Code Dark</p>
+        <p className="muted mono" style={{ fontSize: '0.5625rem', textAlign: 'center', opacity: 0.7 }}>
+          Score = (Acc% × 100) + WPM − (time/60)
+        </p>
       </div>
     </div>
   );
