@@ -184,19 +184,6 @@ body {
 .timer-warn { color: var(--color-vsc-yellow); }
 .timer-danger { color: var(--color-vsc-red); animation: blink 0.5s step-end infinite; }
 
-/* ---- Difficulty Cards ---- */
-.diff-card {
-  cursor: pointer;
-  border: 1px solid var(--color-vsc-border);
-  border-radius: 4px;
-  padding: 1.25rem;
-  text-align: center;
-  background: var(--color-vsc-sidebar);
-  transition: all 150ms;
-}
-.diff-card:hover { border-color: var(--color-vsc-accent); background: var(--color-vsc-panel); }
-.diff-card.selected { border-color: var(--color-vsc-accent); box-shadow: 0 0 0 1px var(--color-vsc-accent); }
-
 /* ---- Leaderboard Table ---- */
 .lb-table { width: 100%; border-collapse: collapse; }
 .lb-table th {
@@ -218,19 +205,6 @@ body {
 .rank-1 { color: var(--color-vsc-gold); font-weight: 700; }
 .rank-2 { color: var(--color-vsc-silver); font-weight: 700; }
 .rank-3 { color: var(--color-vsc-bronze); font-weight: 700; }
-
-/* ---- Badge ---- */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.125rem 0.5rem;
-  border-radius: 3px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-}
-.badge-easy { background: rgba(78,201,176,0.15); color: var(--color-vsc-green); }
-.badge-medium { background: rgba(220,220,170,0.15); color: var(--color-vsc-yellow); }
-.badge-hard { background: rgba(244,135,113,0.15); color: var(--color-vsc-red); }
 
 /* ---- Tabs ---- */
 .tab-bar {
@@ -280,6 +254,14 @@ body {
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  font-size: 0.8125rem;
+  color: var(--color-vsc-text-muted);
+  font-family: var(--font-mono);
+}
+
+.lb-rank { font-family: var(--font-mono); font-weight: 600; }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; }

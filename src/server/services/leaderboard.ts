@@ -1,4 +1,9 @@
-import type { LeaderboardEntry, PlayerScore, PlayerProfile } from '../../shared/types/index.js';
+import type {
+  Challenge,
+  LeaderboardEntry,
+  PlayerScore,
+  PlayerProfile,
+} from '../../shared/types/index.js';
 import {
   monthKey,
   previousMonthKey,
@@ -7,6 +12,7 @@ import {
   weekStartKey,
   yearKey,
 } from '../../shared/utils/time.js';
+import { formatSubredditLabel } from '../../shared/utils/antiCheat.js';
 import { memoryCache } from './memoryCache.js';
 
 /** Minimal Redis surface used by Echokeys leaderboard storage. */
@@ -16,7 +22,8 @@ export type RedisLike = {
   del(...keys: string[]): Promise<void | number>;
 };
 
-function mergeEntry(target: LeaderboardEntry[], incoming: LeaderboardEntry): void {
+/** Period merge: sum challenge counts across archived weeks/months. */
+function mergePeriodEntry(target: LeaderboardEntry[], incoming: LeaderboardEntry): void {
   const idx = target.findIndex((e) => e.username === incoming.username);
 
   if (idx >= 0) {
@@ -36,8 +43,36 @@ function mergeEntry(target: LeaderboardEntry[], incoming: LeaderboardEntry): voi
   target.push({ ...incoming, badges: [...incoming.badges] });
 }
 
+/** All-time merge: keep best score and absolute lifetime counters. */
+function mergeAllTimeEntry(target: LeaderboardEntry[], incoming: LeaderboardEntry): void {
+  const idx = target.findIndex((e) => e.username === incoming.username);
+
+  if (idx >= 0) {
+    const existing = target[idx]!;
+    if (incoming.score > existing.score) {
+      existing.score = incoming.score;
+      existing.accuracy = incoming.accuracy;
+    }
+    existing.bestWpm = Math.max(existing.bestWpm, incoming.bestWpm);
+    existing.challengesCompleted = Math.max(
+      existing.challengesCompleted,
+      incoming.challengesCompleted
+    );
+    existing.lastPlayed = Math.max(existing.lastPlayed, incoming.lastPlayed);
+    existing.badges = [...new Set([...existing.badges, ...incoming.badges])];
+    existing.totalWordsTyped = Math.max(existing.totalWordsTyped, incoming.totalWordsTyped);
+    return;
+  }
+
+  target.push({ ...incoming, badges: [...incoming.badges] });
+}
+
 function sortAndRank(entries: LeaderboardEntry[], limit: number): LeaderboardEntry[] {
-  entries.sort((a, b) => b.score - a.score);
+  entries.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.accuracy !== a.accuracy) return b.accuracy - a.accuracy;
+    return b.bestWpm - a.bestWpm;
+  });
   entries.forEach((entry, index) => {
     entry.rank = index + 1;
   });
@@ -73,18 +108,34 @@ async function pushIndex(redis: RedisLike, indexKey: string, value: string): Pro
   const list = await readJson<string[]>(redis, indexKey, []);
   if (!list.includes(value)) {
     list.unshift(value);
-    // Keep indexes bounded
     if (list.length > 520) list.length = 520;
     await writeJson(redis, indexKey, list);
   }
 }
 
-async function updateAllTime(redis: RedisLike, subredditId: string, newEntries: LeaderboardEntry[]): Promise<void> {
-  const allTime = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:alltime`, []);
-  for (const entry of newEntries) {
-    mergeEntry(allTime, entry);
-  }
-  await writeJson(redis, `lb:${subredditId}:alltime`, sortAndRank(allTime, 100));
+async function upsertAllTimeFromProfile(
+  redis: RedisLike,
+  subredditId: string,
+  score: PlayerScore,
+  profile: PlayerProfile
+): Promise<void> {
+  const key = `lb:${subredditId}:alltime`;
+  const allTime = await readJson<LeaderboardEntry[]>(redis, key, []);
+
+  mergeAllTimeEntry(allTime, {
+    rank: 0,
+    username: score.username,
+    score: score.score,
+    accuracy: score.accuracy,
+    bestWpm: Math.max(profile.bestWpm, score.wpm),
+    challengesCompleted: profile.totalChallenges,
+    lastPlayed: score.playedAt,
+    badges: [...profile.badges],
+    totalWordsTyped: profile.totalWordsTyped,
+  });
+
+  await writeJson(redis, key, sortAndRank(allTime, 100));
+  memoryCache.delete(key);
 }
 
 // ---- Score Storage ----
@@ -105,6 +156,7 @@ export async function saveScore(redis: RedisLike, score: PlayerScore): Promise<v
 
   const profile = await updatePlayerProfile(redis, score);
   await updateWeeklyLeaderboard(redis, score, profile);
+  await upsertAllTimeFromProfile(redis, subId, score, profile);
 }
 
 async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promise<PlayerProfile> {
@@ -138,7 +190,11 @@ async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promis
   return profile;
 }
 
-async function updateWeeklyLeaderboard(redis: RedisLike, score: PlayerScore, profile: PlayerProfile): Promise<void> {
+async function updateWeeklyLeaderboard(
+  redis: RedisLike,
+  score: PlayerScore,
+  profile: PlayerProfile
+): Promise<void> {
   const subId = score.communityId || 'global';
   const week = weekStartKey();
   const key = `lb:${subId}:weekly:${week}`;
@@ -170,6 +226,7 @@ async function updateWeeklyLeaderboard(redis: RedisLike, score: PlayerScore, pro
     });
   }
 
+  // Top 25 weekly per community
   await writeJson(redis, key, sortAndRank(entries, 25));
 }
 
@@ -182,14 +239,15 @@ export async function getWeeklyLeaderboard(
 ): Promise<LeaderboardEntry[]> {
   const key = weekStart || weekStartKey();
   const cacheKey = `lb:${subredditId}:weekly:${key}`;
-  const cached = memoryCache.get<LeaderboardEntry[]>(cacheKey);
-  if (cached) return cached;
+  if (memoryCache.has(cacheKey)) {
+    return memoryCache.get<LeaderboardEntry[]>(cacheKey) ?? [];
+  }
 
   const active = await redis.get(`lb:${subredditId}:weekly:${key}`);
   if (active) {
     try {
       const parsed = JSON.parse(active) as LeaderboardEntry[];
-      memoryCache.set(cacheKey, parsed, 5000); // 5s cache
+      memoryCache.set(cacheKey, parsed, 5000);
       return parsed;
     } catch {
       return [];
@@ -200,7 +258,7 @@ export async function getWeeklyLeaderboard(
   if (!archived) return [];
   try {
     const parsed = JSON.parse(archived) as LeaderboardEntry[];
-    memoryCache.set(cacheKey, parsed, 5000); // 5s cache
+    memoryCache.set(cacheKey, parsed, 5000);
     return parsed;
   } catch {
     return [];
@@ -213,12 +271,63 @@ export async function getMonthlyLeaderboard(
   yearMonth: string
 ): Promise<LeaderboardEntry[]> {
   const cacheKey = `lb:${subredditId}:monthly:${yearMonth}`;
-  const cached = memoryCache.get<LeaderboardEntry[]>(cacheKey);
-  if (cached) return cached;
+  if (memoryCache.has(cacheKey)) {
+    return memoryCache.get<LeaderboardEntry[]>(cacheKey) ?? [];
+  }
 
-  const res = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:monthly:${yearMonth}`, []);
-  memoryCache.set(cacheKey, res, 15000); // 15s cache
-  return res;
+  // Prefer archived monthly snapshot when present
+  const archived = await readJson<LeaderboardEntry[]>(
+    redis,
+    `lb:${subredditId}:monthly:${yearMonth}`,
+    []
+  );
+
+  // For the current month (or months without a snapshot), merge weekly data live
+  const currentMonth = monthKey();
+  if (yearMonth === currentMonth || archived.length === 0) {
+    const merged: LeaderboardEntry[] = archived.map((e) => ({
+      ...e,
+      badges: [...e.badges],
+    }));
+
+    const [year, month] = yearMonth.split('-').map(Number);
+    const archiveKeys = await readJson<string[]>(redis, `lb:${subredditId}:weekly:archives`, []);
+    for (const dateStr of archiveKeys) {
+      const date = new Date(`${dateStr}T00:00:00.000Z`);
+      if (Number.isNaN(date.getTime())) continue;
+      if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month) continue;
+
+      const weekEntries = await readJson<LeaderboardEntry[]>(
+        redis,
+        `lb:${subredditId}:weekly:archive:${dateStr}`,
+        []
+      );
+      for (const entry of weekEntries) {
+        mergePeriodEntry(merged, entry);
+      }
+    }
+
+    // Include the active week if it belongs to this month
+    const activeWeek = weekStartKey();
+    const activeWeekDate = new Date(`${activeWeek}T00:00:00.000Z`);
+    if (
+      !Number.isNaN(activeWeekDate.getTime()) &&
+      activeWeekDate.getUTCFullYear() === year &&
+      activeWeekDate.getUTCMonth() + 1 === month
+    ) {
+      const live = await getWeeklyLeaderboard(redis, subredditId, activeWeek);
+      for (const entry of live) {
+        mergePeriodEntry(merged, entry);
+      }
+    }
+
+    const ranked = sortAndRank(merged, 25);
+    memoryCache.set(cacheKey, ranked, 10000);
+    return ranked;
+  }
+
+  memoryCache.set(cacheKey, archived, 15000);
+  return archived;
 }
 
 export async function getYearlyLeaderboard(
@@ -227,21 +336,60 @@ export async function getYearlyLeaderboard(
   year: string
 ): Promise<LeaderboardEntry[]> {
   const cacheKey = `lb:${subredditId}:yearly:${year}`;
-  const cached = memoryCache.get<LeaderboardEntry[]>(cacheKey);
-  if (cached) return cached;
+  if (memoryCache.has(cacheKey)) {
+    return memoryCache.get<LeaderboardEntry[]>(cacheKey) ?? [];
+  }
 
-  const res = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:yearly:${year}`, []);
-  memoryCache.set(cacheKey, res, 15000); // 15s cache
-  return res;
+  const archived = await readJson<LeaderboardEntry[]>(
+    redis,
+    `lb:${subredditId}:yearly:${year}`,
+    []
+  );
+
+  const currentYear = yearKey();
+  if (year === currentYear || archived.length === 0) {
+    const merged: LeaderboardEntry[] = archived.map((e) => ({
+      ...e,
+      badges: [...e.badges],
+    }));
+
+    const monthlyKeys = await readJson<string[]>(redis, `lb:${subredditId}:monthly:index`, []);
+    for (const yearMonth of monthlyKeys) {
+      if (!yearMonth.startsWith(`${year}-`)) continue;
+      const monthEntries = await getMonthlyLeaderboard(redis, subredditId, yearMonth);
+      for (const entry of monthEntries) {
+        mergePeriodEntry(merged, entry);
+      }
+    }
+
+    // Always fold current month live view for the active year
+    if (year === currentYear) {
+      const monthEntries = await getMonthlyLeaderboard(redis, subredditId, monthKey());
+      for (const entry of monthEntries) {
+        mergePeriodEntry(merged, entry);
+      }
+    }
+
+    const ranked = sortAndRank(merged, 50);
+    memoryCache.set(cacheKey, ranked, 10000);
+    return ranked;
+  }
+
+  memoryCache.set(cacheKey, archived, 15000);
+  return archived;
 }
 
-export async function getAllTimeLeaderboard(redis: RedisLike, subredditId: string): Promise<LeaderboardEntry[]> {
+export async function getAllTimeLeaderboard(
+  redis: RedisLike,
+  subredditId: string
+): Promise<LeaderboardEntry[]> {
   const cacheKey = `lb:${subredditId}:alltime`;
-  const cached = memoryCache.get<LeaderboardEntry[]>(cacheKey);
-  if (cached) return cached;
+  if (memoryCache.has(cacheKey)) {
+    return memoryCache.get<LeaderboardEntry[]>(cacheKey) ?? [];
+  }
 
   const res = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:alltime`, []);
-  memoryCache.set(cacheKey, res, 30000); // 30s cache
+  memoryCache.set(cacheKey, res, 15000);
   return res;
 }
 
@@ -255,16 +403,27 @@ export async function getPlayerWeeklyRank(
   return entry ? entry.rank : null;
 }
 
+export async function getPlayerAllTimeRank(
+  redis: RedisLike,
+  subredditId: string,
+  username: string
+): Promise<number | null> {
+  const entries = await getAllTimeLeaderboard(redis, subredditId);
+  const entry = entries.find((e) => e.username === username);
+  return entry ? entry.rank : null;
+}
+
 export async function getPlayerProfile(
   redis: RedisLike,
   username: string
 ): Promise<PlayerProfile | null> {
   const cacheKey = `player:${username}`;
-  const cached = memoryCache.get<PlayerProfile | null>(cacheKey);
-  if (cached !== null) return cached;
+  if (memoryCache.has(cacheKey)) {
+    return memoryCache.get<PlayerProfile | null>(cacheKey);
+  }
 
   const profile = await readJson<PlayerProfile | null>(redis, `player:${username}`, null);
-  memoryCache.set(cacheKey, profile, 10000); // 10s cache
+  memoryCache.set(cacheKey, profile, 10000);
   return profile;
 }
 
@@ -310,21 +469,55 @@ export async function snapshotWeekly(
   const endedWeek = previousWeekStartKey(now);
   const entries = await getWeeklyLeaderboard(redis, subredditId, endedWeek);
   if (entries.length === 0) {
-    console.log(`[Leaderboard] Weekly snapshot skipped — no entries for ${subredditId} on ${endedWeek}`);
+    console.log(
+      `[Leaderboard] Weekly snapshot skipped — no entries for ${subredditId} on ${endedWeek}`
+    );
     return;
   }
 
   await writeJson(redis, `lb:${subredditId}:weekly:archive:${endedWeek}`, entries);
   await redis.del(`lb:${subredditId}:weekly:${endedWeek}`);
+  memoryCache.delete(`lb:${subredditId}:weekly:${endedWeek}`);
   await pushIndex(redis, `lb:${subredditId}:weekly:archives`, endedWeek);
 
-  const badgeLabel = `Weekly Champion - ${subredditName}`;
+  const badgeLabel = `Weekly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, entries.length); i++) {
     await awardBadge(redis, entries[i]!.username, badgeLabel);
   }
 
-  await updateAllTime(redis, subredditId, entries);
-  console.log(`[Leaderboard] Weekly snapshot archived: ${subredditId} ${endedWeek} (${entries.length} entries)`);
+  // Feed all-time with absolute counters from profiles when available
+  for (const entry of entries) {
+    const profile = await getPlayerProfile(redis, entry.username);
+    if (profile) {
+      await upsertAllTimeFromProfile(
+        redis,
+        subredditId,
+        {
+          id: `snap-${endedWeek}-${entry.username}`,
+          username: entry.username,
+          challengeId: 'snapshot',
+          wpm: entry.bestWpm,
+          accuracy: entry.accuracy,
+          timeSeconds: 0,
+          score: entry.score,
+          completed: true,
+          playedAt: entry.lastPlayed,
+          communityId: subredditId,
+          wordsTyped: 0,
+        },
+        profile
+      );
+    } else {
+      const allTime = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:alltime`, []);
+      mergeAllTimeEntry(allTime, entry);
+      await writeJson(redis, `lb:${subredditId}:alltime`, sortAndRank(allTime, 100));
+      memoryCache.delete(`lb:${subredditId}:alltime`);
+    }
+  }
+
+  console.log(
+    `[Leaderboard] Weekly snapshot archived: ${subredditId} ${endedWeek} (${entries.length} entries)`
+  );
 }
 
 export async function snapshotMonthly(
@@ -338,9 +531,8 @@ export async function snapshotMonthly(
   const merged: LeaderboardEntry[] = [];
 
   const archiveKeys = await readJson<string[]>(redis, `lb:${subredditId}:weekly:archives`, []);
-  const candidates = new Set(archiveKeys);
 
-  for (const dateStr of candidates) {
+  for (const dateStr of archiveKeys) {
     const date = new Date(`${dateStr}T00:00:00.000Z`);
     if (Number.isNaN(date.getTime())) continue;
     if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month) continue;
@@ -351,7 +543,7 @@ export async function snapshotMonthly(
       []
     );
     for (const entry of weekEntries) {
-      mergeEntry(merged, entry);
+      mergePeriodEntry(merged, entry);
     }
   }
 
@@ -362,14 +554,17 @@ export async function snapshotMonthly(
 
   const monthEntries = sortAndRank(merged, 25);
   await writeJson(redis, `lb:${subredditId}:monthly:${mk}`, monthEntries);
+  memoryCache.delete(`lb:${subredditId}:monthly:${mk}`);
   await pushIndex(redis, `lb:${subredditId}:monthly:index`, mk);
 
-  const badgeLabel = `Monthly Champion - ${subredditName}`;
+  const badgeLabel = `Monthly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, monthEntries.length); i++) {
     await awardBadge(redis, monthEntries[i]!.username, badgeLabel);
   }
 
-  console.log(`[Leaderboard] Monthly snapshot saved: ${subredditId} ${mk} (${monthEntries.length} entries)`);
+  console.log(
+    `[Leaderboard] Monthly snapshot saved: ${subredditId} ${mk} (${monthEntries.length} entries)`
+  );
 }
 
 export async function snapshotYearly(
@@ -392,7 +587,7 @@ export async function snapshotYearly(
       []
     );
     for (const entry of monthEntries) {
-      mergeEntry(merged, entry);
+      mergePeriodEntry(merged, entry);
     }
   }
 
@@ -403,36 +598,34 @@ export async function snapshotYearly(
 
   const yearEntries = sortAndRank(merged, 50);
   await writeJson(redis, `lb:${subredditId}:yearly:${yk}`, yearEntries);
+  memoryCache.delete(`lb:${subredditId}:yearly:${yk}`);
 
-  const badgeLabel = `Yearly Champion - ${subredditName}`;
+  const badgeLabel = `Yearly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, yearEntries.length); i++) {
     await awardBadge(redis, yearEntries[i]!.username, badgeLabel);
   }
 
-  console.log(`[Leaderboard] Yearly snapshot saved: ${subredditId} ${yk} (${yearEntries.length} entries)`);
+  console.log(
+    `[Leaderboard] Yearly snapshot saved: ${subredditId} ${yk} (${yearEntries.length} entries)`
+  );
 }
 
-export async function saveChallenge(
-  redis: RedisLike,
-  challenge: unknown
-): Promise<void> {
-  const c = challenge as { id: string };
-  memoryCache.delete(`challenge:${c.id}`);
-  await writeJson(redis, `challenge:${c.id}`, challenge);
+// ---- Challenges ----
+
+export async function saveChallenge(redis: RedisLike, challenge: Challenge): Promise<void> {
+  memoryCache.delete(`challenge:${challenge.id}`);
+  await writeJson(redis, `challenge:${challenge.id}`, challenge);
 }
 
-export async function getChallenge(
-  redis: RedisLike,
-  id: string
-): Promise<Record<string, unknown> | null> {
+export async function getChallenge(redis: RedisLike, id: string): Promise<Challenge | null> {
   const cacheKey = `challenge:${id}`;
-  const cached = memoryCache.get<Record<string, unknown> | null>(cacheKey);
-  if (cached !== null) return cached;
+  if (memoryCache.has(cacheKey)) {
+    return memoryCache.get<Challenge | null>(cacheKey);
+  }
 
-  const challenge = await readJson<Record<string, unknown> | null>(redis, `challenge:${id}`, null);
-  memoryCache.set(cacheKey, challenge, 3600000); // 1h cache
+  const challenge = await readJson<Challenge | null>(redis, `challenge:${id}`, null);
+  memoryCache.set(cacheKey, challenge, 3600000);
   return challenge;
 }
 
-// Re-export time helpers for callers that need period labels
 export { monthKey, weekStartKey, yearKey };

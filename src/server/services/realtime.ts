@@ -4,7 +4,9 @@ type Realtime = {
   send(channel: string, message: unknown): Promise<void>;
 };
 
-export const LEADERBOARD_CHANNEL = 'leaderboard';
+export function leaderboardChannel(subredditId: string): string {
+  return `leaderboard:${subredditId}`;
+}
 
 export async function broadcastWeeklyLeaderboard(
   realtime: Realtime | undefined,
@@ -20,5 +22,5 @@ export async function broadcastWeeklyLeaderboard(
     updatedAt: Date.now(),
   };
 
-  await realtime.send(`leaderboard:${subredditId}`, payload);
+  await realtime.send(leaderboardChannel(subredditId), payload);
 }

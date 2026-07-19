@@ -1,5 +1,15 @@
 class MemoryCache {
-  private cache = new Map<string, { value: any; expiry: number }>();
+  private cache = new Map<string, { value: unknown; expiry: number }>();
+
+  has(key: string): boolean {
+    const item = this.cache.get(key);
+    if (!item) return false;
+    if (Date.now() > item.expiry) {
+      this.cache.delete(key);
+      return false;
+    }
+    return true;
+  }
 
   get<T>(key: string): T | null {
     const item = this.cache.get(key);
@@ -11,7 +21,7 @@ class MemoryCache {
     return item.value as T;
   }
 
-  set(key: string, value: any, ttlMs: number): void {
+  set(key: string, value: unknown, ttlMs: number): void {
     this.cache.set(key, {
       value,
       expiry: Date.now() + ttlMs,

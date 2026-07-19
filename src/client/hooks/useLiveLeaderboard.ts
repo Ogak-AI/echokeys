@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LeaderboardEntry, LeaderboardUpdate } from '../../shared/types/index';
+import { connectRealtime } from '../shims/devvit-web-client';
 
 type UseLiveLeaderboardOptions = {
+  subredditId?: string | null;
   enabled?: boolean;
   pollMs?: number;
   weekStart?: string;
 };
 
 export function useLiveLeaderboard({
+  subredditId,
   enabled = true,
-  pollMs = 5000,
+  pollMs = 8000,
   weekStart,
 }: UseLiveLeaderboardOptions = {}) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -59,21 +62,23 @@ export function useLiveLeaderboard({
   }, [enabled, fetchLeaderboard, pollMs]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !subredditId) return;
 
     let cancelled = false;
 
     void (async () => {
       try {
-        const devvitWeb = await import('@devvit/web/client');
-        if (!devvitWeb.connectRealtime || cancelled) return;
-
-        const connection = await devvitWeb.connectRealtime({
-          channel: 'leaderboard',
+        const connection = await connectRealtime({
+          channel: `leaderboard:${subredditId}`,
           onMessage: (message: LeaderboardUpdate) => {
             if (!cancelled) applyUpdate(message);
           },
         });
+
+        if (cancelled) {
+          connection?.disconnect?.();
+          return;
+        }
 
         unsubscribeRef.current = () => {
           connection?.disconnect?.();
@@ -88,7 +93,7 @@ export function useLiveLeaderboard({
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
     };
-  }, [applyUpdate, enabled]);
+  }, [applyUpdate, enabled, subredditId]);
 
   return {
     entries,

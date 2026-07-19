@@ -13,6 +13,15 @@ export const DOMAIN_COLORS: Record<ContentDomain, string> = {
   creative: '#dcdcaa',
 };
 
+export const ALL_DOMAINS: ContentDomain[] = [
+  'code',
+  'prose',
+  'legal',
+  'marketing',
+  'technical',
+  'creative',
+];
+
 export type Challenge = {
   id: string;
   prompt: string;
@@ -20,6 +29,7 @@ export type Challenge = {
   domain: ContentDomain;
   lineCount: number;
   createdAt: number;
+  communityId: string;
   createdBy?: string;
   postId?: string;
 };
@@ -36,8 +46,8 @@ export type PlayerScore = {
   score: number;
   completed: boolean;
   playedAt: number;
-  communityId?: string;
-  wordsTyped?: number;
+  communityId: string;
+  wordsTyped: number;
 };
 
 export type LeaderboardEntry = {
@@ -73,9 +83,11 @@ export type LeaderboardUpdate = {
 
 /**
  * Score = (Accuracy% × 100) + WPM − (TimeSeconds / 60)
- * where accuracyRatio is 0–1 (e.g. 0.95 → Accuracy% of 95).
+ * accuracyRatio is 0–1 (e.g. 0.95 → 95%).
  */
 export function calculateScore(accuracyRatio: number, wpm: number, timeSeconds: number): number {
   const accuracyPct = Math.max(0, Math.min(1, accuracyRatio)) * 100;
-  return Math.round((accuracyPct + wpm - timeSeconds / 60) * 100) / 100;
+  const safeWpm = Math.max(0, wpm);
+  const safeTime = Math.max(0, timeSeconds);
+  return Math.round((accuracyPct + safeWpm - safeTime / 60) * 100) / 100;
 }

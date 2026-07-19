@@ -7,7 +7,7 @@ const MAX_LINES = 50;
 function buildPrompt(userPrompt: string, domain: ContentDomain): string {
   const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
 
-  return `You are a content generator for a typing challenge game. Generate clean, well-formatted content based on the user's prompt.
+  return `You are a content generator for a typing challenge game. Players will type your output character-for-character. Generate clean, well-formatted content based on the user's prompt.
 
 User's prompt: "${userPrompt}"
 Content style: ${domain}
@@ -33,58 +33,145 @@ function cleanOutput(raw: string): string {
   if (text.startsWith('```')) text = text.replace(/^```\w*\n?/, '').trim();
   if (text.endsWith('```')) text = text.slice(0, -3).trim();
 
+  // Collapse excessive blank lines
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
   return text;
 }
 
-function buildFallbackContent(userPrompt: string, domain: ContentDomain): string {
-  const lines: string[] = [];
-  const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
-
-  if (domain === 'code') {
-    lines.push(`// Challenge: ${userPrompt}`);
-    lines.push('function processChallenge(input) {');
-    lines.push('  const data = Array.isArray(input) ? input : [input];');
-    lines.push('  const results = [];');
-    lines.push('  for (const item of data) {');
-    lines.push('    if (!item) continue;');
-    lines.push('    results.push({');
-    lines.push('      id: Math.random().toString(36).slice(2, 9),');
-    lines.push('      value: item,');
-    lines.push('      timestamp: Date.now(),');
-    lines.push('    });');
-    lines.push('  }');
-    lines.push('  return results;');
-    lines.push('}');
-    lines.push('');
-    lines.push('// Main execution path');
-    lines.push('const testInput = "typing-speed-challenge";');
-    lines.push('const output = processChallenge(testInput);');
-    lines.push('console.log("Processed results:", output);');
-  } else {
-    lines.push(`Title: Typing Practice - ${userPrompt}`);
-    lines.push('==================================================');
-    lines.push('Practicing your typing skills regularly is one of the most effective');
-    lines.push('ways to improve both speed and accuracy. Consistent daily execution');
-    lines.push('helps build muscle memory so you do not need to look at keys.');
-    lines.push('This game provides structured prompts across different styles to keep');
-    lines.push('your practice engaging and relevant to your professional needs.');
-    lines.push('Whether you write source code, legal templates, or marketing drafts,');
-    lines.push('steady cadence always beats erratic bursts of high-speed keys.');
-  }
-
+function padToTarget(lines: string[], target: number, filler: (i: number) => string): string {
   let i = 0;
   while (lines.length < target) {
-    if (domain === 'code') {
-      lines.push(`  // Line ${i + 1}: extra safety iteration helper logic check`);
-    } else {
-      lines.push(
-        `Line ${i + 1}: Practice precision and rhythm while typing about ${userPrompt}. Steady hands beat rushed keystrokes every time.`
-      );
-    }
+    lines.push(filler(i));
     i += 1;
   }
-
   return lines.slice(0, MAX_LINES).join('\n');
+}
+
+function buildFallbackContent(userPrompt: string, domain: ContentDomain): string {
+  const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
+  const lines: string[] = [];
+  const topic = userPrompt.slice(0, 120);
+
+  switch (domain) {
+    case 'code':
+      lines.push(`// Challenge: ${topic}`);
+      lines.push('function processChallenge(input) {');
+      lines.push('  const data = Array.isArray(input) ? input : [input];');
+      lines.push('  const results = [];');
+      lines.push('  for (const item of data) {');
+      lines.push('    if (!item) continue;');
+      lines.push('    results.push({');
+      lines.push('      id: Math.random().toString(36).slice(2, 9),');
+      lines.push('      value: item,');
+      lines.push('      timestamp: Date.now(),');
+      lines.push('    });');
+      lines.push('  }');
+      lines.push('  return results;');
+      lines.push('}');
+      lines.push('');
+      lines.push('const testInput = "typing-speed-challenge";');
+      lines.push('const output = processChallenge(testInput);');
+      lines.push('console.log("Processed results:", output);');
+      return padToTarget(lines, target, (i) => `  // step ${i + 1}: validate intermediate state`);
+
+    case 'legal':
+      lines.push(`MEMORANDUM — ${topic}`);
+      lines.push('==================================================');
+      lines.push('TO: Reviewing Counsel');
+      lines.push('FROM: Associate');
+      lines.push('RE: Preliminary analysis and recommended next steps');
+      lines.push('');
+      lines.push('This memorandum outlines the material facts, applicable standards,');
+      lines.push('and a recommended course of action for the matter described above.');
+      lines.push('Please treat the following as a working draft for internal review.');
+      lines.push('');
+      lines.push('I. Statement of Facts');
+      lines.push('The parties entered into discussions concerning the obligations set');
+      lines.push('forth in the operative agreement. Several provisions require careful');
+      lines.push('interpretation in light of recent correspondence and industry practice.');
+      return padToTarget(
+        lines,
+        target,
+        (i) =>
+          `Section ${i + 2}. Additional analysis regarding ${topic} should consider notice requirements, materiality thresholds, and remedies available to the non-breaching party.`
+      );
+
+    case 'marketing':
+      lines.push(`Campaign brief: ${topic}`);
+      lines.push('==================================================');
+      lines.push('Audience: professionals who value clarity, speed, and craft.');
+      lines.push('Tone: confident, concrete, and free of jargon.');
+      lines.push('');
+      lines.push('Headline options:');
+      lines.push('1. Ship work you are proud of — faster.');
+      lines.push('2. Practice that actually transfers to the real job.');
+      lines.push('3. Type with purpose. Measure what matters.');
+      lines.push('');
+      lines.push('Body copy:');
+      lines.push('Great products start with clear language. This challenge trains the');
+      lines.push('muscle memory behind every pitch, brief, and product description.');
+      return padToTarget(
+        lines,
+        target,
+        (i) =>
+          `Proof point ${i + 1}: Teams that practice deliberate typing reduce revision cycles and ship cleaner drafts on ${topic}.`
+      );
+
+    case 'technical':
+      lines.push(`Technical note: ${topic}`);
+      lines.push('==================================================');
+      lines.push('Overview');
+      lines.push('This document explains the design at a practical level so an engineer');
+      lines.push('can implement, review, or operate the system with confidence.');
+      lines.push('');
+      lines.push('Goals');
+      lines.push('- Keep the happy path simple and observable');
+      lines.push('- Fail closed on invalid input');
+      lines.push('- Prefer small, composable modules over monoliths');
+      lines.push('');
+      lines.push('Key components');
+      lines.push('1. Ingress validates and normalizes requests');
+      lines.push('2. Core service applies business rules');
+      lines.push('3. Persistence layer stores durable state');
+      return padToTarget(
+        lines,
+        target,
+        (i) =>
+          `Detail ${i + 1}: For ${topic}, measure latency, error rate, and throughput; alert when any signal leaves its budget.`
+      );
+
+    case 'creative':
+      lines.push(`Opening — ${topic}`);
+      lines.push('==================================================');
+      lines.push('The cursor blinked once, patient as a lighthouse, waiting for the first');
+      lines.push('true sentence of the day. Outside, the city hummed in low resolution,');
+      lines.push('all edges softened by rain and unfinished thoughts.');
+      lines.push('');
+      lines.push('She typed the prompt the way some people light a match — carefully,');
+      lines.push('as if the wrong word might start a fire she could not put out.');
+      lines.push('The page answered with more words than courage, and still she stayed.');
+      return padToTarget(
+        lines,
+        target,
+        (i) =>
+          `Beat ${i + 1}: Another line about ${topic} arrived fully formed, then revised itself mid-breath into something quieter and more honest.`
+      );
+
+    default:
+      lines.push(`Title: Typing Practice — ${topic}`);
+      lines.push('==================================================');
+      lines.push('Practicing your typing skills regularly is one of the most effective');
+      lines.push('ways to improve both speed and accuracy. Consistent daily execution');
+      lines.push('helps build muscle memory so you do not need to look at the keys.');
+      lines.push('This challenge provides structured text so you can measure progress');
+      lines.push('without leaving the flow of real writing work.');
+      return padToTarget(
+        lines,
+        target,
+        (i) =>
+          `Line ${i + 1}: Practice precision and rhythm while typing about ${topic}. Steady hands beat rushed keystrokes every time.`
+      );
+  }
 }
 
 export type LlmConfig = {
@@ -104,7 +191,7 @@ async function generateWithGroq(
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -143,7 +230,7 @@ async function generateWithHuggingFace(
     'Content-Type': 'application/json',
   };
   if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers.Authorization = `Bearer ${apiKey}`;
   }
 
   const response = await fetch('https://api-inference.huggingface.co/v1/chat/completions', {
@@ -174,39 +261,41 @@ async function generateWithHuggingFace(
 
 export async function generateContent(
   userPrompt: string,
-  configOrApiKey: LlmConfig | string,
-  legacyModel?: string
+  config: LlmConfig
 ): Promise<{ content: string; lineCount: number; domain: ContentDomain }> {
   const domain = detectContentDomain(userPrompt);
 
   console.log(`[ContentGen] Generating for: "${userPrompt}" (${domain})`);
 
-  let content: string = '';
+  let content = '';
   let success = false;
+  const provider = (config.provider || 'huggingface').toLowerCase();
 
-  let config: LlmConfig;
-  if (typeof configOrApiKey === 'string') {
-    config = {
-      provider: configOrApiKey ? 'huggingface' : 'fallback',
-      huggingface: { apiKey: configOrApiKey, model: legacyModel || 'Qwen/Qwen2.5-Coder-7B-Instruct' },
-      groq: { apiKey: '', model: '' },
-    };
-  } else {
-    config = configOrApiKey;
+  // Groq requires a key. Hugging Face may work without one on public models.
+  const tryGroq = provider === 'groq' && !!config.groq.apiKey;
+  const tryHf = provider === 'huggingface' || (!tryGroq && provider !== 'groq');
+
+  if (tryGroq) {
+    try {
+      content = await generateWithGroq(userPrompt, domain, config.groq.apiKey, config.groq.model);
+      success = content.length > 40;
+    } catch (err) {
+      console.error('[ContentGen] groq generation failed:', err);
+    }
   }
 
-  const provider = config.provider.toLowerCase();
-
-  try {
-    if (provider === 'groq' && config.groq.apiKey) {
-      content = await generateWithGroq(userPrompt, domain, config.groq.apiKey, config.groq.model);
-      success = true;
-    } else if (provider === 'huggingface') {
-      content = await generateWithHuggingFace(userPrompt, domain, config.huggingface.apiKey, config.huggingface.model);
-      success = true;
+  if (!success && tryHf) {
+    try {
+      content = await generateWithHuggingFace(
+        userPrompt,
+        domain,
+        config.huggingface.apiKey,
+        config.huggingface.model
+      );
+      success = content.length > 40;
+    } catch (err) {
+      console.error('[ContentGen] huggingface generation failed:', err);
     }
-  } catch (err) {
-    console.error(`[ContentGen] ${provider} generation failed, using fallback:`, err);
   }
 
   if (!success) {
