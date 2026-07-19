@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { DIFFICULTY_CONFIG, calculateScore } from '../../shared/types/index';
-import type { Challenge, Difficulty } from '../../shared/types/index';
+import { calculateScore } from '../../shared/types/index';
+import type { Challenge } from '../../shared/types/index';
 
 export interface TypingState {
   phase: 'idle' | 'playing' | 'finished' | 'timeout';
@@ -26,7 +26,7 @@ export function useTypingGame(challenge: Challenge | null) {
   const spokenIdx = useRef(0);
   const isThrottledRef = useRef(false);
 
-  const limit = challenge ? DIFFICULTY_CONFIG[challenge.difficulty as Difficulty].timeSeconds : 600;
+  const limit = 600;
 
   useEffect(() => {
     if (state.phase !== 'playing') return;

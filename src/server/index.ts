@@ -28,8 +28,8 @@ import {
   weekStartKey,
 } from './services/leaderboard.js';
 import { broadcastWeeklyLeaderboard } from './services/realtime.js';
-import { calculateScore, DIFFICULTY_CONFIG } from '../shared/types/index.js';
-import type { Challenge, Difficulty, PlayerScore, LeaderboardEntry } from '../shared/types/index.js';
+import { calculateScore } from '../shared/types/index.js';
+import type { Challenge, PlayerScore, LeaderboardEntry } from '../shared/types/index.js';
 import { memoryCache } from './services/memoryCache.js';
 
 const app = express();
@@ -41,14 +41,11 @@ async function getLlmConfig() {
   const hfModel = (await settings.get<string>('huggingface_model')) || 'Qwen/Qwen2.5-Coder-7B-Instruct';
   const groqKey = (await settings.get<string>('groq_api_key')) || process.env.GROQ_API_KEY || '';
   const groqModel = (await settings.get<string>('groq_model')) || 'llama-3.3-70b-versatile';
-  const claudeKey = (await settings.get<string>('anthropic_api_key')) || process.env.ANTHROPIC_API_KEY || '';
-  const claudeModel = (await settings.get<string>('anthropic_model')) || 'claude-3-5-sonnet-20241022';
 
   return {
     provider,
     huggingface: { apiKey: hfKey, model: hfModel },
-    groq: { apiKey: groqKey, model: groqModel },
-    anthropic: { apiKey: claudeKey, model: claudeModel }
+    groq: { apiKey: groqKey, model: groqModel }
   };
 }
 
@@ -105,29 +102,17 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function parseDifficulty(value: unknown): Difficulty | null {
-  if (typeof value === 'string' && ['easy', 'medium', 'hard'].includes(value)) {
-    return value as Difficulty;
-  }
-  if (Array.isArray(value) && typeof value[0] === 'string' && ['easy', 'medium', 'hard'].includes(value[0])) {
-    return value[0] as Difficulty;
-  }
-  return null;
-}
-
 async function createChallengeFromPrompt(
   prompt: string,
-  difficulty: Difficulty,
   createdBy: string
 ): Promise<Challenge> {
   const config = await getLlmConfig();
-  const { content, lineCount, domain } = await generateContent(prompt, difficulty, config);
+  const { content, lineCount, domain } = await generateContent(prompt, config);
 
   const challenge: Challenge = {
     id: newId('ch'),
     prompt,
     content,
-    difficulty,
     domain,
     lineCount,
     createdAt: Date.now(),
@@ -135,7 +120,7 @@ async function createChallengeFromPrompt(
   };
 
   await saveChallenge(redis, challenge);
-  const cacheKey = `prompt_cache:${prompt.toLowerCase()}:${difficulty}`;
+  const cacheKey = `prompt_cache:${prompt.toLowerCase()}`;
   await redis.set(cacheKey, JSON.stringify(challenge));
   return challenge;
 }
@@ -171,18 +156,12 @@ app.get('/api/me', async (_req, res) => {
 // ---- Content Generation ----
 app.post('/api/challenge/generate', async (req, res) => {
   try {
-    const { prompt: rawPrompt, difficulty: rawDifficulty } = req.body as {
+    const { prompt: rawPrompt } = req.body as {
       prompt?: string;
-      difficulty?: Difficulty;
     };
 
     if (!rawPrompt || rawPrompt.trim().length < 3) {
       return res.status(400).json({ error: 'Prompt must be at least 3 characters' });
-    }
-
-    const difficulty = parseDifficulty(rawDifficulty);
-    if (!difficulty) {
-      return res.status(400).json({ error: 'Invalid difficulty' });
     }
 
     const username = await resolveUsername();
@@ -194,7 +173,7 @@ app.post('/api/challenge/generate', async (req, res) => {
     }
 
     const prompt = rawPrompt.trim();
-    const cacheKey = `prompt_cache:${prompt.toLowerCase()}:${difficulty}`;
+    const cacheKey = `prompt_cache:${prompt.toLowerCase()}`;
     const cachedRaw = await redis.get(cacheKey);
 
     if (cachedRaw) {
@@ -207,12 +186,12 @@ app.post('/api/challenge/generate', async (req, res) => {
           createdBy: username,
         };
         await saveChallenge(redis, challenge);
-        console.log(`[API] Prompt cache hit for "${prompt}" (${difficulty})`);
+        console.log(`[API] Prompt cache hit for "${prompt}"`);
         return res.json({ challenge });
       } catch {}
     }
 
-    const challenge = await createChallengeFromPrompt(prompt, difficulty, username);
+    const challenge = await createChallengeFromPrompt(prompt, username);
     return res.json({ challenge });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Generation failed';
@@ -425,7 +404,7 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
       name: 'create-challenge',
       form: {
         title: 'Create Echokeys Challenge',
-        description: 'Enter a prompt. Claude generates the typing content and posts it to this subreddit.',
+        description: 'Enter a prompt. The app generates the typing content and posts it to this subreddit.',
         acceptLabel: 'Generate & Post',
         cancelLabel: 'Cancel',
         fields: [
@@ -437,27 +416,6 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
               'Examples: "Build a recursive function", "Write a legal brief opening", "Draft marketing copy for a productivity app"',
             required: true,
           },
-          {
-            type: 'select',
-            name: 'difficulty',
-            label: 'Difficulty',
-            required: true,
-            defaultValue: ['medium'],
-            options: [
-              {
-                label: `Easy — ${DIFFICULTY_CONFIG.easy.minLines}–${DIFFICULTY_CONFIG.easy.maxLines} lines, 10 min`,
-                value: 'easy',
-              },
-              {
-                label: `Medium — ${DIFFICULTY_CONFIG.medium.minLines}–${DIFFICULTY_CONFIG.medium.maxLines} lines, 8 min`,
-                value: 'medium',
-              },
-              {
-                label: `Hard — ${DIFFICULTY_CONFIG.hard.minLines}–${DIFFICULTY_CONFIG.hard.maxLines}+ lines, 5 min`,
-                value: 'hard',
-              },
-            ],
-          },
         ],
       },
     },
@@ -468,9 +426,8 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
 // ---- Form submit: generate content + create custom post ----
 app.post('/internal/form/create-challenge', async (req, res) => {
   try {
-    const values = req.body as { prompt?: string; difficulty?: string | string[] };
+    const values = req.body as { prompt?: string };
     const prompt = (values.prompt ?? '').trim();
-    const difficulty = parseDifficulty(values.difficulty);
 
     if (prompt.length < 3) {
       const response: UiResponse = {
@@ -478,19 +435,13 @@ app.post('/internal/form/create-challenge', async (req, res) => {
       };
       return res.json(response);
     }
-    if (!difficulty) {
-      const response: UiResponse = {
-        showToast: { text: 'Please pick a difficulty.', appearance: 'neutral' },
-      };
-      return res.json(response);
-    }
 
     const username = await resolveUsername();
-    const challenge = await createChallengeFromPrompt(prompt, difficulty, username);
+    const challenge = await createChallengeFromPrompt(prompt, username);
 
     const subredditName = context.subredditName || (await reddit.getCurrentSubreddit()).name;
     const titlePrompt = prompt.length > 80 ? `${prompt.slice(0, 77)}…` : prompt;
-    const title = `Echokeys [${difficulty.toUpperCase()}]: ${titlePrompt}`;
+    const title = `Echokeys: ${titlePrompt}`;
 
      const post = await reddit.submitCustomPost({
       subredditName,
@@ -498,13 +449,12 @@ app.post('/internal/form/create-challenge', async (req, res) => {
       entry: 'default',
       postData: {
         challengeId: challenge.id,
-        difficulty: challenge.difficulty,
         domain: challenge.domain,
         prompt: challenge.prompt,
         createdBy: username,
       },
       textFallback: {
-        text: `Echokeys typing challenge (${difficulty}): ${prompt}`,
+        text: `Echokeys typing challenge: ${prompt}`,
       },
       runAs: 'USER',
       userGeneratedContent: {

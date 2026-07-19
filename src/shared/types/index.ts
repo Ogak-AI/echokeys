@@ -2,18 +2,7 @@
 // Echokeys — Shared Types
 // ============================================================
 
-export type Difficulty = 'easy' | 'medium' | 'hard';
-
 export type ContentDomain = 'code' | 'prose' | 'legal' | 'marketing' | 'technical' | 'creative';
-
-export const DIFFICULTY_CONFIG: Record<
-  Difficulty,
-  { label: string; timeSeconds: number; minLines: number; maxLines: number; color: string }
-> = {
-  easy: { label: 'Easy', timeSeconds: 600, minLines: 25, maxLines: 50, color: '#4ec9b0' },
-  medium: { label: 'Medium', timeSeconds: 480, minLines: 75, maxLines: 150, color: '#dcdcaa' },
-  hard: { label: 'Hard', timeSeconds: 300, minLines: 200, maxLines: 300, color: '#f48771' },
-};
 
 export const DOMAIN_COLORS: Record<ContentDomain, string> = {
   code: '#569cd6',
@@ -28,7 +17,6 @@ export type Challenge = {
   id: string;
   prompt: string;
   content: string;
-  difficulty: Difficulty;
   domain: ContentDomain;
   lineCount: number;
   createdAt: number;

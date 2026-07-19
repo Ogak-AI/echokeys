@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useTypingGame } from '../hooks/useTypingGame';
-import type { Challenge, Difficulty } from '../../shared/types/index';
+import type { Challenge } from '../../shared/types/index';
 import { context } from '../shims/devvit-web-client';
 
 export const App = () => {
   const [prompt, setPrompt] = useState('');
-  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [loading, setLoading] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -41,7 +40,7 @@ export const App = () => {
       const res = await fetch('/api/challenge/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, difficulty }),
+        body: JSON.stringify({ prompt }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate challenge');
@@ -188,9 +187,6 @@ export const App = () => {
         <div className="flex justify-between items-center px-6 py-3 bg-[#252526] border-b border-[#3c3c3c]">
           <div className="flex items-center gap-3">
             <span className="text-[#007acc] font-bold">Echokeys Editor</span>
-            <span className="text-xs px-2 py-0.5 rounded badge-easy" style={{ background: 'rgba(78,201,176,0.15)', color: '#4ec9b0' }}>
-              {challenge.difficulty.toUpperCase()}
-            </span>
           </div>
           <div className="flex items-center gap-4">
             <button onClick={toggleMute} className="vsc-btn vsc-btn-ghost text-xs py-1">
@@ -301,32 +297,7 @@ export const App = () => {
               />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-xs text-[#858585]">Difficulty Tier</label>
-              <div className="grid grid-cols-3 gap-3">
-                <div
-                  onClick={() => setDifficulty('easy')}
-                  className={`diff-card diff-card-easy ${difficulty === 'easy' ? 'selected' : ''}`}
-                >
-                  <div className="font-bold text-[#4ec9b0]">Easy</div>
-                  <div className="text-2xs text-[#858585]">25-50 lines / 10m</div>
-                </div>
-                <div
-                  onClick={() => setDifficulty('medium')}
-                  className={`diff-card diff-card-medium ${difficulty === 'medium' ? 'selected' : ''}`}
-                >
-                  <div className="font-bold text-[#dcdcaa]">Medium</div>
-                  <div className="text-2xs text-[#858585]">75-150 lines / 8m</div>
-                </div>
-                <div
-                  onClick={() => setDifficulty('hard')}
-                  className={`diff-card diff-card-hard ${difficulty === 'hard' ? 'selected' : ''}`}
-                >
-                  <div className="font-bold text-[#f48771]">Hard</div>
-                  <div className="text-2xs text-[#858585]">200-300+ lines / 5m</div>
-                </div>
-              </div>
-            </div>
+
 
             <button type="submit" className="vsc-btn vsc-btn-lg justify-center w-full mt-4 font-semibold">
               Generate & Start Race

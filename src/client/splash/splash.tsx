@@ -1,18 +1,41 @@
 import '../index.css';
 import { context, requestExpandedMode } from '../shims/devvit-web-client';
-import { StrictMode } from 'react';
+import { StrictMode, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const Splash = () => {
   const username = context?.username ?? 'Typist';
+  const playBtnRef = useRef<HTMLButtonElement>(null);
+  const lbBtnRef = useRef<HTMLButtonElement>(null);
 
-  const handlePlay = (e: React.MouseEvent) => {
-    void requestExpandedMode(e.nativeEvent, 'game');
-  };
+  useEffect(() => {
+    const playBtn = playBtnRef.current;
+    const lbBtn = lbBtnRef.current;
 
-  const handleLeaderboard = (e: React.MouseEvent) => {
-    void requestExpandedMode(e.nativeEvent, 'leaderboard');
-  };
+    const onPlay = (e: MouseEvent) => {
+      console.log('[Splash] Play clicked, native event:', e);
+      requestExpandedMode(e, 'game').catch((err) => {
+        console.error('[Splash] requestExpandedMode game error:', err);
+        window.location.assign('game.html');
+      });
+    };
+
+    const onLb = (e: MouseEvent) => {
+      console.log('[Splash] Leaderboard clicked, native event:', e);
+      requestExpandedMode(e, 'leaderboard').catch((err) => {
+        console.error('[Splash] requestExpandedMode leaderboard error:', err);
+        window.location.assign('leaderboard.html');
+      });
+    };
+
+    playBtn?.addEventListener('click', onPlay);
+    lbBtn?.addEventListener('click', onLb);
+
+    return () => {
+      playBtn?.removeEventListener('click', onPlay);
+      lbBtn?.removeEventListener('click', onLb);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4"
@@ -46,11 +69,11 @@ const Splash = () => {
 
       {/* Action buttons */}
       <div className="flex flex-col gap-3 w-full max-w-xs">
-        <button onClick={handlePlay}
+        <button ref={playBtnRef}
                 className="vsc-btn vsc-btn-lg w-full justify-center text-base font-semibold">
           ▶ Start Challenge
         </button>
-        <button onClick={handleLeaderboard}
+        <button ref={lbBtnRef}
                 className="vsc-btn-ghost vsc-btn vsc-btn-lg w-full justify-center text-base">
           🏆 Leaderboard
         </button>

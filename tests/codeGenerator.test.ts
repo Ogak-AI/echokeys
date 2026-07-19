@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { generateContent } from '../src/server/services/contentGenerator.ts';
 
 test('generateContent falls back to deterministic code when no API token is configured', async () => {
-  const result = await generateContent('recursive binary search', 'easy', '');
+  const result = await generateContent('recursive binary search', '');
 
   assert.ok(result.content.length > 0);
   assert.ok(result.lineCount >= 25 && result.lineCount <= 50);

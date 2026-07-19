@@ -29,7 +29,6 @@
     "http": {
       "enable": true,
       "domains": [
-        "api.anthropic.com",
         "api.groq.com",
         "api-inference.huggingface.co"
       ]
@@ -61,7 +60,7 @@
       "llm_provider": {
         "type": "string",
         "label": "LLM Provider",
-        "helpText": "Select LLM provider: huggingface, groq, or anthropic",
+        "helpText": "Select LLM provider: huggingface or groq",
         "defaultValue": "huggingface"
       },
       "huggingface_api_key": {
@@ -87,18 +86,6 @@
         "label": "Groq Model",
         "helpText": "Model ID to use on Groq.",
         "defaultValue": "llama-3.3-70b-versatile"
-      },
-      "anthropic_api_key": {
-        "type": "string",
-        "label": "Anthropic API Key",
-        "helpText": "Claude API key used for challenge content generation.",
-        "isSecret": true
-      },
-      "anthropic_model": {
-        "type": "string",
-        "label": "Anthropic Model",
-        "helpText": "Claude model id for content generation",
-        "defaultValue": "claude-3-5-sonnet-20241022"
       }
     }
   },
