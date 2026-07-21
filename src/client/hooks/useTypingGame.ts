@@ -8,6 +8,7 @@ import {
   TIME_LIMIT_SECONDS,
   calculateAccuracy,
   calculateWpm,
+  countCorrectChars,
   isSpeedViolation,
 } from '../../shared/utils/antiCheat';
 
@@ -127,14 +128,15 @@ export function useTypingGame(challenge: Challenge | null) {
       const sec = elapsedSeconds(t0.current);
       const rem = Math.max(0, TIME_LIMIT_SECONDS - sec);
       setState((p) => {
+        const scoreTime = Math.max(sec, 1);
         if (rem <= 0 && p.phase === 'playing') {
           const wpm = calculateWpm(p.input.length, wpmTimeSeconds(t0.current));
-          const score = calculateScore(p.accuracy / 100, wpm, sec);
+          const score = calculateScore(p.accuracy / 100, wpm, scoreTime);
           return { ...p, elapsed: sec, remaining: 0, wpm, score, phase: 'timeout' };
         }
         // Refresh live WPM as time passes even without new keystrokes
         const wpm = calculateWpm(p.input.length, wpmTimeSeconds(t0.current));
-        const score = calculateScore(p.accuracy / 100, wpm, sec);
+        const score = calculateScore(p.accuracy / 100, wpm, scoreTime);
         return { ...p, elapsed: sec, remaining: rem, wpm, score };
       });
     }, 250);
@@ -303,6 +305,8 @@ export function useTypingGame(challenge: Challenge | null) {
       const diff = val.length - prev.length;
 
       if (diff > MAX_INPUT_JUMP) {
+        // Force controlled textarea to snap back to last accepted input.
+        setState((p) => ({ ...p, input: prev }));
         lockInput();
         return;
       }
@@ -313,6 +317,7 @@ export function useTypingGame(challenge: Challenge | null) {
 
       if (charsDelta > 0 && isSpeedViolation(charsDelta, msDelta)) {
         const burstWpm = calculateWpm(charsDelta, Math.max(msDelta / 1000, 0.001));
+        setState((p) => ({ ...p, input: prev }));
         lockInput(Math.min(burstWpm, MAX_WPM + 1));
         return;
       }
@@ -343,24 +348,24 @@ export function useTypingGame(challenge: Challenge | null) {
         }
       }
 
-      let ok = 0;
-      for (let i = 0; i < val.length; i++) {
-        if (val[i] === text[i]) ok++;
-      }
-
+      // Same correctness rules as server validatePlayMetrics / countCorrectChars.
+      const ok = countCorrectChars(val, text);
       const sec = elapsedSeconds(t0.current);
       const wpm = calculateWpm(val.length, wpmTimeSeconds(t0.current));
 
       if (val.length >= 15 && wpm > MAX_WPM) {
+        setState((p) => ({ ...p, input: prev }));
         lockInput(wpm);
         return;
       }
 
+      // Live score always uses at least 1s so display matches server floor.
+      const scoreTime = Math.max(sec, 1);
       const accuracy = calculateAccuracy(ok, val.length);
       const progress = text.length
         ? Math.min(100, Math.round((val.length / text.length) * 100))
         : 0;
-      const score = calculateScore(accuracy / 100, wpm, Math.max(sec, 1));
+      const score = calculateScore(accuracy / 100, wpm, scoreTime);
       const done = val.length >= text.length && text.length > 0;
 
       setState((p) => ({

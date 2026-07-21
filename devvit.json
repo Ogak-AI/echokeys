@@ -29,8 +29,7 @@
     "http": {
       "enable": true,
       "domains": [
-        "api.groq.com",
-        "api-inference.huggingface.co"
+        "generativelanguage.googleapis.com"
       ]
     },
     "redis": true,
@@ -57,35 +56,17 @@
   },
   "settings": {
     "global": {
-      "llm_provider": {
+      "gemini_api_key": {
         "type": "string",
-        "label": "LLM Provider",
-        "helpText": "Select LLM provider: huggingface or groq",
-        "defaultValue": "huggingface"
-      },
-      "huggingface_api_key": {
-        "type": "string",
-        "label": "Hugging Face API Token",
-        "helpText": "Optional but recommended token for Hugging Face serverless inference.",
+        "label": "Gemini API Key (free tier)",
+        "helpText": "Free key from aistudio.google.com/apikey. Only Google Gemini free-tier models are used — no paid providers.",
         "isSecret": true
       },
-      "huggingface_model": {
+      "gemini_model": {
         "type": "string",
-        "label": "Hugging Face Model",
-        "helpText": "Model repository ID on Hugging Face (e.g. Qwen/Qwen2.5-Coder-7B-Instruct).",
-        "defaultValue": "Qwen/Qwen2.5-Coder-7B-Instruct"
-      },
-      "groq_api_key": {
-        "type": "string",
-        "label": "Groq API Key",
-        "helpText": "API key from console.groq.com.",
-        "isSecret": true
-      },
-      "groq_model": {
-        "type": "string",
-        "label": "Groq Model",
-        "helpText": "Model ID to use on Groq.",
-        "defaultValue": "llama-3.3-70b-versatile"
+        "label": "Gemini Model (free intelligent only)",
+        "helpText": "Allowlisted free models only: gemini-3.6-flash (default), gemini-3.5-flash, gemini-2.5-pro, gemini-2.5-flash. Paid/lite models are rejected.",
+        "defaultValue": "gemini-3.6-flash"
       }
     }
   },

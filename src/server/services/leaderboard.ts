@@ -140,7 +140,22 @@ async function upsertAllTimeFromProfile(
 
 // ---- Score Storage ----
 
-export async function saveScore(redis: RedisLike, score: PlayerScore): Promise<void> {
+export type SaveScoreOptions = {
+  /**
+   * When false, the score is stored on the player history but does not update
+   * weekly / all-time community leaderboards (e.g. low-progress timeouts).
+   * Defaults to true for backward-compatible callers.
+   */
+  rankOnLeaderboard?: boolean;
+};
+
+export async function saveScore(
+  redis: RedisLike,
+  score: PlayerScore,
+  options: SaveScoreOptions = {}
+): Promise<void> {
+  const rankOnLeaderboard = options.rankOnLeaderboard !== false;
+
   await writeJson(redis, `score:${score.id}`, score);
 
   const idxKey = `scores:idx:${score.username}`;
@@ -155,8 +170,10 @@ export async function saveScore(redis: RedisLike, score: PlayerScore): Promise<v
   memoryCache.delete(`player:${score.username}`);
 
   const profile = await updatePlayerProfile(redis, score);
-  await updateWeeklyLeaderboard(redis, score, profile);
-  await upsertAllTimeFromProfile(redis, subId, score, profile);
+  if (rankOnLeaderboard) {
+    await updateWeeklyLeaderboard(redis, score, profile);
+    await upsertAllTimeFromProfile(redis, subId, score, profile);
+  }
 }
 
 async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promise<PlayerProfile> {
@@ -175,7 +192,10 @@ async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promis
 
   profile.bestWpm = Math.max(profile.bestWpm, score.wpm);
   profile.bestAccuracy = Math.max(profile.bestAccuracy, score.accuracy);
-  profile.totalChallenges += 1;
+  // Only full clears count as completed challenges on the profile.
+  if (score.completed) {
+    profile.totalChallenges += 1;
+  }
   profile.lastPlayed = score.playedAt;
   profile.totalWordsTyped = (profile.totalWordsTyped || 0) + (score.wordsTyped || 0);
   if (score.communityId) {
@@ -187,6 +207,7 @@ async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promis
   }
 
   await writeJson(redis, key, profile);
+  memoryCache.set(key, profile, 10000);
   return profile;
 }
 
@@ -201,6 +222,7 @@ async function updateWeeklyLeaderboard(
   const entries = await readJson<LeaderboardEntry[]>(redis, key, []);
 
   const idx = entries.findIndex((e) => e.username === score.username);
+  const completedDelta = score.completed ? 1 : 0;
 
   if (idx >= 0) {
     const existing = entries[idx]!;
@@ -209,7 +231,7 @@ async function updateWeeklyLeaderboard(
       existing.accuracy = score.accuracy;
     }
     existing.bestWpm = Math.max(existing.bestWpm, score.wpm);
-    existing.challengesCompleted += 1;
+    existing.challengesCompleted += completedDelta;
     existing.lastPlayed = score.playedAt;
     existing.totalWordsTyped = profile.totalWordsTyped;
   } else {
@@ -219,7 +241,7 @@ async function updateWeeklyLeaderboard(
       score: score.score,
       accuracy: score.accuracy,
       bestWpm: score.wpm,
-      challengesCompleted: 1,
+      challengesCompleted: completedDelta,
       lastPlayed: score.playedAt,
       badges: [],
       totalWordsTyped: profile.totalWordsTyped,
@@ -423,7 +445,10 @@ export async function getPlayerProfile(
   }
 
   const profile = await readJson<PlayerProfile | null>(redis, `player:${username}`, null);
-  memoryCache.set(cacheKey, profile, 10000);
+  // Never cache null — a subsequent create would be hidden by a negative hit.
+  if (profile) {
+    memoryCache.set(cacheKey, profile, 10000);
+  }
   return profile;
 }
 
@@ -613,8 +638,9 @@ export async function snapshotYearly(
 // ---- Challenges ----
 
 export async function saveChallenge(redis: RedisLike, challenge: Challenge): Promise<void> {
-  memoryCache.delete(`challenge:${challenge.id}`);
-  await writeJson(redis, `challenge:${challenge.id}`, challenge);
+  const cacheKey = `challenge:${challenge.id}`;
+  await writeJson(redis, cacheKey, challenge);
+  memoryCache.set(cacheKey, challenge, 3600000);
 }
 
 export async function getChallenge(redis: RedisLike, id: string): Promise<Challenge | null> {
@@ -624,7 +650,10 @@ export async function getChallenge(redis: RedisLike, id: string): Promise<Challe
   }
 
   const challenge = await readJson<Challenge | null>(redis, `challenge:${id}`, null);
-  memoryCache.set(cacheKey, challenge, 3600000);
+  // Never cache null — a later save would be hidden by a negative hit.
+  if (challenge) {
+    memoryCache.set(cacheKey, challenge, 3600000);
+  }
   return challenge;
 }
 

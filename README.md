@@ -66,13 +66,20 @@ tests/
 
 ## Configuration
 
-In the Devvit app settings (or env for local):
+In the Devvit app settings (or env for local). **Gemini free-tier only** — no paid providers or lite models:
 
-- `llm_provider` — `huggingface` (default) or `groq`
-- `huggingface_api_key` / `huggingface_model`
-- `groq_api_key` / `groq_model`
+- `gemini_api_key` — free key from [Google AI Studio](https://aistudio.google.com/apikey)
+- `gemini_model` — allowlisted free intelligent models only:
+  - `gemini-3.6-flash` (default) — free, multilingual, strong accuracy
+  - `gemini-3.5-flash` — free, strong coding
+  - `gemini-2.5-pro` — free, deepest free-tier reasoning
+  - `gemini-2.5-flash` — free general model
 
-Without keys, the server falls back to deterministic practice content so the game still works.
+Any other model ID (paid OpenAI, Gemini Pro previews without free tier, lite models) is rejected and remapped to `gemini-3.6-flash`.
+
+Env fallbacks: `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL`.
+
+Without a key, the server falls back to deterministic practice content so the game still works. Challenge text is generated in the language of the creator's prompt for global communities.
 
 ## License
 

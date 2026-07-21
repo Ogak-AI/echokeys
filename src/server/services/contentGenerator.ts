@@ -1,28 +1,61 @@
 import type { ContentDomain } from '../../shared/types/index.js';
 import { detectContentDomain } from '../../shared/utils/contentDomain.js';
+import { buildHumanizerSystemPrompt } from '../../shared/utils/humanizer.js';
 
 const MIN_LINES = 25;
 const MAX_LINES = 50;
 
-function buildPrompt(userPrompt: string, domain: ContentDomain): string {
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+/**
+ * Free-tier Gemini models that are intelligent enough for global, multilingual
+ * typing challenges. Paid-only and lite/low-accuracy models are excluded.
+ * Source: https://ai.google.dev/pricing (Free Tier = free of charge).
+ */
+export const FREE_INTELLIGENT_GEMINI_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+] as const;
+
+export type FreeIntelligentGeminiModel = (typeof FREE_INTELLIGENT_GEMINI_MODELS)[number];
+
+/** Default: free forever on free tier, strong multilingual accuracy, low latency. */
+export const DEFAULT_GEMINI_MODEL: FreeIntelligentGeminiModel = 'gemini-3.6-flash';
+
+/**
+ * Builds the LLM messages for a challenge. The humanizer skill is always applied
+ * as a system prompt so generated typing content does not sound AI-written.
+ */
+export function buildGenerationMessages(
+  userPrompt: string,
+  domain: ContentDomain
+): ChatMessage[] {
   const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
 
-  return `You are a content generator for a typing challenge game. Players will type your output character-for-character. Generate clean, well-formatted content based on the user's prompt.
+  const userContent = `Generate typing-challenge content from this prompt.
 
 User's prompt: "${userPrompt}"
 Content style: ${domain}
 
 Requirements:
-- Write approximately ${target} lines of content (minimum ${MIN_LINES}, maximum ${MAX_LINES} lines)
-- The content must be well-structured and readable
-- If the prompt asks for code, write syntactically correct code with proper indentation
-- If the prompt asks for prose, write clear, well-punctuated text
-- Minimal comments (at most 2-3 if writing code)
-- No markdown formatting, no code fences, no explanations
+- Write approximately ${target} lines (minimum ${MIN_LINES}, maximum ${MAX_LINES})
+- Well-structured and readable
+- Language: write in the same language (and script) as the user's prompt. If the prompt mixes languages, prefer the dominant non-English language when clear; otherwise follow the prompt's primary language. Never force English.
+- Use correct orthography, diacritics, punctuation, and regional conventions for that language (e.g. Spanish ñ/¿¡, French accents, Arabic/Hebrew RTL text, CJK characters, Hindi Devanagari).
+- If code: syntactically correct with proper indentation; at most 2-3 short comments in the same language as the prompt when comments are natural
+- If prose: clear, well-punctuated, and human-sounding (follow the system humanizer rules strictly). Humanizer AI-tell vocabulary rules apply in English; for other languages avoid the equivalent AI-cliché phrasing.
+- No markdown formatting, no code fences, no explanations, no preamble
 - No deliberately broken content or tricks
-- Output ONLY the content, nothing else
+- Output ONLY the content players will type
 
 Content:`;
+
+  return [
+    { role: 'system', content: buildHumanizerSystemPrompt(domain) },
+    { role: 'user', content: userContent },
+  ];
 }
 
 function cleanOutput(raw: string): string {
@@ -158,103 +191,105 @@ function buildFallbackContent(userPrompt: string, domain: ContentDomain): string
       );
 
     default:
-      lines.push(`Title: Typing Practice — ${topic}`);
+      lines.push(`Typing practice: ${topic}`);
       lines.push('==================================================');
-      lines.push('Practicing your typing skills regularly is one of the most effective');
-      lines.push('ways to improve both speed and accuracy. Consistent daily execution');
-      lines.push('helps build muscle memory so you do not need to look at the keys.');
-      lines.push('This challenge provides structured text so you can measure progress');
-      lines.push('without leaving the flow of real writing work.');
+      lines.push('Daily practice is how speed and accuracy stick. You train the hands');
+      lines.push('so the eyes can stay on the words instead of hunting for keys.');
+      lines.push('This block is plain text on purpose — something you can type end to');
+      lines.push('end and compare against your last run without gimmicks.');
+      lines.push('');
+      lines.push(`Today's focus is ${topic}. Keep a steady rhythm. Fix mistakes as you`);
+      lines.push('go rather than racing past them and hoping the score forgives you.');
       return padToTarget(
         lines,
         target,
         (i) =>
-          `Line ${i + 1}: Practice precision and rhythm while typing about ${topic}. Steady hands beat rushed keystrokes every time.`
+          `Line ${i + 1}: Keep typing about ${topic}. Short bursts beat frantic speed. Check your posture, then continue.`
       );
   }
 }
 
 export type LlmConfig = {
-  provider: string;
-  huggingface: { apiKey: string; model: string };
-  groq: { apiKey: string; model: string };
+  /** Google AI Studio free-tier API key */
+  apiKey: string;
+  /** Must resolve to a free intelligent Gemini model; others are remapped */
+  model?: string;
 };
 
-async function generateWithGroq(
-  userPrompt: string,
-  domain: ContentDomain,
-  apiKey: string,
-  model: string
-): Promise<string> {
-  const prompt = buildPrompt(userPrompt, domain);
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-      max_tokens: 2048,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[ContentGen] Groq API error (${response.status}):`, errorText);
-    throw new Error(`Groq content generation failed: ${response.status}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Groq returned empty result');
-
-  return cleanOutput(text);
+/**
+ * Restricts model choice to free-tier intelligent Gemini models only.
+ * Paid, preview-paid, lite, and unknown IDs fall back to the default.
+ */
+export function resolveFreeIntelligentGeminiModel(raw: string | undefined): FreeIntelligentGeminiModel {
+  const id = (raw || DEFAULT_GEMINI_MODEL).replace(/^models\//, '').toLowerCase().trim();
+  const match = FREE_INTELLIGENT_GEMINI_MODELS.find((m) => m === id);
+  if (match) return match;
+  console.warn(
+    `[ContentGen] Model "${raw}" is not free+intelligent allowlisted; using ${DEFAULT_GEMINI_MODEL}`
+  );
+  return DEFAULT_GEMINI_MODEL;
 }
 
-async function generateWithHuggingFace(
+/**
+ * Gemini generateContent API (v1beta) — free intelligent models only.
+ */
+async function generateWithGemini(
   userPrompt: string,
   domain: ContentDomain,
   apiKey: string,
-  model: string
+  model: FreeIntelligentGeminiModel
 ): Promise<string> {
-  const prompt = buildPrompt(userPrompt, domain);
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
+  if (!apiKey) {
+    throw new Error('Gemini API key is required');
   }
 
-  const response = await fetch('https://api-inference.huggingface.co/v1/chat/completions', {
+  const messages = buildGenerationMessages(userPrompt, domain);
+  const system = messages.find((m) => m.role === 'system')?.content ?? '';
+  const user = messages.find((m) => m.role === 'user')?.content ?? userPrompt;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2048,
+      systemInstruction: {
+        parts: [{ text: system }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: user }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 2048,
+      },
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[ContentGen] Hugging Face API error (${response.status}):`, errorText);
-    throw new Error(`Hugging Face content generation failed: ${response.status}`);
+    console.error(`[ContentGen] Gemini API error (${response.status}):`, errorText);
+    throw new Error(`Gemini content generation failed: ${response.status}`);
   }
 
   const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
   };
 
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Hugging Face returned empty result');
+  const text = data.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? '')
+    .join('')
+    .trim();
+
+  if (!text) throw new Error('Gemini returned empty result');
 
   return cleanOutput(text);
 }
@@ -264,42 +299,26 @@ export async function generateContent(
   config: LlmConfig
 ): Promise<{ content: string; lineCount: number; domain: ContentDomain }> {
   const domain = detectContentDomain(userPrompt);
+  const model = resolveFreeIntelligentGeminiModel(config.model);
 
-  console.log(`[ContentGen] Generating for: "${userPrompt}" (${domain})`);
+  console.log(
+    `[ContentGen] Generating for: "${userPrompt}" (${domain}) via gemini/${model} — free intelligent only, humanizer on`
+  );
 
   let content = '';
   let success = false;
-  const provider = (config.provider || 'huggingface').toLowerCase();
 
-  // Groq requires a key. Hugging Face may work without one on public models.
-  const tryGroq = provider === 'groq' && !!config.groq.apiKey;
-  const tryHf = provider === 'huggingface' || (!tryGroq && provider !== 'groq');
-
-  if (tryGroq) {
-    try {
-      content = await generateWithGroq(userPrompt, domain, config.groq.apiKey, config.groq.model);
-      success = content.length > 40;
-    } catch (err) {
-      console.error('[ContentGen] groq generation failed:', err);
-    }
-  }
-
-  if (!success && tryHf) {
-    try {
-      content = await generateWithHuggingFace(
-        userPrompt,
-        domain,
-        config.huggingface.apiKey,
-        config.huggingface.model
-      );
-      success = content.length > 40;
-    } catch (err) {
-      console.error('[ContentGen] huggingface generation failed:', err);
-    }
+  try {
+    content = await generateWithGemini(userPrompt, domain, config.apiKey, model);
+    success = content.length > 40;
+  } catch (err) {
+    console.error('[ContentGen] gemini generation failed:', err);
   }
 
   if (!success) {
-    console.warn('[ContentGen] Provider failed or not configured — using fallback content');
+    console.warn(
+      '[ContentGen] Gemini failed or not configured — using fallback content (set gemini_api_key)'
+    );
     content = buildFallbackContent(userPrompt, domain);
   }
 

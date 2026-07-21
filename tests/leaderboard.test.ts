@@ -190,3 +190,34 @@ test('best weekly score is kept; challenge count increments', async () => {
   assert.equal(lb[0]?.bestWpm, 90); // best wpm updated
   assert.equal(lb[0]?.challengesCompleted, 2);
 });
+
+test('low-progress scores store history but do not rank on leaderboard', async () => {
+  memoryCache.clear();
+  const redis = new MockRedis();
+
+  await saveScore(
+    redis,
+    makeScore({
+      id: 'sc-partial',
+      username: 'dabbler',
+      communityId: 'sub-p',
+      score: 999,
+      wpm: 200,
+      completed: false,
+      wordsTyped: 10,
+    }),
+    { rankOnLeaderboard: false }
+  );
+
+  const lb = await getWeeklyLeaderboard(redis, 'sub-p');
+  assert.equal(lb.length, 0);
+
+  const allTime = await getAllTimeLeaderboard(redis, 'sub-p');
+  assert.equal(allTime.length, 0);
+
+  const profile = await getPlayerProfile(redis, 'dabbler');
+  assert.ok(profile);
+  assert.equal(profile.totalChallenges, 0); // incomplete
+  assert.equal(profile.totalWordsTyped, 10);
+  assert.equal(profile.bestWpm, 200); // still recorded on profile
+});

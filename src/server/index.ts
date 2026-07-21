@@ -33,32 +33,35 @@ import { calculateScore } from '../shared/types/index.js';
 import type { Challenge, PlayerScore, LeaderboardEntry } from '../shared/types/index.js';
 import { memoryCache } from './services/memoryCache.js';
 import {
-  MAX_WPM,
-  TIME_LIMIT_SECONDS,
-  WPM_TOLERANCE,
-  calculateWpm,
-  countWords,
+  RACE_TTL_MS,
   formatSubredditLabel,
+  raceElapsedSeconds,
   sanitizePrompt,
+  validatePlayMetrics,
 } from '../shared/utils/antiCheat.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-async function getLlmConfig() {
-  const provider = (await settings.get<string>('llm_provider')) || 'huggingface';
-  const hfKey =
-    (await settings.get<string>('huggingface_api_key')) || process.env.HUGGINGFACE_API_KEY || '';
-  const hfModel =
-    (await settings.get<string>('huggingface_model')) || 'Qwen/Qwen2.5-Coder-7B-Instruct';
-  const groqKey = (await settings.get<string>('groq_api_key')) || process.env.GROQ_API_KEY || '';
-  const groqModel = (await settings.get<string>('groq_model')) || 'llama-3.3-70b-versatile';
+type RaceSession = {
+  id: string;
+  username: string;
+  challengeId: string;
+  startedAt: number;
+};
 
-  return {
-    provider,
-    huggingface: { apiKey: hfKey, model: hfModel },
-    groq: { apiKey: groqKey, model: groqModel },
-  };
+async function getLlmConfig() {
+  const apiKey =
+    (await settings.get<string>('gemini_api_key')) ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    '';
+  const model =
+    (await settings.get<string>('gemini_model')) ||
+    process.env.GEMINI_MODEL ||
+    'gemini-3.6-flash';
+
+  return { apiKey, model };
 }
 
 function getSubredditId(): string {
@@ -87,15 +90,155 @@ async function resolveUsername(): Promise<string> {
   return 'anonymous';
 }
 
+/**
+ * Hour-bucket rate limit. Count is re-read after write to reduce concurrent overshoot
+ * (Devvit Redis surface is get/set only — not fully atomic, but tighter than before).
+ */
 async function checkRateLimit(username: string, action: string, maxCount: number): Promise<boolean> {
   const identity = username === 'anonymous' ? `anon:${getSubredditId()}` : username;
   const hourKey = Math.floor(Date.now() / 3600000);
   const key = `ratelimit:${action}:${identity}:${hourKey}`;
   const raw = await redis.get(key);
   const count = raw ? parseInt(raw, 10) : 0;
-  if (count >= maxCount) return false;
-  await redis.set(key, String(count + 1));
+  if (!Number.isFinite(count) || count >= maxCount) return false;
+  const next = count + 1;
+  await redis.set(key, String(next));
+  // Best-effort double-check: if another writer raced past the cap, reject latecomers.
+  const confirmRaw = await redis.get(key);
+  const confirmed = confirmRaw ? parseInt(confirmRaw, 10) : next;
+  if (Number.isFinite(confirmed) && confirmed > maxCount + 2) {
+    return false;
+  }
   return true;
+}
+
+async function createRaceSession(username: string, challengeId: string): Promise<RaceSession> {
+  const session: RaceSession = {
+    id: newId('race'),
+    username,
+    challengeId,
+    startedAt: Date.now(),
+  };
+  await redis.set(`race:${session.id}`, JSON.stringify(session));
+  // Soft index so a player cannot hold unlimited open races on one challenge.
+  await redis.set(`race_open:${username}:${challengeId}`, session.id);
+  return session;
+}
+
+type RaceLookupResult =
+  | { ok: true; session: RaceSession }
+  | { ok: false; error: string; status: number };
+
+type StoredRace = RaceSession & { claimToken?: string };
+
+function parseRaceSession(raw: string): StoredRace | null {
+  try {
+    return JSON.parse(raw) as StoredRace;
+  } catch {
+    return null;
+  }
+}
+
+function validateRaceOwnership(
+  session: StoredRace,
+  username: string,
+  challengeId: string
+): RaceLookupResult {
+  if (session.claimToken) {
+    return { ok: false, error: 'Race session already claimed', status: 409 };
+  }
+  if (session.username !== username) {
+    return { ok: false, error: 'Race session does not belong to this user', status: 403 };
+  }
+  if (session.challengeId !== challengeId) {
+    return { ok: false, error: 'Race session does not match challenge', status: 400 };
+  }
+  if (Date.now() - session.startedAt > RACE_TTL_MS) {
+    return { ok: false, error: 'Race session expired', status: 400 };
+  }
+  return {
+    ok: true,
+    session: {
+      id: session.id,
+      username: session.username,
+      challengeId: session.challengeId,
+      startedAt: session.startedAt,
+    },
+  };
+}
+
+/** Read-only race lookup (does not consume). Used before metric validation. */
+async function loadRaceSession(
+  raceId: string,
+  username: string,
+  challengeId: string
+): Promise<RaceLookupResult> {
+  if (!raceId || typeof raceId !== 'string') {
+    return { ok: false, error: 'Race session required', status: 400 };
+  }
+
+  const raw = await redis.get(`race:${raceId}`);
+  if (!raw) {
+    return { ok: false, error: 'Race session not found or already used', status: 400 };
+  }
+
+  const stored = parseRaceSession(raw);
+  if (!stored) {
+    await redis.del(`race:${raceId}`);
+    return { ok: false, error: 'Race session corrupt', status: 400 };
+  }
+
+  const checked = validateRaceOwnership(stored, username, challengeId);
+  if (!checked.ok && checked.error === 'Race session expired') {
+    await redis.del(`race:${raceId}`);
+    const openKey = `race_open:${stored.username}:${stored.challengeId}`;
+    const openId = await redis.get(openKey);
+    if (openId === raceId) await redis.del(openKey);
+  }
+  return checked;
+}
+
+/**
+ * One-shot claim after metrics pass.
+ * Claim-token write/read so concurrent submits cannot both score the same race
+ * (Devvit Redis has no WATCH/MULTI).
+ */
+async function claimRaceSession(session: RaceSession): Promise<RaceLookupResult> {
+  const raceId = session.id;
+  const raw = await redis.get(`race:${raceId}`);
+  if (!raw) {
+    return { ok: false, error: 'Race session not found or already used', status: 400 };
+  }
+
+  const stored = parseRaceSession(raw);
+  if (!stored) {
+    await redis.del(`race:${raceId}`);
+    return { ok: false, error: 'Race session corrupt', status: 400 };
+  }
+
+  const checked = validateRaceOwnership(stored, session.username, session.challengeId);
+  if (!checked.ok) return checked;
+
+  const claimToken = newId('claim');
+  await redis.set(`race:${raceId}`, JSON.stringify({ ...stored, claimToken }));
+
+  const confirmRaw = await redis.get(`race:${raceId}`);
+  if (!confirmRaw) {
+    return { ok: false, error: 'Race session not found or already used', status: 400 };
+  }
+  const confirm = parseRaceSession(confirmRaw);
+  if (!confirm || confirm.claimToken !== claimToken) {
+    return { ok: false, error: 'Race session already claimed', status: 409 };
+  }
+
+  await redis.del(`race:${raceId}`);
+  const openKey = `race_open:${session.username}:${session.challengeId}`;
+  const openId = await redis.get(openKey);
+  if (openId === raceId) {
+    await redis.del(openKey);
+  }
+
+  return { ok: true, session };
 }
 
 function didLeaderboardChange(a: LeaderboardEntry[], b: LeaderboardEntry[]): boolean {
@@ -264,11 +407,62 @@ app.get('/api/post/challenge', async (_req, res) => {
   }
 });
 
+// ---- Start race (server clock + one-shot session token) ----
+app.post('/api/race/start', async (req, res) => {
+  try {
+    const body = req.body as { challengeId?: string };
+    const player = await resolveUsername();
+    if (player === 'anonymous') {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (!body.challengeId || typeof body.challengeId !== 'string') {
+      return res.status(400).json({ error: 'challengeId is required' });
+    }
+
+    const allowed = await checkRateLimit(player, 'race_start', 120);
+    if (!allowed) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded: too many race starts per hour',
+      });
+    }
+
+    const challenge = await getChallenge(redis, body.challengeId);
+    if (!challenge) {
+      return res.status(404).json({ error: 'Challenge not found' });
+    }
+
+    // Invalidate any previous open race for this user+challenge
+    const openKey = `race_open:${player}:${body.challengeId}`;
+    const prevId = await redis.get(openKey);
+    if (prevId) {
+      await redis.del(`race:${prevId}`);
+      await redis.del(openKey);
+    }
+
+    const session = await createRaceSession(player, body.challengeId);
+    console.log(`[API] Race started: ${player} race=${session.id} challenge=${body.challengeId}`);
+    return res.json({
+      raceId: session.id,
+      startedAt: session.startedAt,
+      expiresInMs: RACE_TTL_MS,
+    });
+  } catch (err) {
+    console.error('[API] Race start error:', err);
+    return res.status(500).json({ error: 'Failed to start race' });
+  }
+});
+
 // ---- Submit Score ----
+// Metrics are derived server-side from typed text + race start time.
+// Client-claimed wpm/accuracy/time/completed are ignored when present.
 app.post('/api/score/submit', async (req, res) => {
   try {
     const body = req.body as {
       challengeId?: string;
+      raceId?: string;
+      typed?: string;
+      // Legacy client fields — ignored for scoring
       wpm?: number;
       accuracy?: number;
       timeSeconds?: number;
@@ -281,29 +475,12 @@ app.post('/api/score/submit', async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    if (!body.challengeId || body.wpm == null || body.accuracy == null || body.timeSeconds == null) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!body.challengeId || typeof body.challengeId !== 'string') {
+      return res.status(400).json({ error: 'challengeId is required' });
     }
-
-    if (
-      typeof body.wpm !== 'number' ||
-      typeof body.accuracy !== 'number' ||
-      typeof body.timeSeconds !== 'number' ||
-      !Number.isFinite(body.wpm) ||
-      !Number.isFinite(body.accuracy) ||
-      !Number.isFinite(body.timeSeconds) ||
-      body.wpm < 0 ||
-      body.accuracy < 0 ||
-      body.accuracy > 100 ||
-      body.timeSeconds < 0
-    ) {
-      return res.status(400).json({ error: 'Invalid score values' });
+    if (typeof body.typed !== 'string') {
+      return res.status(400).json({ error: 'typed content is required' });
     }
-
-    const timeSeconds = Math.min(Math.max(0, Math.round(body.timeSeconds)), TIME_LIMIT_SECONDS);
-    const claimedWpm = Math.round(body.wpm);
-    const accuracy = Math.round(body.accuracy);
-    const completed = !!body.completed;
 
     const allowed = await checkRateLimit(player, 'submit', 60);
     if (!allowed) {
@@ -312,57 +489,45 @@ app.post('/api/score/submit', async (req, res) => {
       });
     }
 
-    // Hard ceiling: 7 words/sec = 420 WPM
-    if (claimedWpm > MAX_WPM) {
-      console.warn(`[Security] Rejected impossible WPM ${claimedWpm} from ${player}`);
-      return res.status(400).json({
-        error: `WPM exceeds maximum of ${MAX_WPM} (7 words per second)`,
-      });
-    }
-
     const challenge = await getChallenge(redis, body.challengeId);
     if (!challenge) {
       return res.status(404).json({ error: 'Challenge not found' });
     }
 
-    // Server recalculates WPM from content length + claimed time
-    let acceptedWpm = claimedWpm;
-    if (completed) {
-      if (timeSeconds < 1) {
-        return res.status(400).json({ error: 'Score validation failed: invalid duration' });
-      }
-      const expectedWpm = calculateWpm(challenge.content.length, timeSeconds);
-      if (Math.abs(claimedWpm - expectedWpm) > WPM_TOLERANCE) {
-        console.warn(
-          `[Security] WPM mismatch for ${player}: claimed=${claimedWpm} expected=${expectedWpm}`
-        );
-        return res.status(400).json({ error: 'Score validation failed: WPM mismatch' });
-      }
-      acceptedWpm = expectedWpm;
-    } else {
-      // Incomplete / timeout: cap at theoretical max for elapsed time
-      const maxPossible = calculateWpm(challenge.content.length, Math.max(timeSeconds, 1));
-      if (claimedWpm > maxPossible + WPM_TOLERANCE) {
-        console.warn(
-          `[Security] Incomplete WPM too high for ${player}: claimed=${claimedWpm} max=${maxPossible}`
-        );
-        acceptedWpm = Math.min(claimedWpm, maxPossible);
-      }
+    // 1) Load race (server clock). 2) Derive metrics. 3) Claim one-shot. 4) Persist.
+    const race = await loadRaceSession(body.raceId ?? '', player, body.challengeId);
+    if (!race.ok) {
+      console.warn(`[Security] Race rejected for ${player}: ${race.error}`);
+      return res.status(race.status).json({ error: race.error });
     }
 
-    if (acceptedWpm >= 120) {
+    const timeSeconds = Math.max(1, raceElapsedSeconds(race.session.startedAt));
+    const validated = validatePlayMetrics({
+      typedRaw: body.typed,
+      content: challenge.content,
+      timeSeconds,
+    });
+
+    if (!validated.ok) {
+      console.warn(`[Security] Score validation failed for ${player}: ${validated.error}`);
+      return res.status(400).json({ error: validated.error });
+    }
+
+    const claimed = await claimRaceSession(race.session);
+    if (!claimed.ok) {
+      console.warn(`[Security] Race claim failed for ${player}: ${claimed.error}`);
+      return res.status(claimed.status).json({ error: claimed.error });
+    }
+
+    const { metrics } = validated;
+    const scoreValue = calculateScore(metrics.accuracy / 100, metrics.wpm, metrics.timeSeconds);
+
+    if (metrics.wpm >= 120) {
       console.log(
-        `[Monitor] High WPM: ${player} WPM=${acceptedWpm} Acc=${accuracy}% challenge=${body.challengeId}`
+        `[Monitor] High WPM: ${player} WPM=${metrics.wpm} Acc=${metrics.accuracy}% challenge=${body.challengeId}`
       );
     }
 
-    const totalWords = countWords(challenge.content);
-    const wordsTyped = completed
-      ? totalWords
-      : Math.min(totalWords, Math.max(0, Math.round(acceptedWpm * (timeSeconds / 60))));
-
-    // Server-side score + timestamp only
-    const scoreValue = calculateScore(accuracy / 100, acceptedWpm, timeSeconds);
     const id = newId('sc');
     const subId = getSubredditId();
 
@@ -372,18 +537,20 @@ app.post('/api/score/submit', async (req, res) => {
       challengeId: body.challengeId,
       prompt: challenge.prompt,
       domain: challenge.domain,
-      wpm: acceptedWpm,
-      accuracy,
-      timeSeconds,
+      wpm: metrics.wpm,
+      accuracy: metrics.accuracy,
+      timeSeconds: metrics.timeSeconds,
       score: scoreValue,
-      completed,
+      completed: metrics.completed,
       playedAt: Date.now(),
       communityId: subId,
-      wordsTyped,
+      wordsTyped: metrics.wordsTyped,
     };
 
     const previousEntries = await getWeeklyLeaderboard(redis, subId);
-    await saveScore(redis, playerScore);
+    await saveScore(redis, playerScore, {
+      rankOnLeaderboard: metrics.eligibleForLeaderboard,
+    });
 
     const weeklyRank = await getPlayerWeeklyRank(redis, subId, player);
     const allTimeRank = await getPlayerAllTimeRank(redis, subId, player);
@@ -396,17 +563,22 @@ app.post('/api/score/submit', async (req, res) => {
       ? (JSON.parse(lastBroadcastStr) as LeaderboardEntry[])
       : previousEntries;
 
-    if (didLeaderboardChange(lastBroadcast, entries)) {
+    if (metrics.eligibleForLeaderboard && didLeaderboardChange(lastBroadcast, entries)) {
       memoryCache.set(broadcastKey, JSON.stringify(entries), 60000);
       await broadcastWeeklyLeaderboard(realtime, subId, entries, weekStartKey());
       console.log(`[Realtime] Broadcasted weekly leaderboard for ${subId}`);
     }
 
     console.log(
-      `[API] Score submitted: ${player} — WPM:${acceptedWpm} Acc:${accuracy}% Score:${scoreValue} Words:${wordsTyped}`
+      `[API] Score submitted: ${player} — WPM:${metrics.wpm} Acc:${metrics.accuracy}% Score:${scoreValue} Words:${metrics.wordsTyped} completed=${metrics.completed} ranked=${metrics.eligibleForLeaderboard}`
     );
 
-    return res.json({ score: playerScore, weeklyRank, allTimeRank });
+    return res.json({
+      score: playerScore,
+      weeklyRank,
+      allTimeRank,
+      ranked: metrics.eligibleForLeaderboard,
+    });
   } catch (err) {
     console.error('[API] Submit score error:', err);
     return res.status(500).json({ error: 'Failed to submit score' });

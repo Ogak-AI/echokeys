@@ -2,7 +2,6 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from
 import { useTypingGame } from '../hooks/useTypingGame';
 import type { Challenge, ContentDomain } from '../../shared/types/index';
 import { DOMAIN_COLORS } from '../../shared/types/index';
-import { calculateWpm } from '../../shared/utils/antiCheat';
 import { context } from '../shims/devvit-web-client';
 
 type Results = {
@@ -12,6 +11,7 @@ type Results = {
   weeklyRank: number | null;
   allTimeRank: number | null;
   wordsTyped: number;
+  ranked: boolean;
 };
 
 /** Guard against React StrictMode double-submits in development. */
@@ -44,6 +44,9 @@ export const App = () => {
   const [username, setUsername] = useState(context?.username ?? 'Player');
   const [subredditName, setSubredditName] = useState('');
   const [textOffsetY, setTextOffsetY] = useState(0);
+  const [raceId, setRaceId] = useState<string | null>(null);
+  const [raceError, setRaceError] = useState<string | null>(null);
+  const [raceStarting, setRaceStarting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const textTrackRef = useRef<HTMLDivElement>(null);
@@ -51,8 +54,12 @@ export const App = () => {
   const shellRef = useRef<HTMLDivElement>(null);
   const textOffsetYRef = useRef(0);
   const autoStartedId = useRef<string | null>(null);
+  const raceStartedFor = useRef<string | null>(null);
+  const raceIdRef = useRef<string | null>(null);
   const phaseRef = useRef<'idle' | 'playing' | 'finished' | 'timeout'>('idle');
   const throttledRef = useRef(false);
+  const inputRef = useRef('');
+  const submitInFlight = useRef(false);
 
   const {
     phase,
@@ -79,7 +86,69 @@ export const App = () => {
     throttledRef.current = throttled;
   }, [phase, throttled]);
 
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+
+  useEffect(() => {
+    raceIdRef.current = raceId;
+  }, [raceId]);
+
   const isPlaying = phase === 'playing' || phase === 'idle';
+  const isEnded = phase === 'finished' || phase === 'timeout';
+
+  /** Open a server race session so score time is server-authoritative. */
+  const beginRace = useCallback(async (challengeId: string) => {
+    if (raceStartedFor.current === challengeId && raceIdRef.current) {
+      return raceIdRef.current;
+    }
+    setRaceError(null);
+    setRaceStarting(true);
+    try {
+      const res = await fetch('/api/race/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to start race');
+      }
+      raceStartedFor.current = challengeId;
+      raceIdRef.current = data.raceId as string;
+      setRaceId(data.raceId as string);
+      return data.raceId as string;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to start race';
+      console.error('[Game] Race start error:', err);
+      setRaceError(message);
+      setRaceId(null);
+      raceIdRef.current = null;
+      raceStartedFor.current = null;
+      return null;
+    } finally {
+      setRaceStarting(false);
+    }
+  }, []);
+
+  /**
+   * Server race must exist before the client clock starts so WPM/time cannot
+   * diverge (typing before race/start would under-count server duration).
+   */
+  const startChallengeRace = useCallback(
+    async (next: Challenge) => {
+      if (autoStartedId.current === next.id && raceIdRef.current) return;
+      autoStartedId.current = next.id;
+      const id = await beginRace(next.id);
+      if (!id) {
+        // beginRace already set raceError for the start-failure screen.
+        autoStartedId.current = null;
+        return;
+      }
+      start();
+    },
+    [beginRace, start]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -118,10 +187,9 @@ export const App = () => {
 
   useEffect(() => {
     if (challenge && phase === 'idle' && autoStartedId.current !== challenge.id) {
-      autoStartedId.current = challenge.id;
-      start();
+      void startChallengeRace(challenge);
     }
-  }, [challenge, phase, start]);
+  }, [challenge, phase, startChallengeRace]);
 
   /**
    * Fit the game shell to the *visible* viewport (keyboard-safe on phones).
@@ -248,15 +316,29 @@ export const App = () => {
 
   const submitResults = useCallback(async () => {
     if (!challenge || phase === 'idle' || phase === 'playing') return;
+    if (submitInFlight.current) return;
 
-    const timeSeconds = Math.max(1, elapsed || 1);
-    const submitWpm =
-      phase === 'finished' ? calculateWpm(challenge.content.length, timeSeconds) : wpm;
+    const typed = inputRef.current;
+    if (!typed) {
+      setError('Nothing typed — score not submitted');
+      return;
+    }
 
-    const key = `${challenge.id}:${phase}:${timeSeconds}:${submitWpm}`;
+    // Never mint a fresh race after typing is done — that would reset the
+    // server clock and either reject as impossible speed or inflate WPM.
+    const activeRaceId = raceIdRef.current;
+    if (!activeRaceId) {
+      setError(
+        'Race session missing — use Retry to start a new attempt (scores need a live race clock).'
+      );
+      return;
+    }
+
+    const key = `${challenge.id}:${activeRaceId}:${typed.length}`;
     if (submittedKeys.has(key)) return;
     submittedKeys.add(key);
 
+    submitInFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -265,14 +347,18 @@ export const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           challengeId: challenge.id,
-          wpm: submitWpm,
-          accuracy,
-          timeSeconds,
-          completed: phase === 'finished',
+          raceId: activeRaceId,
+          typed,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to submit score');
+
+      // Race is one-shot after a successful claim.
+      raceIdRef.current = null;
+      raceStartedFor.current = null;
+      setRaceId(null);
+
       setResults({
         score: data.score.score,
         wpm: data.score.wpm,
@@ -280,16 +366,26 @@ export const App = () => {
         weeklyRank: data.weeklyRank,
         allTimeRank: data.allTimeRank,
         wordsTyped: data.score.wordsTyped ?? 0,
+        ranked: data.ranked !== false,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Submit failed';
       console.error('Submit score error:', err);
       setError(message);
       submittedKeys.delete(key);
+
+      // Keep raceId on transient/network failures so Retry reuses the same clock.
+      // Clear only when the server says the session is gone/claimed.
+      if (/not found|already used|already claimed|expired|does not belong|does not match/i.test(message)) {
+        raceIdRef.current = null;
+        raceStartedFor.current = null;
+        setRaceId(null);
+      }
     } finally {
+      submitInFlight.current = false;
       setSubmitting(false);
     }
-  }, [challenge, wpm, accuracy, elapsed, phase]);
+  }, [challenge, phase]);
 
   useEffect(() => {
     if (phase === 'finished' || phase === 'timeout') {
@@ -303,6 +399,7 @@ export const App = () => {
 
     setGenerating(true);
     setError(null);
+    setRaceError(null);
     try {
       const res = await fetch('/api/challenge/generate', {
         method: 'POST',
@@ -311,8 +408,15 @@ export const App = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate challenge');
+      // Fresh challenge → fresh race clock; never reuse a prior raceId.
       setFromPost(false);
       autoStartedId.current = null;
+      raceStartedFor.current = null;
+      raceIdRef.current = null;
+      setRaceId(null);
+      submitInFlight.current = false;
+      submittedKeys.clear();
+      reset();
       setChallenge(data.challenge);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred during generation');
@@ -328,6 +432,12 @@ export const App = () => {
   const handleTryAgain = () => {
     setResults(null);
     setError(null);
+    setRaceError(null);
+    raceIdRef.current = null;
+    raceStartedFor.current = null;
+    setRaceId(null);
+    submitInFlight.current = false;
+    submittedKeys.clear();
     if (fromPost && challenge) {
       autoStartedId.current = null;
       reset();
@@ -336,6 +446,14 @@ export const App = () => {
     autoStartedId.current = null;
     setChallenge(null);
     reset();
+  };
+
+  const handleRetryRaceStart = () => {
+    if (!challenge) return;
+    setError(null);
+    setRaceError(null);
+    autoStartedId.current = null;
+    void startChallengeRace(challenge);
   };
 
   const renderCodeChars = () => {
@@ -377,18 +495,39 @@ export const App = () => {
       : `r/${subredditName}`
     : '';
 
-  if (loading || generating) {
+  if (loading || generating || (challenge && phase === 'idle' && raceStarting)) {
     return (
       <div className="app-shell app-center" style={{ gap: '0.65rem' }}>
         <div className="spinner" />
         <p className="loading-text">
-          {generating ? 'Generating…' : 'Loading…'}
+          {generating ? 'Generating…' : raceStarting ? 'Starting race…' : 'Loading…'}
         </p>
       </div>
     );
   }
 
-  if (results || (submitting && (phase === 'finished' || phase === 'timeout'))) {
+  // Race session failed before typing could begin.
+  if (challenge && phase === 'idle' && (raceError || error) && !raceId) {
+    return (
+      <div className="app-shell app-center">
+        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-vsc-accent)' }}>
+            Could not start race
+          </h2>
+          <div className="alert-error">{raceError || error}</div>
+          <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} onClick={handleRetryRaceStart}>
+            Retry start
+          </button>
+          <button type="button" className="vsc-btn vsc-btn-ghost" style={{ width: '100%' }} onClick={handleTryAgain}>
+            {fromPost ? 'Back' : 'New challenge'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Always show end-of-race shell when finished/timeout so upload errors stay reachable.
+  if (results || isEnded || submitting) {
     return (
       <div className="app-shell app-center">
         <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -448,8 +587,18 @@ export const App = () => {
                 <span>{results.wordsTyped.toLocaleString()} words</span>
                 <span>All-time {results.allTimeRank ? `#${results.allTimeRank}` : '—'}</span>
               </div>
+              {!results.ranked && (
+                <p className="mono muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
+                  Partial run saved — needs 50%+ progress to rank on the board
+                </p>
+              )}
             </>
-          ) : null}
+          ) : (
+            <div className="mono muted" style={{ fontSize: '0.6875rem', textAlign: 'center' }}>
+              Live: {wpm} WPM · {accuracy}% · score {score}
+              {elapsed > 0 ? ` · ${elapsed}s` : ''}
+            </div>
+          )}
 
           {error && (
             <div className="alert-error">
@@ -459,16 +608,7 @@ export const App = () => {
                 className="vsc-btn vsc-btn-sm"
                 style={{ display: 'block', marginTop: '0.4rem' }}
                 onClick={() => {
-                  if (challenge) {
-                    const timeSeconds = Math.max(1, elapsed || 1);
-                    const submitWpm =
-                      phase === 'finished'
-                        ? calculateWpm(challenge.content.length, timeSeconds)
-                        : wpm;
-                    submittedKeys.delete(
-                      `${challenge.id}:${phase}:${timeSeconds}:${submitWpm}`
-                    );
-                  }
+                  submittedKeys.clear();
                   void submitResults();
                 }}
               >
@@ -609,6 +749,11 @@ export const App = () => {
                     // Keep the next character locked after every keystroke.
                     requestAnimationFrame(lockCursorInView);
                   }}
+                  onPaste={(e) => {
+                    // Paste is never a valid typing path.
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => e.preventDefault()}
                   onFocus={(e) => {
                     // Stop browser from scrolling the field into a different place.
                     e.preventDefault();
@@ -625,7 +770,7 @@ export const App = () => {
                       }
                     }, 0);
                   }}
-                  disabled={throttled}
+                  disabled={throttled || !raceId}
                   className="teleprompter-capture"
                   spellCheck={false}
                   autoComplete="off"
