@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useTypingGame } from '../hooks/useTypingGame';
 import type { Challenge, ContentDomain } from '../../shared/types/index';
 import { DOMAIN_COLORS } from '../../shared/types/index';
@@ -17,6 +17,9 @@ type Results = {
 /** Guard against React StrictMode double-submits in development. */
 const submittedKeys = new Set<string>();
 
+/** Vertical focus band for the current char (fraction of teleprompter height). */
+const FOCUS_BAND = 0.36;
+
 export const App = () => {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,7 +31,12 @@ export const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [username, setUsername] = useState(context?.username ?? 'Player');
   const [subredditName, setSubredditName] = useState('');
+  const [textOffsetY, setTextOffsetY] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const teleprompterRef = useRef<HTMLDivElement>(null);
+  const textTrackRef = useRef<HTMLDivElement>(null);
+  const cursorRef = useRef<HTMLSpanElement>(null);
+  const textOffsetYRef = useRef(0);
   const autoStartedId = useRef<string | null>(null);
 
   const {
@@ -92,9 +100,61 @@ export const App = () => {
 
   useEffect(() => {
     if (phase === 'playing' && !throttled) {
-      textareaRef.current?.focus();
+      textareaRef.current?.focus({ preventScroll: true });
+      // Cancel any browser scroll-to-focused-input jump (common on mobile).
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
     }
   }, [phase, throttled, challenge?.id]);
+
+  /**
+   * Lock the current character to a fixed focus band.
+   * Uses transform (not scroll) so users never need to scroll to see what to type next.
+   */
+  const lockCursorInView = useCallback(() => {
+    const container = teleprompterRef.current;
+    const track = textTrackRef.current;
+    const cursor = cursorRef.current;
+    if (!container || !track || !cursor) return;
+
+    const focusY = container.clientHeight * FOCUS_BAND;
+    // Both rects include the same translateY, so the delta is transform-invariant
+    // and equals the cursor's Y inside the track content.
+    const trackRect = track.getBoundingClientRect();
+    const cursorRect = cursor.getBoundingClientRect();
+    const cursorYInTrack = cursorRect.top - trackRect.top;
+    const next = focusY - cursorYInTrack - cursorRect.height / 2;
+
+    if (Math.abs(next - textOffsetYRef.current) > 0.5) {
+      textOffsetYRef.current = next;
+      setTextOffsetY(next);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (phase !== 'playing' && phase !== 'idle') return;
+    lockCursorInView();
+  }, [input, phase, challenge?.id, lockCursorInView]);
+
+  // Re-lock when the viewport changes (keyboard open, rotate, resize).
+  useEffect(() => {
+    if (phase !== 'playing' && phase !== 'idle') return;
+
+    const onViewportChange = () => {
+      // Double-rAF: wait for keyboard / layout to settle, then re-measure.
+      requestAnimationFrame(() => requestAnimationFrame(lockCursorInView));
+    };
+
+    window.addEventListener('resize', onViewportChange);
+    window.visualViewport?.addEventListener('resize', onViewportChange);
+    window.visualViewport?.addEventListener('scroll', onViewportChange);
+    return () => {
+      window.removeEventListener('resize', onViewportChange);
+      window.visualViewport?.removeEventListener('resize', onViewportChange);
+      window.visualViewport?.removeEventListener('scroll', onViewportChange);
+    };
+  }, [phase, lockCursorInView]);
 
   const submitResults = useCallback(async () => {
     if (!challenge || phase === 'idle' || phase === 'playing') return;
@@ -196,18 +256,20 @@ export const App = () => {
     return content.split('').map((char, idx) => {
       let className = 'ch-pending';
       let style: React.CSSProperties | undefined;
+      let ref: React.RefObject<HTMLSpanElement | null> | undefined;
 
       if (idx < input.length) {
         className = input[idx] === char ? 'ch-correct' : 'ch-error';
       } else if (idx === input.length) {
         className = 'ch-cursor';
+        ref = cursorRef;
       } else if (challenge.domain === 'code') {
-        style = { color: domainColor, opacity: 0.55 };
+        style = { color: domainColor, opacity: 0.72 };
       }
 
       return (
-        <span key={idx} className={className} style={style}>
-          {char === '\n' ? '↵\n' : char}
+        <span key={idx} ref={ref} className={className} style={style}>
+          {char === '\n' ? '↵\n' : char === ' ' ? '\u00a0' : char}
         </span>
       );
     });
@@ -377,39 +439,76 @@ export const App = () => {
 
         <div className="game-layout">
           <div className="game-editor-col">
-            <div className="editor-panel" style={{ flex: 1 }}>
+            <div className="editor-panel teleprompter-panel">
               <div className="editor-titlebar">
                 <span className="truncate">
-                  challenge.txt — {username}
+                  Teleprompter — {username}
                   {challenge.prompt
                     ? ` · ${challenge.prompt.slice(0, 40)}${challenge.prompt.length > 40 ? '…' : ''}`
                     : ''}
                 </span>
+                <span className="mono muted" style={{ fontSize: '0.625rem', flexShrink: 0, marginLeft: '0.5rem' }}>
+                  {muted ? 'Muted' : 'Reading aloud'}
+                </span>
               </div>
-              <div className="editor-content" style={{ background: 'var(--color-vsc-bg-darker)' }}>
-                {renderCodeChars()}
+
+              <div
+                className="teleprompter"
+                ref={teleprompterRef}
+                onPointerDown={(e) => {
+                  // Keep focus on the capture field without browser scroll-jumping.
+                  e.preventDefault();
+                  if (!throttled) {
+                    textareaRef.current?.focus({ preventScroll: true });
+                  }
+                }}
+                role="presentation"
+              >
+                {/* Fixed focus band: current char always sits here */}
+                <div className="teleprompter-focus-band" aria-hidden />
+                <div className="teleprompter-fade teleprompter-fade-top" aria-hidden />
+                <div className="teleprompter-fade teleprompter-fade-bottom" aria-hidden />
+
+                <div
+                  className="teleprompter-text"
+                  ref={textTrackRef}
+                  style={{ transform: `translate3d(0, ${textOffsetY}px, 0)` }}
+                >
+                  {renderCodeChars()}
+                  {input.length >= challenge.content.length && (
+                    <span ref={cursorRef} className="ch-cursor">
+                      {' '}
+                    </span>
+                  )}
+                </div>
+
+                {/*
+                  Capture field sits on the focus band (not off-screen).
+                  Mobile browsers scroll focused inputs into view — keeping it
+                  here prevents the "scroll up to read / down to type" jump.
+                */}
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => type(e.target.value)}
+                  disabled={throttled}
+                  className="teleprompter-capture"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  aria-label="Type the teleprompter text"
+                  tabIndex={0}
+                  enterKeyHint="enter"
+                />
               </div>
             </div>
 
-            <div>
-              {throttled && (
-                <div className="alert-warn" style={{ marginBottom: '0.35rem' }}>
-                  Locked 1.5s — max 7 words/sec
-                </div>
-              )}
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => type(e.target.value)}
-                placeholder={throttled ? 'Locked…' : 'Type the content above…'}
-                disabled={throttled}
-                className="typing-input"
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-              />
-            </div>
+            {throttled && (
+              <div className="alert-warn">
+                Locked 1.5s — max 7 words/sec
+              </div>
+            )}
           </div>
 
           <aside className="game-aside">
@@ -452,7 +551,7 @@ export const App = () => {
             </div>
 
             <p className="game-hint">
-              Green = correct · Red = error · Final score only is uploaded
+              Current line stays locked in the focus band. 🔊 reads the script aloud.
             </p>
           </aside>
         </div>

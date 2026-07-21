@@ -45,13 +45,18 @@ body {
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  /* Keep the game surface fixed; teleprompter handles its own motion */
+  overscroll-behavior: none;
 }
 
 #root {
   min-height: 100%;
   min-height: 100dvh;
+  height: 100%;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* ---- App shell ---- */
@@ -60,8 +65,12 @@ body {
   flex-direction: column;
   min-height: 100%;
   min-height: 100dvh;
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
   background: var(--color-vsc-bg);
   color: var(--color-vsc-text);
+  overflow: hidden;
 }
 
 .app-header {
@@ -207,6 +216,8 @@ body {
 .editor-titlebar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.25rem 0.55rem;
   min-height: 1.6rem;
   background: var(--color-vsc-sidebar);
@@ -231,47 +242,149 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Game typing input */
-.typing-input {
-  width: 100%;
-  height: 4.25rem;
-  padding: 0.5rem 0.6rem;
-  background: var(--color-vsc-bg-darker);
-  border: 1px solid var(--color-vsc-border);
-  border-radius: 2px;
-  color: var(--color-vsc-text);
-  font-family: var(--font-mono);
-  font-size: clamp(0.75rem, 2.4vw, 0.8125rem);
-  line-height: 1.45;
-  resize: none;
-  outline: none;
-  transition: border-color 120ms, opacity 120ms;
+/* ---- Teleprompter (fixed focus band — no manual scrolling) ---- */
+.teleprompter-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
-.typing-input:focus { border-color: var(--color-vsc-accent); }
-.typing-input:disabled {
-  border-color: var(--color-vsc-red);
-  color: var(--color-vsc-red);
-  opacity: 0.55;
+
+.teleprompter {
+  position: relative;
+  flex: 1;
+  min-height: 10rem;
+  /* Never scroll the script manually — text is transformed under a fixed focus band */
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 122, 204, 0.07) 0%, transparent 65%),
+    var(--color-vsc-bg-darker);
+  cursor: text;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+.teleprompter-text {
+  position: relative;
+  z-index: 1;
+  padding: 0.75rem 1rem 30vh;
+  font-family: var(--font-mono);
+  font-size: clamp(1.1rem, 3.8vw, 1.5rem);
+  line-height: 1.8;
+  letter-spacing: 0.015em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-align: left;
+  user-select: none;
+  will-change: transform;
+  /* Instant lock feels like a real teleprompter; no lag chasing the cursor */
+  transition: none;
+}
+
+/* Horizontal guide where the current character is always locked */
+.teleprompter-focus-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36%;
+  height: 1.9em;
+  z-index: 2;
+  pointer-events: none;
+  transform: translateY(-50%);
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 122, 204, 0.1) 20%,
+    rgba(0, 122, 204, 0.16) 50%,
+    rgba(0, 122, 204, 0.1) 80%,
+    transparent 100%
+  );
+  border-top: 1px solid rgba(0, 122, 204, 0.35);
+  border-bottom: 1px solid rgba(0, 122, 204, 0.35);
+  box-shadow: inset 0 0 24px rgba(0, 122, 204, 0.08);
+}
+
+/* Gradient masks over the viewport (do not sit in scroll flow) */
+.teleprompter-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22%;
+  z-index: 3;
+  pointer-events: none;
+}
+.teleprompter-fade-top {
+  top: 0;
+  background: linear-gradient(to bottom, var(--color-vsc-bg-darker) 0%, transparent 100%);
+}
+.teleprompter-fade-bottom {
+  bottom: 0;
+  height: 28%;
+  background: linear-gradient(to top, var(--color-vsc-bg-darker) 0%, transparent 100%);
+}
+
+/*
+ * Capture field sits ON the focus band (not off-screen).
+ * Mobile browsers scroll focused inputs into view — if the field is off-screen
+ * the whole UI jumps and users lose the next characters to type.
+ */
+.teleprompter-capture {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36%;
+  height: 2.25rem;
+  z-index: 4;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0 1rem;
+  border: none;
+  resize: none;
+  opacity: 0.01; /* not fully 0 — some mobile WebViews ignore fully transparent fields */
+  color: transparent;
+  caret-color: transparent;
+  background: transparent;
+  outline: none;
+  font-size: 16px; /* avoids iOS zoom on focus */
+  line-height: 2.25rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.teleprompter-capture:disabled {
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 @media (min-width: 768px) {
-  .typing-input { height: 5rem; }
   .editor-content { padding: 0.75rem 0.85rem; }
+  .teleprompter-text {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+  }
 }
 
-/* ---- Character Coloring ---- */
-.ch-pending { color: var(--color-vsc-text-muted); }
-.ch-correct { color: var(--color-vsc-green); }
-.ch-error { color: var(--color-vsc-red); background: rgba(244,135,113,0.15); border-radius: 1px; }
+/* ---- Character Coloring (high contrast for teleprompter) ---- */
+.ch-pending { color: #c8c8c8; }
+.ch-correct { color: var(--color-vsc-green); text-shadow: 0 0 12px rgba(78, 201, 176, 0.25); }
+.ch-error {
+  color: var(--color-vsc-red);
+  background: rgba(244, 135, 113, 0.22);
+  border-radius: 2px;
+  text-decoration: underline;
+  text-decoration-color: rgba(244, 135, 113, 0.7);
+}
 .ch-cursor {
   background: var(--color-vsc-accent);
   color: #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.5), 0 0 14px rgba(0, 122, 204, 0.45);
   animation: blink 1s step-end infinite;
 }
 @keyframes blink {
   0%,100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  50% { opacity: 0.35; }
 }
 
 /* ---- Stats ---- */
@@ -321,16 +434,19 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* Prevent the whole page from scrolling under the teleprompter */
+  overflow: hidden;
 }
 
 .game-editor-col {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.45rem;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .game-aside {

@@ -38,6 +38,20 @@ function wpmTimeSeconds(startedAt: number): number {
   return Math.max(1, sec);
 }
 
+/** Split text into speech-friendly chunks (long utterances are unreliable). */
+function speechChunks(text: string): string[] {
+  const parts = text.match(/[^.!?\n]+[.!?\n]*|[^.!?\n]+$/g) ?? [text];
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+function cancelSpeech() {
+  try {
+    window.speechSynthesis?.cancel();
+  } catch {
+    /* ignore */
+  }
+}
+
 export function useTypingGame(challenge: Challenge | null) {
   const [state, setState] = useState<TypingState>({
     phase: 'idle',
@@ -48,19 +62,25 @@ export function useTypingGame(challenge: Challenge | null) {
     remaining: TIME_LIMIT_SECONDS,
     progress: 0,
     score: 0,
-    muted: true,
+    muted: false,
     throttled: false,
   });
 
   const t0 = useRef<number>(0);
   const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const spokenUntil = useRef(0);
   const isThrottledRef = useRef(false);
   const lastTypeAt = useRef(0);
   const lastLen = useRef(0);
   const inputRef = useRef('');
-  const mutedRef = useRef(true);
+  const mutedRef = useRef(false);
   const phaseRef = useRef<TypingState['phase']>('idle');
+  const challengeRef = useRef(challenge);
+  /** True once we have queued narration for this race (user-gesture unlock). */
+  const narrationStarted = useRef(false);
+
+  useEffect(() => {
+    challengeRef.current = challenge;
+  }, [challenge]);
 
   useEffect(() => {
     inputRef.current = state.input;
@@ -92,7 +112,7 @@ export function useTypingGame(challenge: Challenge | null) {
   useEffect(() => {
     if (state.phase === 'timeout' || state.phase === 'finished') {
       clearInterval(timer.current);
-      window.speechSynthesis?.cancel();
+      cancelSpeech();
     }
   }, [state.phase]);
 
@@ -111,58 +131,51 @@ export function useTypingGame(challenge: Challenge | null) {
     }, THROTTLE_LOCK_MS);
   }, []);
 
-  const speakCorrectWords = useCallback((val: string, text: string) => {
-    if (mutedRef.current || !window.speechSynthesis) return;
+  /** Narrate challenge text from `fromIndex` (teleprompter voice-over). */
+  const speakContent = useCallback((text: string, fromIndex = 0, force = false) => {
+    if (!force && mutedRef.current) return;
+    if (!window.speechSynthesis || !text) return;
 
-    const start = spokenUntil.current;
-    if (val.length <= start) return;
+    cancelSpeech();
+    const remaining = text.slice(fromIndex).trim();
+    if (!remaining) return;
 
-    const region = val.slice(start);
-    const re = /([A-Za-z_][\w']*)([^\w']+)/g;
-    let match: RegExpExecArray | null;
-    let cursor = start;
-
-    while ((match = re.exec(region)) !== null) {
-      const word = match[1]!;
-      const absStart = start + match.index;
-      const absEnd = absStart + word.length;
-      const userWord = val.slice(absStart, absEnd);
-      const challengeWord = text.slice(absStart, absEnd);
-
-      if (userWord === challengeWord) {
-        const u = new SpeechSynthesisUtterance(word);
-        u.rate = 1.25;
-        u.pitch = 1;
-        window.speechSynthesis.speak(u);
-      }
-
-      cursor = start + match.index + match[0].length;
-    }
-
-    if (cursor > spokenUntil.current) {
-      spokenUntil.current = cursor;
+    for (const chunk of speechChunks(remaining)) {
+      const u = new SpeechSynthesisUtterance(chunk);
+      u.rate = 0.95;
+      u.pitch = 1;
+      window.speechSynthesis.speak(u);
     }
   }, []);
 
   const start = useCallback(() => {
     t0.current = Date.now();
-    spokenUntil.current = 0;
     isThrottledRef.current = false;
     lastTypeAt.current = Date.now();
     lastLen.current = 0;
-    setState((prev) => ({
-      phase: 'playing',
-      input: '',
-      wpm: 0,
-      accuracy: 100,
-      elapsed: 0,
-      remaining: TIME_LIMIT_SECONDS,
-      progress: 0,
-      score: 0,
-      muted: prev.muted,
-      throttled: false,
-    }));
-  }, []);
+    narrationStarted.current = false;
+    setState((prev) => {
+      // Best-effort start (often blocked until a user gesture / first keystroke)
+      if (!prev.muted && challengeRef.current?.content) {
+        queueMicrotask(() => {
+          if (mutedRef.current) return;
+          speakContent(challengeRef.current!.content, 0, true);
+        });
+      }
+      return {
+        phase: 'playing',
+        input: '',
+        wpm: 0,
+        accuracy: 100,
+        elapsed: 0,
+        remaining: TIME_LIMIT_SECONDS,
+        progress: 0,
+        score: 0,
+        muted: prev.muted,
+        throttled: false,
+      };
+    });
+  }, [speakContent]);
 
   const type = useCallback(
     (rawVal: string) => {
@@ -193,7 +206,22 @@ export function useTypingGame(challenge: Challenge | null) {
       lastLen.current = val.length;
 
       const text = challenge.content;
-      speakCorrectWords(val, text);
+
+      // Browsers often require a keystroke before speechSynthesis works.
+      // If auto-start narration was blocked, unlock it on first accepted input.
+      if (
+        !mutedRef.current &&
+        !narrationStarted.current &&
+        val.length > 0 &&
+        text.length > 0
+      ) {
+        narrationStarted.current = true;
+        const synth = window.speechSynthesis;
+        const alreadySpeaking = Boolean(synth?.speaking || synth?.pending);
+        if (!alreadySpeaking) {
+          speakContent(text, 0, true);
+        }
+      }
 
       let ok = 0;
       for (let i = 0; i < val.length; i++) {
@@ -227,26 +255,35 @@ export function useTypingGame(challenge: Challenge | null) {
         phase: done ? 'finished' : p.phase,
       }));
 
-      if (done) window.speechSynthesis?.cancel();
+      if (done) cancelSpeech();
     },
-    [challenge, lockInput, speakCorrectWords]
+    [challenge, lockInput, speakContent]
   );
 
   const toggleMute = useCallback(() => {
     setState((p) => {
-      if (!p.muted) window.speechSynthesis?.cancel();
-      return { ...p, muted: !p.muted };
+      if (!p.muted) {
+        cancelSpeech();
+        return { ...p, muted: true };
+      }
+      // Unmute: narrate remaining content from current cursor
+      const content = challengeRef.current?.content ?? '';
+      narrationStarted.current = true;
+      queueMicrotask(() => {
+        speakContent(content, inputRef.current.length, true);
+      });
+      return { ...p, muted: false };
     });
-  }, []);
+  }, [speakContent]);
 
   const reset = useCallback(() => {
     clearInterval(timer.current);
     t0.current = 0;
-    spokenUntil.current = 0;
     isThrottledRef.current = false;
     lastTypeAt.current = 0;
     lastLen.current = 0;
-    window.speechSynthesis?.cancel();
+    narrationStarted.current = false;
+    cancelSpeech();
     setState((prev) => ({
       phase: 'idle',
       input: '',

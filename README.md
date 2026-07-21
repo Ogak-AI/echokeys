@@ -28,7 +28,7 @@ Accuracy matters most.
 - Leaderboards and badges are **per community**  
 - Weekly top 3 → `Weekly Champion - r/subreddit` (same for monthly / yearly)  
 - Lifetime word counter accumulates on every finished session  
-- Optional word pronunciation (muted by default)
+- Teleprompter view keeps the cursor centered; TTS reads the generated script (toggle with mute)
 
 ## Tech stack
 
