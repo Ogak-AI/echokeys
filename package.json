@@ -17,12 +17,12 @@
     "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@devvit/server": "^0.13.8",
-    "@devvit/web": "^0.13.8",
+    "@devvit/server": "^0.13.9",
+    "@devvit/web": "^0.13.9",
     "express": "^5.2.1"
   },
   "devDependencies": {
-    "@devvit/cli": "^0.13.8",
+    "@devvit/cli": "^0.13.9",
     "@tailwindcss/vite": "^4.1.6",
     "@types/express": "^5.0.2",
     "@types/node": "^22.15.0",
@@ -36,5 +36,10 @@
     "tsx": "^4.23.1",
     "typescript": "^5.8.2",
     "vite": "^6.4.1"
+  },
+  "overrides": {
+    "js-yaml": "4.3.0",
+    "protobufjs": "7.6.5",
+    "tmp": "0.2.7"
   }
 }

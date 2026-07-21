@@ -22,6 +22,8 @@ export interface TypingState {
   score: number;
   muted: boolean;
   throttled: boolean;
+  /** True while browser TTS is actively speaking the script. */
+  speaking: boolean;
 }
 
 function elapsedSeconds(startedAt: number): number {
@@ -52,6 +54,33 @@ function cancelSpeech() {
   }
 }
 
+/**
+ * Chrome (and some WebViews) pause speechSynthesis after ~15s unless resumed.
+ * Keep a lightweight keep-alive while narration is expected.
+ */
+let resumeTimer: ReturnType<typeof setInterval> | undefined;
+
+function startSpeechKeepAlive() {
+  stopSpeechKeepAlive();
+  resumeTimer = setInterval(() => {
+    try {
+      const s = window.speechSynthesis;
+      if (s && (s.speaking || s.pending) && s.paused) {
+        s.resume();
+      }
+    } catch {
+      /* ignore */
+    }
+  }, 4000);
+}
+
+function stopSpeechKeepAlive() {
+  if (resumeTimer != null) {
+    clearInterval(resumeTimer);
+    resumeTimer = undefined;
+  }
+}
+
 export function useTypingGame(challenge: Challenge | null) {
   const [state, setState] = useState<TypingState>({
     phase: 'idle',
@@ -64,6 +93,7 @@ export function useTypingGame(challenge: Challenge | null) {
     score: 0,
     muted: false,
     throttled: false,
+    speaking: false,
   });
 
   const t0 = useRef<number>(0);
@@ -77,6 +107,8 @@ export function useTypingGame(challenge: Challenge | null) {
   const challengeRef = useRef(challenge);
   /** True once we have queued narration for this race (user-gesture unlock). */
   const narrationStarted = useRef(false);
+  /** Prevent stacking duplicate utterance queues. */
+  const speakingRef = useRef(false);
 
   useEffect(() => {
     challengeRef.current = challenge;
@@ -113,8 +145,18 @@ export function useTypingGame(challenge: Challenge | null) {
     if (state.phase === 'timeout' || state.phase === 'finished') {
       clearInterval(timer.current);
       cancelSpeech();
+      stopSpeechKeepAlive();
+      speakingRef.current = false;
+      setState((p) => (p.speaking ? { ...p, speaking: false } : p));
     }
   }, [state.phase]);
+
+  useEffect(() => {
+    return () => {
+      cancelSpeech();
+      stopSpeechKeepAlive();
+    };
+  }, []);
 
   const lockInput = useCallback((wpmHint?: number) => {
     isThrottledRef.current = true;
@@ -134,19 +176,88 @@ export function useTypingGame(challenge: Challenge | null) {
   /** Narrate challenge text from `fromIndex` (teleprompter voice-over). */
   const speakContent = useCallback((text: string, fromIndex = 0, force = false) => {
     if (!force && mutedRef.current) return;
-    if (!window.speechSynthesis || !text) return;
+    if (typeof window === 'undefined' || !window.speechSynthesis || !text) return;
 
     cancelSpeech();
     const remaining = text.slice(fromIndex).trim();
-    if (!remaining) return;
+    if (!remaining) {
+      speakingRef.current = false;
+      setState((p) => (p.speaking ? { ...p, speaking: false } : p));
+      stopSpeechKeepAlive();
+      return;
+    }
 
-    for (const chunk of speechChunks(remaining)) {
+    const chunks = speechChunks(remaining);
+    if (chunks.length === 0) return;
+
+    speakingRef.current = true;
+    setState((p) => ({ ...p, speaking: true }));
+    startSpeechKeepAlive();
+
+    let remainingUtterances = chunks.length;
+
+    for (const chunk of chunks) {
       const u = new SpeechSynthesisUtterance(chunk);
       u.rate = 0.95;
       u.pitch = 1;
+      u.volume = 1;
+      u.onend = () => {
+        remainingUtterances -= 1;
+        if (remainingUtterances <= 0) {
+          speakingRef.current = false;
+          stopSpeechKeepAlive();
+          setState((p) => (p.speaking ? { ...p, speaking: false } : p));
+        }
+      };
+      u.onerror = () => {
+        remainingUtterances -= 1;
+        if (remainingUtterances <= 0) {
+          speakingRef.current = false;
+          stopSpeechKeepAlive();
+          setState((p) => (p.speaking ? { ...p, speaking: false } : p));
+        }
+      };
       window.speechSynthesis.speak(u);
     }
+
+    // Some engines start paused after cancel(); nudge resume.
+    try {
+      window.speechSynthesis.resume();
+    } catch {
+      /* ignore */
+    }
   }, []);
+
+  /**
+   * Ensure narration is running while the player types.
+   * Safe to call from user gestures (tap/key) so mobile unlocks TTS.
+   */
+  const ensureNarration = useCallback(
+    (fromIndex?: number) => {
+      if (mutedRef.current) return;
+      if (phaseRef.current !== 'playing' && phaseRef.current !== 'idle') return;
+      const content = challengeRef.current?.content ?? '';
+      if (!content) return;
+
+      const startAt = fromIndex ?? inputRef.current.length;
+      const synth = window.speechSynthesis;
+      const alreadySpeaking = Boolean(synth?.speaking || synth?.pending);
+
+      if (alreadySpeaking && narrationStarted.current) {
+        // Keep alive if Chrome paused us mid-utterance.
+        try {
+          synth?.resume();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
+      narrationStarted.current = true;
+      speakContent(content, startAt, true);
+    },
+    [speakContent]
+  );
 
   const start = useCallback(() => {
     t0.current = Date.now();
@@ -154,12 +265,15 @@ export function useTypingGame(challenge: Challenge | null) {
     lastTypeAt.current = Date.now();
     lastLen.current = 0;
     narrationStarted.current = false;
+    speakingRef.current = false;
     setState((prev) => {
       // Best-effort start (often blocked until a user gesture / first keystroke)
       if (!prev.muted && challengeRef.current?.content) {
         queueMicrotask(() => {
           if (mutedRef.current) return;
+          // Mark attempt; ensureNarration on first key/tap will re-fire if blocked.
           speakContent(challengeRef.current!.content, 0, true);
+          narrationStarted.current = true;
         });
       }
       return {
@@ -173,6 +287,7 @@ export function useTypingGame(challenge: Challenge | null) {
         score: 0,
         muted: prev.muted,
         throttled: false,
+        speaking: false,
       };
     });
   }, [speakContent]);
@@ -209,17 +324,22 @@ export function useTypingGame(challenge: Challenge | null) {
 
       // Browsers often require a keystroke before speechSynthesis works.
       // If auto-start narration was blocked, unlock it on first accepted input.
-      if (
-        !mutedRef.current &&
-        !narrationStarted.current &&
-        val.length > 0 &&
-        text.length > 0
-      ) {
-        narrationStarted.current = true;
+      // Continue reading remaining text while the user types (do not cancel on each key).
+      if (!mutedRef.current && val.length > 0 && text.length > 0) {
         const synth = window.speechSynthesis;
         const alreadySpeaking = Boolean(synth?.speaking || synth?.pending);
-        if (!alreadySpeaking) {
-          speakContent(text, 0, true);
+        if (!narrationStarted.current || !alreadySpeaking) {
+          // Start from the beginning once so the full script is heard while typing.
+          // If speech died mid-race, resume from the current cursor so it stays useful.
+          const from = narrationStarted.current ? val.length : 0;
+          narrationStarted.current = true;
+          speakContent(text, from, true);
+        } else {
+          try {
+            synth?.resume();
+          } catch {
+            /* ignore */
+          }
         }
       }
 
@@ -255,7 +375,11 @@ export function useTypingGame(challenge: Challenge | null) {
         phase: done ? 'finished' : p.phase,
       }));
 
-      if (done) cancelSpeech();
+      if (done) {
+        cancelSpeech();
+        stopSpeechKeepAlive();
+        speakingRef.current = false;
+      }
     },
     [challenge, lockInput, speakContent]
   );
@@ -264,7 +388,9 @@ export function useTypingGame(challenge: Challenge | null) {
     setState((p) => {
       if (!p.muted) {
         cancelSpeech();
-        return { ...p, muted: true };
+        stopSpeechKeepAlive();
+        speakingRef.current = false;
+        return { ...p, muted: true, speaking: false };
       }
       // Unmute: narrate remaining content from current cursor
       const content = challengeRef.current?.content ?? '';
@@ -276,6 +402,19 @@ export function useTypingGame(challenge: Challenge | null) {
     });
   }, [speakContent]);
 
+  /** Explicit "Read" action — restarts narration from the live cursor. */
+  const readAloud = useCallback(() => {
+    if (mutedRef.current) {
+      // Unmute + read
+      setState((p) => ({ ...p, muted: false }));
+      mutedRef.current = false;
+    }
+    const content = challengeRef.current?.content ?? '';
+    if (!content) return;
+    narrationStarted.current = true;
+    speakContent(content, inputRef.current.length, true);
+  }, [speakContent]);
+
   const reset = useCallback(() => {
     clearInterval(timer.current);
     t0.current = 0;
@@ -283,7 +422,9 @@ export function useTypingGame(challenge: Challenge | null) {
     lastTypeAt.current = 0;
     lastLen.current = 0;
     narrationStarted.current = false;
+    speakingRef.current = false;
     cancelSpeech();
+    stopSpeechKeepAlive();
     setState((prev) => ({
       phase: 'idle',
       input: '',
@@ -295,8 +436,17 @@ export function useTypingGame(challenge: Challenge | null) {
       score: 0,
       muted: prev.muted,
       throttled: false,
+      speaking: false,
     }));
   }, []);
 
-  return { ...state, start, type, toggleMute, reset };
+  return {
+    ...state,
+    start,
+    type,
+    toggleMute,
+    readAloud,
+    ensureNarration,
+    reset,
+  };
 }

@@ -18,7 +18,19 @@ type Results = {
 const submittedKeys = new Set<string>();
 
 /** Vertical focus band for the current char (fraction of teleprompter height). */
-const FOCUS_BAND = 0.36;
+const FOCUS_BAND = 0.32;
+
+function resetDocumentScroll() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  // visualViewport offset can leave the page "scrolled" under a keyboard
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+  } catch {
+    window.scrollTo(0, 0);
+  }
+}
 
 export const App = () => {
   const [prompt, setPrompt] = useState('');
@@ -36,8 +48,11 @@ export const App = () => {
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const textTrackRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<HTMLSpanElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const textOffsetYRef = useRef(0);
   const autoStartedId = useRef<string | null>(null);
+  const phaseRef = useRef<'idle' | 'playing' | 'finished' | 'timeout'>('idle');
+  const throttledRef = useRef(false);
 
   const {
     phase,
@@ -50,11 +65,21 @@ export const App = () => {
     elapsed,
     muted,
     throttled,
+    speaking,
     start,
     type,
     toggleMute,
+    readAloud,
+    ensureNarration,
     reset,
   } = useTypingGame(challenge);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+    throttledRef.current = throttled;
+  }, [phase, throttled]);
+
+  const isPlaying = phase === 'playing' || phase === 'idle';
 
   useEffect(() => {
     let cancelled = false;
@@ -98,15 +123,29 @@ export const App = () => {
     }
   }, [challenge, phase, start]);
 
-  useEffect(() => {
-    if (phase === 'playing' && !throttled) {
-      textareaRef.current?.focus({ preventScroll: true });
-      // Cancel any browser scroll-to-focused-input jump (common on mobile).
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
+  /**
+   * Fit the game shell to the *visible* viewport (keyboard-safe on phones).
+   * Without this, mobile browsers push the focused input and users must scroll
+   * up to see the generated text they are supposed to type.
+   */
+  const fitShellToVisibleViewport = useCallback(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    const vv = window.visualViewport;
+    if (vv) {
+      const h = Math.max(0, Math.round(vv.height));
+      const top = Math.round(vv.offsetTop);
+      shell.style.height = `${h}px`;
+      shell.style.maxHeight = `${h}px`;
+      shell.style.transform = top ? `translateY(${top}px)` : '';
+    } else {
+      shell.style.height = '';
+      shell.style.maxHeight = '';
+      shell.style.transform = '';
     }
-  }, [phase, throttled, challenge?.id]);
+    resetDocumentScroll();
+  }, []);
 
   /**
    * Lock the current character to a fixed focus band.
@@ -132,29 +171,80 @@ export const App = () => {
     }
   }, []);
 
+  const focusCapture = useCallback(() => {
+    if (throttled) return;
+    textareaRef.current?.focus({ preventScroll: true });
+    resetDocumentScroll();
+    fitShellToVisibleViewport();
+    requestAnimationFrame(() => {
+      lockCursorInView();
+      resetDocumentScroll();
+    });
+  }, [throttled, fitShellToVisibleViewport, lockCursorInView]);
+
+  useEffect(() => {
+    if (phase === 'playing' && !throttled) {
+      focusCapture();
+    }
+  }, [phase, throttled, challenge?.id, focusCapture]);
+
   useLayoutEffect(() => {
-    if (phase !== 'playing' && phase !== 'idle') return;
+    if (!isPlaying) return;
     lockCursorInView();
-  }, [input, phase, challenge?.id, lockCursorInView]);
+  }, [input, phase, challenge?.id, isPlaying, lockCursorInView]);
 
   // Re-lock when the viewport changes (keyboard open, rotate, resize).
   useEffect(() => {
-    if (phase !== 'playing' && phase !== 'idle') return;
+    if (!isPlaying) return;
 
     const onViewportChange = () => {
+      fitShellToVisibleViewport();
       // Double-rAF: wait for keyboard / layout to settle, then re-measure.
-      requestAnimationFrame(() => requestAnimationFrame(lockCursorInView));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          lockCursorInView();
+          resetDocumentScroll();
+        })
+      );
     };
 
+    fitShellToVisibleViewport();
+    onViewportChange();
+
     window.addEventListener('resize', onViewportChange);
+    window.addEventListener('orientationchange', onViewportChange);
     window.visualViewport?.addEventListener('resize', onViewportChange);
     window.visualViewport?.addEventListener('scroll', onViewportChange);
+
+    // Hard-block page scroll while racing — text moves under a fixed focus band.
+    const blockScroll = (e: Event) => {
+      e.preventDefault();
+      resetDocumentScroll();
+    };
+    const onWindowScroll = () => resetDocumentScroll();
+
+    window.addEventListener('scroll', onWindowScroll, { passive: true });
+    document.addEventListener('touchmove', blockScroll, { passive: false });
+    document.documentElement.classList.add('ek-lock-scroll');
+    document.body.classList.add('ek-lock-scroll');
+
     return () => {
       window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('orientationchange', onViewportChange);
       window.visualViewport?.removeEventListener('resize', onViewportChange);
       window.visualViewport?.removeEventListener('scroll', onViewportChange);
+      window.removeEventListener('scroll', onWindowScroll);
+      document.removeEventListener('touchmove', blockScroll);
+      document.documentElement.classList.remove('ek-lock-scroll');
+      document.body.classList.remove('ek-lock-scroll');
+      const shell = shellRef.current;
+      if (shell) {
+        shell.style.height = '';
+        shell.style.maxHeight = '';
+        shell.style.transform = '';
+      }
     };
-  }, [phase, lockCursorInView]);
+  }, [isPlaying, fitShellToVisibleViewport, lockCursorInView]);
 
   const submitResults = useCallback(async () => {
     if (!challenge || phase === 'idle' || phase === 'playing') return;
@@ -409,9 +499,11 @@ export const App = () => {
     );
   }
 
-  if (challenge && (phase === 'playing' || phase === 'idle')) {
+  if (challenge && isPlaying) {
+    const readLabel = muted ? 'Read' : speaking ? 'Reading…' : 'Read';
+
     return (
-      <div className="app-shell">
+      <div className="app-shell app-shell-game" ref={shellRef}>
         <header className="app-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
             <span className="app-header-title">Echokeys</span>
@@ -428,8 +520,29 @@ export const App = () => {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
-            <button onClick={toggleMute} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
-              {muted ? '🔇' : '🔊'}
+            <button
+              onClick={() => {
+                readAloud();
+                focusCapture();
+              }}
+              className="vsc-btn vsc-btn-ghost vsc-btn-sm"
+              type="button"
+              aria-label="Read generated text aloud"
+              title="Read the generated text aloud while you type"
+            >
+              🔊 {readLabel}
+            </button>
+            <button
+              onClick={() => {
+                toggleMute();
+                focusCapture();
+              }}
+              className="vsc-btn vsc-btn-ghost vsc-btn-sm"
+              type="button"
+              aria-label={muted ? 'Unmute narration' : 'Mute narration'}
+              title={muted ? 'Unmute' : 'Mute'}
+            >
+              {muted ? '🔇' : 'Mute'}
             </button>
             <button onClick={handleTryAgain} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
               Reset
@@ -448,7 +561,7 @@ export const App = () => {
                     : ''}
                 </span>
                 <span className="mono muted" style={{ fontSize: '0.625rem', flexShrink: 0, marginLeft: '0.5rem' }}>
-                  {muted ? 'Muted' : 'Reading aloud'}
+                  {muted ? 'Muted' : speaking ? 'Reading aloud' : 'Tap Read or type to hear'}
                 </span>
               </div>
 
@@ -458,9 +571,10 @@ export const App = () => {
                 onPointerDown={(e) => {
                   // Keep focus on the capture field without browser scroll-jumping.
                   e.preventDefault();
-                  if (!throttled) {
-                    textareaRef.current?.focus({ preventScroll: true });
-                  }
+                  // User gesture unlocks speechSynthesis on mobile / WebViews.
+                  // Start from the beginning only if nothing typed yet; else resume remaining.
+                  ensureNarration(input.length > 0 ? input.length : 0);
+                  focusCapture();
                 }}
                 role="presentation"
               >
@@ -490,16 +604,37 @@ export const App = () => {
                 <textarea
                   ref={textareaRef}
                   value={input}
-                  onChange={(e) => type(e.target.value)}
+                  onChange={(e) => {
+                    type(e.target.value);
+                    // Keep the next character locked after every keystroke.
+                    requestAnimationFrame(lockCursorInView);
+                  }}
+                  onFocus={(e) => {
+                    // Stop browser from scrolling the field into a different place.
+                    e.preventDefault();
+                    resetDocumentScroll();
+                    fitShellToVisibleViewport();
+                    requestAnimationFrame(lockCursorInView);
+                  }}
+                  onBlur={() => {
+                    // Re-focus so soft keyboard stays up on mobile (unless finished).
+                    setTimeout(() => {
+                      if (phaseRef.current === 'playing' && !throttledRef.current) {
+                        textareaRef.current?.focus({ preventScroll: true });
+                        resetDocumentScroll();
+                      }
+                    }, 0);
+                  }}
                   disabled={throttled}
                   className="teleprompter-capture"
                   spellCheck={false}
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
+                  inputMode="text"
+                  enterKeyHint="enter"
                   aria-label="Type the teleprompter text"
                   tabIndex={0}
-                  enterKeyHint="enter"
                 />
               </div>
             </div>
@@ -551,7 +686,8 @@ export const App = () => {
             </div>
 
             <p className="game-hint">
-              Current line stays locked in the focus band. 🔊 reads the script aloud.
+              Current line stays locked in the focus band — no scrolling needed. 🔊 Read speaks the
+              generated text while you type.
             </p>
           </aside>
         </div>

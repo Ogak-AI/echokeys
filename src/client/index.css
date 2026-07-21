@@ -49,6 +49,24 @@ body {
   overscroll-behavior: none;
 }
 
+/* While racing: hard-lock document scroll (class toggled from game App) */
+html.ek-lock-scroll,
+html.ek-lock-scroll body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  height: 100%;
+  height: 100dvh;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  touch-action: manipulation;
+}
+
+html.ek-lock-scroll #root {
+  height: 100%;
+  overflow: hidden;
+}
+
 #root {
   min-height: 100%;
   min-height: 100dvh;
@@ -71,18 +89,27 @@ body {
   background: var(--color-vsc-bg);
   color: var(--color-vsc-text);
   overflow: hidden;
+  width: 100%;
+}
+
+/* Game race shell: sized by JS to visualViewport (keyboard-safe on phones) */
+.app-shell-game {
+  position: relative;
+  min-height: 0;
+  /* height/max-height/transform set inline from visualViewport */
 }
 
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.35rem 0.65rem;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
   min-height: 2.25rem;
   background: var(--color-vsc-sidebar);
   border-bottom: 1px solid var(--color-vsc-border);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .app-header-title {
@@ -253,7 +280,7 @@ body {
 .teleprompter {
   position: relative;
   flex: 1;
-  min-height: 10rem;
+  min-height: 8rem;
   /* Never scroll the script manually — text is transformed under a fixed focus band */
   overflow: hidden;
   background:
@@ -262,6 +289,9 @@ body {
   cursor: text;
   touch-action: manipulation;
   overscroll-behavior: none;
+  /* Prefer the teleprompter over stats when space is tight (keyboard open) */
+  flex-grow: 1;
+  flex-shrink: 1;
 }
 
 .teleprompter-text {
@@ -287,7 +317,7 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  top: 36%;
+  top: 32%;
   height: 1.9em;
   z-index: 2;
   pointer-events: none;
@@ -333,7 +363,7 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  top: 36%;
+  top: 32%;
   height: 2.25rem;
   z-index: 4;
   transform: translateY(-50%);
@@ -350,6 +380,10 @@ body {
   line-height: 2.25rem;
   overflow: hidden;
   white-space: nowrap;
+  /* Reduce mobile browser scroll-into-view thrash */
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
 }
 .teleprompter-capture:disabled {
   cursor: not-allowed;
@@ -452,11 +486,13 @@ body {
 .game-aside {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.45rem 0.55rem 0.55rem;
+  gap: 0.3rem;
+  padding: 0.35rem 0.55rem 0.45rem;
   background: var(--color-vsc-sidebar);
   border-top: 1px solid var(--color-vsc-border);
   flex-shrink: 0;
+  /* Keep stats compact so teleprompter (and current line) stay above the keyboard */
+  max-height: 38%;
 }
 
 .game-stats-row {
