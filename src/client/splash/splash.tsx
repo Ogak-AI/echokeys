@@ -106,7 +106,7 @@ const Splash = () => {
             </h1>
           </div>
           <p className="muted" style={{ fontSize: '0.75rem' }}>
-            AI writes it. You race typing it.
+            Paste the text. Race typing it. Climb the board.
           </p>
           {communityLabel && (
             <p
@@ -125,7 +125,7 @@ const Splash = () => {
               <span style={{ fontWeight: 600, color: 'var(--color-vsc-green)' }}>{username}</span>
             </p>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Type AI challenges. Climb your sub&apos;s weekly board. Accuracy wins.
+              Most correct words, lowest time. Climb your sub&apos;s weekly board.
             </p>
           </div>
 
@@ -210,7 +210,7 @@ const Splash = () => {
         </div>
 
         <p className="muted mono" style={{ fontSize: '0.5625rem', textAlign: 'center', opacity: 0.7 }}>
-          Score = (Acc% × 100) + WPM − (time/60)
+          Rank = most correct words · then lowest time
         </p>
       </div>
     </div>

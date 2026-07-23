@@ -9,7 +9,6 @@ import {
 } from '@devvit/web/server';
 import type { UiResponse } from '@devvit/shared';
 import express from 'express';
-import { generateContent } from './services/contentGenerator.js';
 import {
   saveScore,
   saveChallenge,
@@ -39,6 +38,7 @@ import {
   sanitizePrompt,
   validatePlayMetrics,
 } from '../shared/utils/antiCheat.js';
+import { detectContentDomain } from '../shared/utils/contentDomain.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -49,20 +49,6 @@ type RaceSession = {
   challengeId: string;
   startedAt: number;
 };
-
-async function getLlmConfig() {
-  const apiKey =
-    (await settings.get<string>('gemini_api_key')) ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    '';
-  const model =
-    (await settings.get<string>('gemini_model')) ||
-    process.env.GEMINI_MODEL ||
-    'gemini-3.6-flash';
-
-  return { apiKey, model };
-}
 
 function getSubredditId(): string {
   return context.subredditId || 'global';
@@ -244,7 +230,14 @@ async function claimRaceSession(session: RaceSession): Promise<RaceLookupResult>
 function didLeaderboardChange(a: LeaderboardEntry[], b: LeaderboardEntry[]): boolean {
   if (a.length !== b.length) return true;
   for (let i = 0; i < a.length; i++) {
-    if (a[i]?.username !== b[i]?.username || a[i]?.score !== b[i]?.score) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      left?.username !== right?.username ||
+      left?.bestCorrectWords !== right?.bestCorrectWords ||
+      left?.bestTimeSeconds !== right?.bestTimeSeconds ||
+      left?.score !== right?.score
+    ) {
       return true;
     }
   }
@@ -255,55 +248,15 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-type CachedPromptContent = {
-  content: string;
-  domain: Challenge['domain'];
-  lineCount: number;
-};
-
+/**
+ * Challenge content is exactly what the user entered — no AI rewrite.
+ * Players see and type that same text, character for character.
+ */
 async function createChallengeFromPrompt(prompt: string, createdBy: string): Promise<Challenge> {
   const subId = getSubredditId();
-  const cacheKey = `prompt_cache:${subId}:${prompt.toLowerCase()}`;
-
-  let content = '';
-  let domain: Challenge['domain'] = 'prose';
-  let lineCount = 0;
-  let fromCache = false;
-
-  const memHit = memoryCache.get<CachedPromptContent>(cacheKey);
-  if (memHit) {
-    content = memHit.content;
-    domain = memHit.domain;
-    lineCount = memHit.lineCount;
-    fromCache = true;
-  } else {
-    const cachedRaw = await redis.get(cacheKey);
-    if (cachedRaw) {
-      try {
-        const cached = JSON.parse(cachedRaw) as CachedPromptContent;
-        content = cached.content;
-        domain = cached.domain;
-        lineCount = cached.lineCount;
-        fromCache = true;
-        memoryCache.set(cacheKey, cached, 3600000);
-      } catch {
-        // corrupt cache — regenerate
-      }
-    }
-  }
-
-  if (!fromCache || !content) {
-    const config = await getLlmConfig();
-    const generated = await generateContent(prompt, config);
-    content = generated.content;
-    domain = generated.domain;
-    lineCount = generated.lineCount;
-    const payload: CachedPromptContent = { content, domain, lineCount };
-    await redis.set(cacheKey, JSON.stringify(payload));
-    memoryCache.set(cacheKey, payload, 3600000);
-  } else {
-    console.log(`[API] Prompt cache hit for "${prompt.slice(0, 60)}"`);
-  }
+  const content = prompt;
+  const domain = detectContentDomain(content);
+  const lineCount = content.split('\n').length;
 
   const challenge: Challenge = {
     id: newId('ch'),
@@ -348,33 +301,33 @@ app.get('/api/me', async (_req, res) => {
   }
 });
 
-// ---- Content Generation (in-app free play) ----
+// ---- Create challenge from exact text (in-app free play) ----
 app.post('/api/challenge/generate', async (req, res) => {
   try {
     const { prompt: rawPrompt } = req.body as { prompt?: string };
 
     if (!rawPrompt || typeof rawPrompt !== 'string') {
-      return res.status(400).json({ error: 'Prompt is required' });
+      return res.status(400).json({ error: 'Text is required' });
     }
 
     const prompt = sanitizePrompt(rawPrompt);
     if (prompt.length < 3) {
-      return res.status(400).json({ error: 'Prompt must be at least 3 characters' });
+      return res.status(400).json({ error: 'Text must be at least 3 characters' });
     }
 
     const username = await resolveUsername();
     const allowed = await checkRateLimit(username, 'generate', 5);
     if (!allowed) {
       return res.status(429).json({
-        error: 'Rate limit exceeded: max 5 prompt generations per hour',
+        error: 'Rate limit exceeded: max 5 challenges per hour',
       });
     }
 
     const challenge = await createChallengeFromPrompt(prompt, username);
     return res.json({ challenge });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Generation failed';
-    console.error('[API] Generate error:', err);
+    const message = err instanceof Error ? err.message : 'Failed to create challenge';
+    console.error('[API] Challenge create error:', err);
     return res.status(500).json({ error: message });
   }
 });
@@ -545,6 +498,7 @@ app.post('/api/score/submit', async (req, res) => {
       playedAt: Date.now(),
       communityId: subId,
       wordsTyped: metrics.wordsTyped,
+      correctWords: metrics.correctWords,
     };
 
     const previousEntries = await getWeeklyLeaderboard(redis, subId);
@@ -570,7 +524,7 @@ app.post('/api/score/submit', async (req, res) => {
     }
 
     console.log(
-      `[API] Score submitted: ${player} — WPM:${metrics.wpm} Acc:${metrics.accuracy}% Score:${scoreValue} Words:${metrics.wordsTyped} completed=${metrics.completed} ranked=${metrics.eligibleForLeaderboard}`
+      `[API] Score submitted: ${player} — WPM:${metrics.wpm} Acc:${metrics.accuracy}% CorrectWords:${metrics.correctWords} Time:${metrics.timeSeconds}s Score:${scoreValue} completed=${metrics.completed} ranked=${metrics.eligibleForLeaderboard}`
     );
 
     return res.json({
@@ -685,16 +639,16 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
       form: {
         title: 'Create Echokeys Challenge',
         description:
-          'Enter a prompt. The app generates the typing content and posts it to this subreddit.',
-        acceptLabel: 'Generate & Post',
+          'Paste or type the exact text players will see and type. Nothing is rewritten.',
+        acceptLabel: 'Post Challenge',
         cancelLabel: 'Cancel',
         fields: [
           {
             type: 'paragraph',
             name: 'prompt',
-            label: 'Prompt',
+            label: 'Text to type',
             helpText:
-              'Examples: "Build a recursive function", "Write a legal brief opening", "Draft marketing copy for a productivity app"',
+              'This is the challenge content itself — every character is what racers type. Example: a short paragraph, a code snippet, or a brief you want the community to race.',
             required: true,
           },
         ],

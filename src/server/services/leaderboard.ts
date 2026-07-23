@@ -4,6 +4,7 @@ import type {
   PlayerScore,
   PlayerProfile,
 } from '../../shared/types/index.js';
+import { isBetterRun } from '../../shared/types/index.js';
 import {
   monthKey,
   previousMonthKey,
@@ -22,54 +23,83 @@ export type RedisLike = {
   del(...keys: string[]): Promise<void | number>;
 };
 
-/** Period merge: sum challenge counts across archived weeks/months. */
+function runKey(entry: Pick<LeaderboardEntry, 'bestCorrectWords' | 'bestTimeSeconds' | 'score'>) {
+  return {
+    correctWords: entry.bestCorrectWords ?? 0,
+    // Legacy rows may lack time — treat missing as "slow" so real times can win ties.
+    timeSeconds: entry.bestTimeSeconds > 0 ? entry.bestTimeSeconds : Number.MAX_SAFE_INTEGER,
+  };
+}
+
+/** Apply best-run fields from incoming onto existing when the run ranks higher. */
+function applyBetterRun(existing: LeaderboardEntry, incoming: LeaderboardEntry): void {
+  if (isBetterRun(runKey(incoming), runKey(existing))) {
+    existing.bestCorrectWords = incoming.bestCorrectWords ?? 0;
+    existing.bestTimeSeconds = incoming.bestTimeSeconds ?? 0;
+    existing.score = incoming.score;
+    existing.accuracy = incoming.accuracy;
+  }
+  existing.bestWpm = Math.max(existing.bestWpm, incoming.bestWpm);
+  existing.lastPlayed = Math.max(existing.lastPlayed, incoming.lastPlayed);
+  existing.badges = [...new Set([...existing.badges, ...incoming.badges])];
+  existing.totalWordsTyped = Math.max(existing.totalWordsTyped || 0, incoming.totalWordsTyped || 0);
+}
+
+/** Period merge: sum challenge counts across archived weeks/months; keep best run. */
 function mergePeriodEntry(target: LeaderboardEntry[], incoming: LeaderboardEntry): void {
   const idx = target.findIndex((e) => e.username === incoming.username);
 
   if (idx >= 0) {
     const existing = target[idx]!;
-    if (incoming.score > existing.score) {
-      existing.score = incoming.score;
-      existing.accuracy = incoming.accuracy;
-    }
-    existing.bestWpm = Math.max(existing.bestWpm, incoming.bestWpm);
+    applyBetterRun(existing, incoming);
     existing.challengesCompleted += incoming.challengesCompleted;
-    existing.lastPlayed = Math.max(existing.lastPlayed, incoming.lastPlayed);
-    existing.badges = [...new Set([...existing.badges, ...incoming.badges])];
-    existing.totalWordsTyped = Math.max(existing.totalWordsTyped, incoming.totalWordsTyped);
     return;
   }
 
-  target.push({ ...incoming, badges: [...incoming.badges] });
+  target.push({
+    ...incoming,
+    badges: [...incoming.badges],
+    bestCorrectWords: incoming.bestCorrectWords ?? 0,
+    bestTimeSeconds: incoming.bestTimeSeconds ?? 0,
+  });
 }
 
-/** All-time merge: keep best score and absolute lifetime counters. */
+/** All-time merge: keep best run and absolute lifetime counters. */
 function mergeAllTimeEntry(target: LeaderboardEntry[], incoming: LeaderboardEntry): void {
   const idx = target.findIndex((e) => e.username === incoming.username);
 
   if (idx >= 0) {
     const existing = target[idx]!;
-    if (incoming.score > existing.score) {
-      existing.score = incoming.score;
-      existing.accuracy = incoming.accuracy;
-    }
-    existing.bestWpm = Math.max(existing.bestWpm, incoming.bestWpm);
+    applyBetterRun(existing, incoming);
     existing.challengesCompleted = Math.max(
       existing.challengesCompleted,
       incoming.challengesCompleted
     );
-    existing.lastPlayed = Math.max(existing.lastPlayed, incoming.lastPlayed);
-    existing.badges = [...new Set([...existing.badges, ...incoming.badges])];
-    existing.totalWordsTyped = Math.max(existing.totalWordsTyped, incoming.totalWordsTyped);
     return;
   }
 
-  target.push({ ...incoming, badges: [...incoming.badges] });
+  target.push({
+    ...incoming,
+    badges: [...incoming.badges],
+    bestCorrectWords: incoming.bestCorrectWords ?? 0,
+    bestTimeSeconds: incoming.bestTimeSeconds ?? 0,
+  });
 }
 
+/**
+ * Rank: most correct words first, then lowest time.
+ * Ties fall back to accuracy, then WPM.
+ */
 function sortAndRank(entries: LeaderboardEntry[], limit: number): LeaderboardEntry[] {
   entries.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
+    const aWords = a.bestCorrectWords ?? 0;
+    const bWords = b.bestCorrectWords ?? 0;
+    if (bWords !== aWords) return bWords - aWords;
+
+    const aTime = a.bestTimeSeconds > 0 ? a.bestTimeSeconds : Number.MAX_SAFE_INTEGER;
+    const bTime = b.bestTimeSeconds > 0 ? b.bestTimeSeconds : Number.MAX_SAFE_INTEGER;
+    if (aTime !== bTime) return aTime - bTime;
+
     if (b.accuracy !== a.accuracy) return b.accuracy - a.accuracy;
     return b.bestWpm - a.bestWpm;
   });
@@ -132,6 +162,8 @@ async function upsertAllTimeFromProfile(
     lastPlayed: score.playedAt,
     badges: [...profile.badges],
     totalWordsTyped: profile.totalWordsTyped,
+    bestCorrectWords: score.correctWords ?? 0,
+    bestTimeSeconds: score.timeSeconds ?? 0,
   });
 
   await writeJson(redis, key, sortAndRank(allTime, 100));
@@ -169,14 +201,21 @@ export async function saveScore(
   memoryCache.delete(`lb:${subId}:weekly:${week}`);
   memoryCache.delete(`player:${score.username}`);
 
-  const profile = await updatePlayerProfile(redis, score);
+  const profile = await updatePlayerProfile(redis, score, {
+    trackPersonalBest: rankOnLeaderboard,
+  });
   if (rankOnLeaderboard) {
     await updateWeeklyLeaderboard(redis, score, profile);
     await upsertAllTimeFromProfile(redis, subId, score, profile);
   }
 }
 
-async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promise<PlayerProfile> {
+async function updatePlayerProfile(
+  redis: RedisLike,
+  score: PlayerScore,
+  options: { trackPersonalBest?: boolean } = {}
+): Promise<PlayerProfile> {
+  const trackPersonalBest = options.trackPersonalBest !== false;
   const key = `player:${score.username}`;
   const profile: PlayerProfile = (await getPlayerProfile(redis, score.username)) ?? {
     username: score.username,
@@ -188,6 +227,8 @@ async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promis
     lastPlayed: null,
     joinedAt: Date.now(),
     totalWordsTyped: 0,
+    bestCorrectWords: 0,
+    bestTimeSeconds: 0,
   };
 
   profile.bestWpm = Math.max(profile.bestWpm, score.wpm);
@@ -198,6 +239,23 @@ async function updatePlayerProfile(redis: RedisLike, score: PlayerScore): Promis
   }
   profile.lastPlayed = score.playedAt;
   profile.totalWordsTyped = (profile.totalWordsTyped || 0) + (score.wordsTyped || 0);
+
+  // Personal best (correct words / time) only from leaderboard-eligible runs.
+  if (trackPersonalBest) {
+    const run = {
+      correctWords: score.correctWords ?? 0,
+      timeSeconds: score.timeSeconds ?? 0,
+    };
+    const personalBest = {
+      correctWords: profile.bestCorrectWords ?? 0,
+      timeSeconds: profile.bestTimeSeconds ?? 0,
+    };
+    if (isBetterRun(run, personalBest)) {
+      profile.bestCorrectWords = run.correctWords;
+      profile.bestTimeSeconds = run.timeSeconds;
+    }
+  }
+
   if (score.communityId) {
     profile.communityId = score.communityId;
   }
@@ -223,10 +281,23 @@ async function updateWeeklyLeaderboard(
 
   const idx = entries.findIndex((e) => e.username === score.username);
   const completedDelta = score.completed ? 1 : 0;
+  const correctWords = score.correctWords ?? 0;
+  const timeSeconds = score.timeSeconds ?? 0;
 
   if (idx >= 0) {
     const existing = entries[idx]!;
-    if (score.score > existing.score) {
+    if (
+      isBetterRun(
+        { correctWords, timeSeconds },
+        {
+          correctWords: existing.bestCorrectWords ?? 0,
+          timeSeconds:
+            existing.bestTimeSeconds > 0 ? existing.bestTimeSeconds : Number.MAX_SAFE_INTEGER,
+        }
+      )
+    ) {
+      existing.bestCorrectWords = correctWords;
+      existing.bestTimeSeconds = timeSeconds;
       existing.score = score.score;
       existing.accuracy = score.accuracy;
     }
@@ -245,6 +316,8 @@ async function updateWeeklyLeaderboard(
       lastPlayed: score.playedAt,
       badges: [],
       totalWordsTyped: profile.totalWordsTyped,
+      bestCorrectWords: correctWords,
+      bestTimeSeconds: timeSeconds,
     });
   }
 
@@ -523,12 +596,13 @@ export async function snapshotWeekly(
           challengeId: 'snapshot',
           wpm: entry.bestWpm,
           accuracy: entry.accuracy,
-          timeSeconds: 0,
+          timeSeconds: entry.bestTimeSeconds ?? 0,
           score: entry.score,
           completed: true,
           playedAt: entry.lastPlayed,
           communityId: subredditId,
           wordsTyped: 0,
+          correctWords: entry.bestCorrectWords ?? 0,
         },
         profile
       );

@@ -344,18 +344,22 @@ export const App = () => {
                     className="profile-stats"
                   >
                     <div className="stat-box">
+                      <div className="stat-val stat-val-accent">
+                        {(profileData.profile.bestCorrectWords || 0).toLocaleString()}
+                      </div>
+                      <div className="stat-lbl">Best correct</div>
+                    </div>
+                    <div className="stat-box">
+                      <div className="stat-val">
+                        {profileData.profile.bestTimeSeconds
+                          ? `${profileData.profile.bestTimeSeconds}s`
+                          : '—'}
+                      </div>
+                      <div className="stat-lbl">Best time</div>
+                    </div>
+                    <div className="stat-box">
                       <div className="stat-val">{profileData.profile.bestWpm || 0}</div>
                       <div className="stat-lbl">Best WPM</div>
-                    </div>
-                    <div className="stat-box">
-                      <div className="stat-val">{profileData.profile.bestAccuracy || 0}%</div>
-                      <div className="stat-lbl">Best Acc</div>
-                    </div>
-                    <div className="stat-box">
-                      <div className="stat-val stat-val-accent">
-                        {(profileData.profile.totalWordsTyped || 0).toLocaleString()}
-                      </div>
-                      <div className="stat-lbl">Words</div>
                     </div>
                     <div className="stat-box">
                       <div className="stat-val stat-val-yellow">
@@ -436,11 +440,12 @@ export const App = () => {
                               <div className="muted" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', fontSize: '0.625rem' }}>
                                 <span>{score.wpm} wpm</span>
                                 <span>{score.accuracy}%</span>
+                                <span>{score.timeSeconds}s</span>
                                 <span>{new Date(score.playedAt).toLocaleDateString()}</span>
                               </div>
                             </div>
                             <div style={{ color: 'var(--color-vsc-green)', fontWeight: 700, flexShrink: 0 }}>
-                              {score.score}
+                              {(score.correctWords ?? 0).toLocaleString()} words
                             </div>
                           </div>
                         ))
@@ -458,7 +463,7 @@ export const App = () => {
         ) : (
           <div className="editor-panel" style={{ maxWidth: '56rem', margin: '0 auto' }}>
             <div className="editor-titlebar">
-              leaderboard.csv — top {limitForTab(activeTab)} · {communityLabel}
+              leaderboard.csv — top {limitForTab(activeTab)} · most correct words, lowest time
             </div>
 
             {/* Mobile cards */}
@@ -492,12 +497,12 @@ export const App = () => {
                       {entry.username}
                     </button>
                     <span className="mono" style={{ fontWeight: 700, color: 'var(--color-vsc-green)' }}>
-                      {entry.score}
+                      {(entry.bestCorrectWords ?? 0).toLocaleString()}
                     </span>
                     <div className="lb-card-meta">
+                      <span>{entry.bestTimeSeconds > 0 ? `${entry.bestTimeSeconds}s` : '—'}</span>
                       <span>{entry.bestWpm} wpm</span>
                       <span>{entry.accuracy}% acc</span>
-                      <span>{entry.challengesCompleted} races</span>
                     </div>
                   </div>
                 ))
@@ -511,11 +516,11 @@ export const App = () => {
                   <tr>
                     <th>#</th>
                     <th>User</th>
-                    <th>Score</th>
+                    <th>Correct</th>
+                    <th>Time</th>
                     <th>WPM</th>
                     <th className="lb-col-acc">Acc</th>
                     <th className="lb-col-challenges">Races</th>
-                    <th className="lb-col-words">Words</th>
                     <th className="lb-col-active">Active</th>
                   </tr>
                 </thead>
@@ -563,16 +568,16 @@ export const App = () => {
                           </div>
                         </td>
                         <td className="mono" style={{ fontWeight: 700, color: 'var(--color-vsc-green)' }}>
-                          {entry.score}
+                          {(entry.bestCorrectWords ?? 0).toLocaleString()}
+                        </td>
+                        <td className="mono" style={{ color: 'var(--color-vsc-orange)' }}>
+                          {entry.bestTimeSeconds > 0 ? `${entry.bestTimeSeconds}s` : '—'}
                         </td>
                         <td className="mono">{entry.bestWpm}</td>
                         <td className="mono lb-col-acc" style={{ color: 'var(--color-vsc-yellow)' }}>
                           {entry.accuracy}%
                         </td>
                         <td className="mono muted lb-col-challenges">{entry.challengesCompleted}</td>
-                        <td className="mono lb-col-words" style={{ color: 'var(--color-vsc-orange)' }}>
-                          {(entry.totalWordsTyped || 0).toLocaleString()}
-                        </td>
                         <td className="muted lb-col-active" style={{ fontSize: '0.625rem' }}>
                           {new Date(entry.lastPlayed).toLocaleDateString()}
                         </td>

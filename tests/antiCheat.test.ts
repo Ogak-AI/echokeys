@@ -7,6 +7,7 @@ import {
   calculateAccuracy,
   calculateWpm,
   countCorrectChars,
+  countCorrectWords,
   countWords,
   formatSubredditLabel,
   isSpeedViolation,
@@ -16,12 +17,37 @@ import {
   sanitizeTypedInput,
   validatePlayMetrics,
 } from '../src/shared/utils/antiCheat.ts';
-import { calculateScore } from '../src/shared/types/index.ts';
+import { calculateScore, isBetterRun } from '../src/shared/types/index.ts';
 
 test('score formula prioritizes accuracy', () => {
   // Score = (Acc% × 100) + WPM − (time/60)
   assert.equal(calculateScore(0.95, 80, 60), 95 + 80 - 1);
   assert.equal(calculateScore(1, 100, 0), 200);
+});
+
+test('isBetterRun ranks more correct words first, then lower time', () => {
+  assert.equal(
+    isBetterRun({ correctWords: 100, timeSeconds: 90 }, { correctWords: 80, timeSeconds: 30 }),
+    true
+  );
+  assert.equal(
+    isBetterRun({ correctWords: 50, timeSeconds: 10 }, { correctWords: 80, timeSeconds: 90 }),
+    false
+  );
+  assert.equal(
+    isBetterRun({ correctWords: 100, timeSeconds: 40 }, { correctWords: 100, timeSeconds: 60 }),
+    true
+  );
+  assert.equal(
+    isBetterRun({ correctWords: 100, timeSeconds: 70 }, { correctWords: 100, timeSeconds: 60 }),
+    false
+  );
+});
+
+test('countCorrectWords matches tokens by position', () => {
+  assert.equal(countCorrectWords('hello world foo', 'hello world bar'), 2);
+  assert.equal(countCorrectWords('hello wrong', 'hello world'), 1);
+  assert.equal(countCorrectWords('', 'hello'), 0);
 });
 
 test('7 wps ceiling is 420 WPM', () => {
@@ -89,6 +115,7 @@ test('validatePlayMetrics derives accuracy from typed text', () => {
   assert.equal(result.metrics.accuracy, 91); // 10/11
   assert.equal(result.metrics.completed, true); // length-complete even with typos
   assert.equal(result.metrics.charsTyped, 11);
+  assert.equal(result.metrics.correctWords, 1); // "hello" matches; "worlx" does not
   assert.ok(result.metrics.wpm > 0);
 });
 

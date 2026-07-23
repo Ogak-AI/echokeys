@@ -1,11 +1,21 @@
 import type { ContentDomain } from '../../shared/types/index.js';
 import { detectContentDomain } from '../../shared/utils/contentDomain.js';
 import { buildHumanizerSystemPrompt } from '../../shared/utils/humanizer.js';
+import { countWords } from '../../shared/utils/antiCheat.js';
 
 const MIN_LINES = 25;
 const MAX_LINES = 50;
+/** Smallest word target we honor from a prompt (below this, still clamp up). */
+export const MIN_WORD_TARGET = 10;
+/** Largest word target we honor (keeps challenges typeable in one session). */
+export const MAX_WORD_TARGET = 400;
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+/** How long the generated typing content should be. */
+export type LengthTarget =
+  | { mode: 'words'; count: number }
+  | { mode: 'lines'; min: number; max: number; target: number };
 
 /**
  * Free-tier Gemini models that are intelligent enough for global, multilingual
@@ -25,22 +35,91 @@ export type FreeIntelligentGeminiModel = (typeof FREE_INTELLIGENT_GEMINI_MODELS)
 export const DEFAULT_GEMINI_MODEL: FreeIntelligentGeminiModel = 'gemini-3.6-flash';
 
 /**
+ * Extract an explicit word-count request from a free-text prompt.
+ * Supports common English forms: "20 words", "20-word", "exactly 50 words", etc.
+ * Returns null when the user did not specify a word length.
+ */
+export function parseWordTarget(prompt: string): number | null {
+  const p = prompt.trim();
+  if (!p) return null;
+
+  const patterns: RegExp[] = [
+    // "20 words", "about 20 words", "exactly 20 words of content"
+    /\b(?:about|around|approx(?:imately)?|exactly|precisely|only|just|roughly)?\s*(\d{1,4})\s*[- ]?words?\b/i,
+    // "20-word essay/content/passage"
+    /\b(\d{1,4})[- ]word(?:s)?\b/i,
+    // "word count: 20" / "words: 20"
+    /\bword(?:s)?\s*(?:count)?\s*[:=]\s*(\d{1,4})\b/i,
+    // "generate/write 20 words"
+    /\b(?:write|generate|create|make|produce)\s+(\d{1,4})\s+words?\b/i,
+  ];
+
+  for (const re of patterns) {
+    const m = p.match(re);
+    if (m?.[1]) {
+      const n = Number.parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return null;
+}
+
+/** Clamp a raw word request into product-safe bounds. */
+export function clampWordTarget(raw: number): number {
+  return Math.min(MAX_WORD_TARGET, Math.max(MIN_WORD_TARGET, Math.round(raw)));
+}
+
+/**
+ * Resolve how long generation should be: honor explicit word counts when present,
+ * otherwise use the default line range (25–50).
+ */
+export function resolveLengthTarget(prompt: string): LengthTarget {
+  const words = parseWordTarget(prompt);
+  if (words != null) {
+    return { mode: 'words', count: clampWordTarget(words) };
+  }
+  const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
+  return { mode: 'lines', min: MIN_LINES, max: MAX_LINES, target };
+}
+
+function lengthRequirementText(length: LengthTarget): string {
+  if (length.mode === 'words') {
+    return `- HARD LENGTH LIMIT: write EXACTLY ${length.count} words (whitespace-separated). Not fewer, not more. Count carefully and stop at word ${length.count}.`;
+  }
+  return `- Write approximately ${length.target} lines (minimum ${length.min}, maximum ${length.max})`;
+}
+
+/**
+ * Hard-enforce a word count after generation: truncate surplus words;
+ * if short, leave as-is (LLM/fallback should have aimed correctly).
+ */
+export function enforceWordCount(text: string, targetWords: number): string {
+  const target = clampWordTarget(targetWords);
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length <= target) return trimmed;
+  return tokens.slice(0, target).join(' ');
+}
+
+/**
  * Builds the LLM messages for a challenge. The humanizer skill is always applied
  * as a system prompt so generated typing content does not sound AI-written.
+ * When the user asks for N words, that target overrides the default line range.
  */
 export function buildGenerationMessages(
   userPrompt: string,
-  domain: ContentDomain
+  domain: ContentDomain,
+  length: LengthTarget = resolveLengthTarget(userPrompt)
 ): ChatMessage[] {
-  const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
-
   const userContent = `Generate typing-challenge content from this prompt.
 
 User's prompt: "${userPrompt}"
 Content style: ${domain}
 
 Requirements:
-- Write approximately ${target} lines (minimum ${MIN_LINES}, maximum ${MAX_LINES})
+${lengthRequirementText(length)}
 - Well-structured and readable
 - Language: write in the same language (and script) as the user's prompt. If the prompt mixes languages, prefer the dominant non-English language when clear; otherwise follow the prompt's primary language. Never force English.
 - Use correct orthography, diacritics, punctuation, and regional conventions for that language (e.g. Spanish ñ/¿¡, French accents, Arabic/Hebrew RTL text, CJK characters, Hindi Devanagari).
@@ -80,10 +159,47 @@ function padToTarget(lines: string[], target: number, filler: (i: number) => str
   return lines.slice(0, MAX_LINES).join('\n');
 }
 
-function buildFallbackContent(userPrompt: string, domain: ContentDomain): string {
-  const target = Math.floor((MIN_LINES + MAX_LINES) / 2);
-  const lines: string[] = [];
+/** Build plain prose and pad/truncate to an exact word count (fallback path). */
+function fillToWordCount(seed: string, targetWords: number): string {
+  const target = clampWordTarget(targetWords);
+  const filler =
+    'Keep a steady rhythm while you type. Short accurate bursts beat frantic speed every time. Fix mistakes as you go.';
+  let text = seed.trim();
+  let words = text.split(/\s+/).filter(Boolean);
+
+  let n = 0;
+  while (words.length < target) {
+    const extra = filler.split(/\s+/);
+    words = words.concat(extra);
+    n += 1;
+    if (n > 50) break;
+  }
+
+  return words.slice(0, target).join(' ');
+}
+
+function buildFallbackContent(
+  userPrompt: string,
+  domain: ContentDomain,
+  length: LengthTarget = resolveLengthTarget(userPrompt)
+): string {
   const topic = userPrompt.slice(0, 120);
+
+  // Word-target path: keep fallback short and exact.
+  if (length.mode === 'words') {
+    const seedByDomain: Record<ContentDomain, string> = {
+      code: `// Challenge: ${topic}. function processChallenge(input) { const data = Array.isArray(input) ? input : [input]; return data.map((item) => ({ value: item, timestamp: Date.now() })); }`,
+      legal: `MEMORANDUM regarding ${topic}. This draft outlines the material facts, applicable standards, and recommended next steps for internal counsel review.`,
+      marketing: `Campaign brief for ${topic}. Audience values clarity and craft. Headline: ship work you are proud of faster. Body: practice that transfers to the real job.`,
+      technical: `Technical note on ${topic}. Keep the happy path simple and observable. Fail closed on invalid input. Prefer small composable modules over monoliths.`,
+      creative: `Opening about ${topic}. The cursor blinked once, patient as a lighthouse, waiting for the first true sentence of the day outside the rain-softened city.`,
+      prose: `Typing practice focused on ${topic}. Daily practice is how speed and accuracy stick. Train the hands so the eyes can stay on the words.`,
+    };
+    return fillToWordCount(seedByDomain[domain] ?? seedByDomain.prose, length.count);
+  }
+
+  const target = length.target;
+  const lines: string[] = [];
 
   switch (domain) {
     case 'code':
@@ -230,6 +346,15 @@ export function resolveFreeIntelligentGeminiModel(raw: string | undefined): Free
   return DEFAULT_GEMINI_MODEL;
 }
 
+/** Token budget: scale down for short word targets; cap for line-mode. */
+function maxOutputTokensFor(length: LengthTarget): number {
+  if (length.mode === 'words') {
+    // ~1.5 tokens/word + headroom for punctuation/newlines
+    return Math.min(2048, Math.max(128, Math.ceil(length.count * 2) + 64));
+  }
+  return 2048;
+}
+
 /**
  * Gemini generateContent API (v1beta) — free intelligent models only.
  */
@@ -237,13 +362,14 @@ async function generateWithGemini(
   userPrompt: string,
   domain: ContentDomain,
   apiKey: string,
-  model: FreeIntelligentGeminiModel
+  model: FreeIntelligentGeminiModel,
+  length: LengthTarget
 ): Promise<string> {
   if (!apiKey) {
     throw new Error('Gemini API key is required');
   }
 
-  const messages = buildGenerationMessages(userPrompt, domain);
+  const messages = buildGenerationMessages(userPrompt, domain, length);
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
   const user = messages.find((m) => m.role === 'user')?.content ?? userPrompt;
 
@@ -266,8 +392,8 @@ async function generateWithGemini(
         },
       ],
       generationConfig: {
-        temperature: 0.35,
-        maxOutputTokens: 2048,
+        temperature: length.mode === 'words' ? 0.25 : 0.35,
+        maxOutputTokens: maxOutputTokensFor(length),
       },
     }),
   });
@@ -294,23 +420,38 @@ async function generateWithGemini(
   return cleanOutput(text);
 }
 
+function isUsableContent(content: string, length: LengthTarget): boolean {
+  if (!content.trim()) return false;
+  if (length.mode === 'words') {
+    // Accept anything non-empty; enforceWordCount / fallback handle size.
+    return countWords(content) >= Math.min(3, length.count);
+  }
+  return content.length > 40;
+}
+
 export async function generateContent(
   userPrompt: string,
   config: LlmConfig
-): Promise<{ content: string; lineCount: number; domain: ContentDomain }> {
+): Promise<{ content: string; lineCount: number; domain: ContentDomain; wordCount: number }> {
   const domain = detectContentDomain(userPrompt);
   const model = resolveFreeIntelligentGeminiModel(config.model);
+  const length = resolveLengthTarget(userPrompt);
+
+  const lengthLabel =
+    length.mode === 'words'
+      ? `${length.count} words`
+      : `${length.min}-${length.max} lines (target ${length.target})`;
 
   console.log(
-    `[ContentGen] Generating for: "${userPrompt}" (${domain}) via gemini/${model} — free intelligent only, humanizer on`
+    `[ContentGen] Generating for: "${userPrompt}" (${domain}) via gemini/${model} — length: ${lengthLabel}, humanizer on`
   );
 
   let content = '';
   let success = false;
 
   try {
-    content = await generateWithGemini(userPrompt, domain, config.apiKey, model);
-    success = content.length > 40;
+    content = await generateWithGemini(userPrompt, domain, config.apiKey, model, length);
+    success = isUsableContent(content, length);
   } catch (err) {
     console.error('[ContentGen] gemini generation failed:', err);
   }
@@ -319,11 +460,22 @@ export async function generateContent(
     console.warn(
       '[ContentGen] Gemini failed or not configured — using fallback content (set gemini_api_key)'
     );
-    content = buildFallbackContent(userPrompt, domain);
+    content = buildFallbackContent(userPrompt, domain, length);
+  }
+
+  if (length.mode === 'words') {
+    content = enforceWordCount(content, length.count);
+    // If still short after LLM (rare), pad via fallback seed merge
+    if (countWords(content) < length.count) {
+      content = fillToWordCount(content, length.count);
+    }
   }
 
   const lineCount = content.split('\n').length;
-  console.log(`[ContentGen] Generated ${lineCount} lines (target: ${MIN_LINES}-${MAX_LINES})`);
+  const wordCount = countWords(content);
+  console.log(
+    `[ContentGen] Generated ${lineCount} lines / ${wordCount} words (requested: ${lengthLabel})`
+  );
 
-  return { content, lineCount, domain };
+  return { content, lineCount, domain, wordCount };
 }

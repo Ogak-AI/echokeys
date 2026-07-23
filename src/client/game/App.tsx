@@ -11,6 +11,8 @@ type Results = {
   weeklyRank: number | null;
   allTimeRank: number | null;
   wordsTyped: number;
+  correctWords: number;
+  timeSeconds: number;
   ranked: boolean;
 };
 
@@ -366,6 +368,8 @@ export const App = () => {
         weeklyRank: data.weeklyRank,
         allTimeRank: data.allTimeRank,
         wordsTyped: data.score.wordsTyped ?? 0,
+        correctWords: data.score.correctWords ?? 0,
+        timeSeconds: data.score.timeSeconds ?? 0,
         ranked: data.ranked !== false,
       });
     } catch (err: unknown) {
@@ -557,8 +561,14 @@ export const App = () => {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
                 <div className="stat-box">
-                  <div className="stat-val stat-val-green">{results.score}</div>
-                  <div className="stat-lbl">Score</div>
+                  <div className="stat-val stat-val-green">
+                    {results.correctWords.toLocaleString()}
+                  </div>
+                  <div className="stat-lbl">Correct words</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-val">{results.timeSeconds}s</div>
+                  <div className="stat-lbl">Time</div>
                 </div>
                 <div className="stat-box">
                   <div className="stat-val">{results.wpm}</div>
@@ -567,12 +577,6 @@ export const App = () => {
                 <div className="stat-box">
                   <div className="stat-val">{results.accuracy}%</div>
                   <div className="stat-lbl">Accuracy</div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-val stat-val-accent">
-                    {results.weeklyRank ? `#${results.weeklyRank}` : '—'}
-                  </div>
-                  <div className="stat-lbl">Weekly</div>
                 </div>
               </div>
               <div
@@ -584,8 +588,11 @@ export const App = () => {
                   gap: '0.5rem',
                 }}
               >
-                <span>{results.wordsTyped.toLocaleString()} words</span>
-                <span>All-time {results.allTimeRank ? `#${results.allTimeRank}` : '—'}</span>
+                <span>
+                  Weekly {results.weeklyRank ? `#${results.weeklyRank}` : '—'} · All-time{' '}
+                  {results.allTimeRank ? `#${results.allTimeRank}` : '—'}
+                </span>
+                <span>{results.wordsTyped.toLocaleString()} typed</span>
               </div>
               {!results.ranked && (
                 <p className="mono muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
@@ -857,7 +864,7 @@ export const App = () => {
               Start typing race
             </h2>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Enter a prompt. AI generates the text — you type it. Or use the subreddit menu for community races.
+              Enter the exact text you want to type. What you paste is what you race — nothing is rewritten.
             </p>
           </div>
 
@@ -866,12 +873,12 @@ export const App = () => {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <label className="muted" style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Prompt
+                Text to type
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder='e.g. "recursive function", "legal brief", "marketing copy"'
+                placeholder="Paste or type the content you want to race…"
                 className="vsc-input"
                 style={{ height: '4.5rem', resize: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
                 required
@@ -880,7 +887,7 @@ export const App = () => {
             </div>
 
             <button type="submit" className="vsc-btn vsc-btn-lg" style={{ width: '100%', fontWeight: 600 }}>
-              Generate &amp; Start
+              Start race
             </button>
           </form>
         </div>

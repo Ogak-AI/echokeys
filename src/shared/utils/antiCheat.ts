@@ -60,6 +60,22 @@ export function countCorrectChars(typed: string, target: string): number {
 }
 
 /**
+ * Count fully correct words (token match by position).
+ * Leaderboards rank by this primary metric — highest correct words wins.
+ */
+export function countCorrectWords(typed: string, target: string): number {
+  if (!typed || !target) return 0;
+  const typedWords = typed.split(/\s+/).filter(Boolean);
+  const targetWords = target.split(/\s+/).filter(Boolean);
+  const n = Math.min(typedWords.length, targetWords.length);
+  let ok = 0;
+  for (let i = 0; i < n; i++) {
+    if (typedWords[i] === targetWords[i]) ok++;
+  }
+  return ok;
+}
+
+/**
  * Minimum realistic duration for `charsTyped` at the product speed ceiling.
  * Returns 0 when nothing was typed.
  */
@@ -103,6 +119,8 @@ export type ValidatedPlayMetrics = {
   completed: boolean;
   progress: number;
   wordsTyped: number;
+  /** Fully correct word tokens — primary leaderboard metric. */
+  correctWords: number;
   eligibleForLeaderboard: boolean;
 };
 
@@ -160,6 +178,7 @@ export function validatePlayMetrics(params: {
   const completed = typed.length >= content.length;
   const progress = content.length > 0 ? typed.length / content.length : 0;
   const wordsTyped = countWords(typed);
+  const correctWords = countCorrectWords(typed, content);
   const eligibleForLeaderboard = completed || progress >= MIN_LEADERBOARD_PROGRESS;
 
   return {
@@ -174,6 +193,7 @@ export function validatePlayMetrics(params: {
       completed,
       progress,
       wordsTyped,
+      correctWords,
       eligibleForLeaderboard,
     },
   };
