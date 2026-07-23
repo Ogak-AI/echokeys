@@ -1,34 +1,43 @@
 # Echokeys
 
-Echokeys is a free, open-source typing game on Reddit’s Devvit platform. Anyone can use it—engineers, writers, lawyers, designers, marketers, students.
+Echokeys is a free, open-source typing race on Reddit’s Devvit platform. Anyone can use it — engineers, writers, lawyers, designers, marketers, students.
 
-You submit a prompt (“Build a recursive function,” “Write a legal brief,” “Draft marketing copy”). The system **generates the content**. Players **race typing that AI-generated text**. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
+You paste the **exact text** players will type (a paragraph, a code snippet, a brief). Players race typing that same text, character for character. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
 
 ## How it works
 
-1. **Create a challenge** — Subreddit menu → “Create Echokeys Challenge” → enter a prompt  
-2. **AI generates content** — Hugging Face or Groq (server-side); identical prompts are cached  
-3. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only**  
-4. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
-5. **One score upload** — On finish or timeout, a single payload hits the server  
-6. **Community boards** — Per-subreddit weekly (Sun 00:00 UTC), monthly, yearly, all-time  
+1. **Create a challenge** — Subreddit menu → “Create Echokeys Challenge”, or start free-play in the app, and paste the text to race  
+2. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only** while racing  
+3. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
+4. **One score upload** — On finish or timeout, a single payload hits the server  
+5. **Community boards** — Per-subreddit weekly (Sun 00:00 UTC), monthly, yearly, all-time  
 
-### Score formula
+### Ranking rule
 
 ```
-Score = (Accuracy% × 100) + WPM − (Time_in_Seconds / 60)
+1. Most correct words wins
+2. If tied, lowest time wins
+3. Further ties: accuracy, then WPM
 ```
 
-Accuracy matters most.
+Each player keeps their **best single run** for the period. Partial runs need **50%+** progress to rank.
+
+A display composite still exists for history only:
+
+```
+Display score = (Accuracy% × 100) + WPM − (Time_in_Seconds / 60)
+```
+
+It does **not** decide leaderboard order.
 
 ## Product rules
 
-- Players type **what the AI generated**, never freeform writing  
-- Typing math stays on-device; only the final score is trusted after server revalidation  
+- Players type **exactly the challenge text** — nothing is rewritten or AI-expanded  
+- Typing math stays on-device; the server revalidates duration, speed, and correctness  
 - Leaderboards and badges are **per community**  
 - Weekly top 3 → `Weekly Champion - r/subreddit` (same for monthly / yearly)  
 - Lifetime word counter accumulates on every finished session  
-- Teleprompter view keeps the cursor centered; TTS reads the generated script (toggle with mute)
+- Teleprompter view keeps the cursor centered; TTS reads the challenge text (toggle with mute)
 
 ## Tech stack
 
@@ -39,7 +48,6 @@ Accuracy matters most.
 | Backend | Express on Devvit |
 | Storage | Devvit Redis/KV + in-memory cache |
 | Realtime | Devvit realtime (leaderboard rank changes only) |
-| Content | Hugging Face / Groq (keys in app settings / env) |
 | Build | Vite |
 
 ## Scripts
@@ -59,27 +67,18 @@ npm run login    # devvit login
 ```text
 src/
   client/   # splash, game editor, leaderboard UI
-  server/   # Express API, content gen, leaderboards, snapshots
-  shared/   # types, score formula, anti-cheat helpers, time keys
+  server/   # Express API, leaderboards, race sessions
+  shared/   # types, display score formula, anti-cheat helpers, time keys
 tests/
 ```
 
 ## Configuration
 
-In the Devvit app settings (or env for local). **Gemini free-tier only** — no paid providers or lite models:
+No external AI API keys are required. Challenges use the exact text the creator provides.
 
-- `gemini_api_key` — free key from [Google AI Studio](https://aistudio.google.com/apikey)
-- `gemini_model` — allowlisted free intelligent models only:
-  - `gemini-3.6-flash` (default) — free, multilingual, strong accuracy
-  - `gemini-3.5-flash` — free, strong coding
-  - `gemini-2.5-pro` — free, deepest free-tier reasoning
-  - `gemini-2.5-flash` — free general model
+Optional local env (see `.env.template`):
 
-Any other model ID (paid OpenAI, Gemini Pro previews without free tier, lite models) is rejected and remapped to `gemini-3.6-flash`.
-
-Env fallbacks: `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL`.
-
-Without a key, the server falls back to deterministic practice content so the game still works. Challenge text is generated in the language of the creator's prompt for global communities.
+- `DEVVIT_SUBREDDIT` — playtest subreddit for `npm run dev`
 
 ## License
 

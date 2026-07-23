@@ -19,8 +19,9 @@ import {
 } from '../src/shared/utils/antiCheat.ts';
 import { calculateScore, isBetterRun } from '../src/shared/types/index.ts';
 
-test('score formula prioritizes accuracy', () => {
-  // Score = (Acc% × 100) + WPM − (time/60)
+test('display score formula prioritizes accuracy (not leaderboard sort)', () => {
+  // Display only: Score = (Acc% × 100) + WPM − (time/60)
+  // Leaderboards rank by correct words then time via isBetterRun.
   assert.equal(calculateScore(0.95, 80, 60), 95 + 80 - 1);
   assert.equal(calculateScore(1, 100, 0), 200);
 });

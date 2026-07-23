@@ -5,7 +5,6 @@ import {
   redis,
   realtime,
   reddit,
-  settings,
 } from '@devvit/web/server';
 import type { UiResponse } from '@devvit/shared';
 import express from 'express';
@@ -302,7 +301,7 @@ app.get('/api/me', async (_req, res) => {
 });
 
 // ---- Create challenge from exact text (in-app free play) ----
-app.post('/api/challenge/generate', async (req, res) => {
+app.post('/api/challenge/create', async (req, res) => {
   try {
     const { prompt: rawPrompt } = req.body as { prompt?: string };
 
@@ -316,7 +315,7 @@ app.post('/api/challenge/generate', async (req, res) => {
     }
 
     const username = await resolveUsername();
-    const allowed = await checkRateLimit(username, 'generate', 5);
+    const allowed = await checkRateLimit(username, 'challenge', 5);
     if (!allowed) {
       return res.status(429).json({
         error: 'Rate limit exceeded: max 5 challenges per hour',
@@ -658,7 +657,7 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
   return res.json(response);
 });
 
-// ---- Form submit: generate content + create custom post ----
+// ---- Form submit: exact text challenge + create custom post ----
 app.post('/internal/form/create-challenge', async (req, res) => {
   try {
     const values = req.body as { prompt?: string };
@@ -666,12 +665,12 @@ app.post('/internal/form/create-challenge', async (req, res) => {
 
     if (prompt.length < 3) {
       return res.json({
-        showToast: { text: 'Prompt must be at least 3 characters.', appearance: 'neutral' },
+        showToast: { text: 'Text must be at least 3 characters.', appearance: 'neutral' },
       } satisfies UiResponse);
     }
 
     const username = await resolveUsername();
-    const allowed = await checkRateLimit(username, 'generate', 5);
+    const allowed = await checkRateLimit(username, 'challenge', 5);
     if (!allowed) {
       return res.json({
         showToast: {

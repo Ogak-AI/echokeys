@@ -26,12 +26,6 @@
     "dir": "assets"
   },
   "permissions": {
-    "http": {
-      "enable": true,
-      "domains": [
-        "generativelanguage.googleapis.com"
-      ]
-    },
     "redis": true,
     "realtime": true,
     "reddit": {
@@ -43,7 +37,7 @@
     "items": [
       {
         "label": "Create Echokeys Challenge",
-        "description": "Generate a typing challenge from a prompt and post it",
+        "description": "Post exact text for the community to type-race",
         "location": "subreddit",
         "forUserType": "user",
         "endpoint": "/internal/menu/create-challenge",
@@ -53,22 +47,6 @@
   },
   "forms": {
     "create-challenge": "/internal/form/create-challenge"
-  },
-  "settings": {
-    "global": {
-      "gemini_api_key": {
-        "type": "string",
-        "label": "Gemini API Key (free tier)",
-        "helpText": "Free key from aistudio.google.com/apikey. Only Google Gemini free-tier models are used — no paid providers.",
-        "isSecret": true
-      },
-      "gemini_model": {
-        "type": "string",
-        "label": "Gemini Model (free intelligent only)",
-        "helpText": "Allowlisted free models only: gemini-3.6-flash (default), gemini-3.5-flash, gemini-2.5-pro, gemini-2.5-flash. Paid/lite models are rejected.",
-        "defaultValue": "gemini-3.6-flash"
-      }
-    }
   },
   "scheduler": {
     "tasks": {

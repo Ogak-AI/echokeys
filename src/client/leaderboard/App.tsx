@@ -184,7 +184,7 @@ export const App = () => {
           </span>
           {liveEnabled && live.updatedAt && (
             <span className="chip" style={{ color: 'var(--color-vsc-green)', flexShrink: 0 }}>
-              ● live
+              live
             </span>
           )}
         </div>
@@ -227,7 +227,7 @@ export const App = () => {
                 onClick={() => setWeekOffset((p) => p - 1)}
                 className="vsc-btn vsc-btn-ghost vsc-btn-sm"
               >
-                ◀
+                Prev
               </button>
               <span className="mono" style={{ color: 'var(--color-vsc-green)', fontSize: '0.6875rem' }}>
                 {weekOffset === 0 ? 'This week' : `${Math.abs(weekOffset)}w ago`}
@@ -238,7 +238,7 @@ export const App = () => {
                 className="vsc-btn vsc-btn-ghost vsc-btn-sm"
                 disabled={weekOffset === 0}
               >
-                ▶
+                Next
               </button>
             </div>
           )}
@@ -413,7 +413,7 @@ export const App = () => {
                     Recent
                   </h3>
                   <div className="editor-panel">
-                    <div className="editor-titlebar">history.log</div>
+                    <div className="editor-titlebar">Recent races</div>
                     <div style={{ background: 'var(--color-vsc-bg-darker)', maxHeight: '14rem', overflowY: 'auto' }}>
                       {profileData.recentScores?.length === 0 ? (
                         <div className="muted" style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.6875rem' }}>
@@ -435,12 +435,13 @@ export const App = () => {
                           >
                             <div style={{ minWidth: 0 }}>
                               <div className="truncate" style={{ color: 'var(--color-vsc-cyan)', marginBottom: '0.1rem' }}>
-                                &quot;{score.prompt || 'Prompt'}&quot;
+                                &quot;{(score.prompt || 'Challenge').slice(0, 60)}
+                                {(score.prompt?.length ?? 0) > 60 ? '…' : ''}&quot;
                               </div>
                               <div className="muted" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', fontSize: '0.625rem' }}>
+                                <span>{score.timeSeconds}s</span>
                                 <span>{score.wpm} wpm</span>
                                 <span>{score.accuracy}%</span>
-                                <span>{score.timeSeconds}s</span>
                                 <span>{new Date(score.playedAt).toLocaleDateString()}</span>
                               </div>
                             </div>
@@ -463,7 +464,7 @@ export const App = () => {
         ) : (
           <div className="editor-panel" style={{ maxWidth: '56rem', margin: '0 auto' }}>
             <div className="editor-titlebar">
-              leaderboard.csv — top {limitForTab(activeTab)} · most correct words, lowest time
+              Top {limitForTab(activeTab)} — most correct words, then lowest time
             </div>
 
             {/* Mobile cards */}

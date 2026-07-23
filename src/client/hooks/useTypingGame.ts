@@ -9,6 +9,7 @@ import {
   calculateAccuracy,
   calculateWpm,
   countCorrectChars,
+  countCorrectWords,
   isSpeedViolation,
 } from '../../shared/utils/antiCheat';
 
@@ -20,7 +21,10 @@ export interface TypingState {
   elapsed: number;
   remaining: number;
   progress: number;
+  /** Display composite only — leaderboard ranks by correctWords + time. */
   score: number;
+  /** Fully correct words so far — primary ranking metric. */
+  correctWords: number;
   muted: boolean;
   throttled: boolean;
   /** True while browser TTS is actively speaking the script. */
@@ -92,6 +96,7 @@ export function useTypingGame(challenge: Challenge | null) {
     remaining: TIME_LIMIT_SECONDS,
     progress: 0,
     score: 0,
+    correctWords: 0,
     muted: false,
     throttled: false,
     speaking: false,
@@ -129,15 +134,25 @@ export function useTypingGame(challenge: Challenge | null) {
       const rem = Math.max(0, TIME_LIMIT_SECONDS - sec);
       setState((p) => {
         const scoreTime = Math.max(sec, 1);
+        const content = challengeRef.current?.content ?? '';
+        const correctWords = countCorrectWords(p.input, content);
         if (rem <= 0 && p.phase === 'playing') {
           const wpm = calculateWpm(p.input.length, wpmTimeSeconds(t0.current));
           const score = calculateScore(p.accuracy / 100, wpm, scoreTime);
-          return { ...p, elapsed: sec, remaining: 0, wpm, score, phase: 'timeout' };
+          return {
+            ...p,
+            elapsed: sec,
+            remaining: 0,
+            wpm,
+            score,
+            correctWords,
+            phase: 'timeout',
+          };
         }
         // Refresh live WPM as time passes even without new keystrokes
         const wpm = calculateWpm(p.input.length, wpmTimeSeconds(t0.current));
         const score = calculateScore(p.accuracy / 100, wpm, scoreTime);
-        return { ...p, elapsed: sec, remaining: rem, wpm, score };
+        return { ...p, elapsed: sec, remaining: rem, wpm, score, correctWords };
       });
     }, 250);
     return () => clearInterval(timer.current);
@@ -287,6 +302,7 @@ export function useTypingGame(challenge: Challenge | null) {
         remaining: TIME_LIMIT_SECONDS,
         progress: 0,
         score: 0,
+        correctWords: 0,
         muted: prev.muted,
         throttled: false,
         speaking: false,
@@ -350,6 +366,7 @@ export function useTypingGame(challenge: Challenge | null) {
 
       // Same correctness rules as server validatePlayMetrics / countCorrectChars.
       const ok = countCorrectChars(val, text);
+      const correctWords = countCorrectWords(val, text);
       const sec = elapsedSeconds(t0.current);
       const wpm = calculateWpm(val.length, wpmTimeSeconds(t0.current));
 
@@ -359,7 +376,8 @@ export function useTypingGame(challenge: Challenge | null) {
         return;
       }
 
-      // Live score always uses at least 1s so display matches server floor.
+      // Live display score always uses at least 1s so it matches server floor.
+      // Ranking uses correctWords + timeSeconds, not this composite.
       const scoreTime = Math.max(sec, 1);
       const accuracy = calculateAccuracy(ok, val.length);
       const progress = text.length
@@ -377,6 +395,7 @@ export function useTypingGame(challenge: Challenge | null) {
         elapsed: sec,
         remaining: Math.max(0, TIME_LIMIT_SECONDS - sec),
         score,
+        correctWords,
         phase: done ? 'finished' : p.phase,
       }));
 
@@ -439,6 +458,7 @@ export function useTypingGame(challenge: Challenge | null) {
       remaining: TIME_LIMIT_SECONDS,
       progress: 0,
       score: 0,
+      correctWords: 0,
       muted: prev.muted,
       throttled: false,
       speaking: false,

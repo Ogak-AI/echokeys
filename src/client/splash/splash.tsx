@@ -14,7 +14,8 @@ const Splash = () => {
   const [wordsTyped, setWordsTyped] = useState<number | null>(null);
   const [subredditName, setSubredditName] = useState('');
   const [postMeta, setPostMeta] = useState<PostMeta | null>(null);
-  const [bestWpm, setBestWpm] = useState<number | null>(null);
+  const [bestCorrectWords, setBestCorrectWords] = useState<number | null>(null);
+  const [bestTimeSeconds, setBestTimeSeconds] = useState<number | null>(null);
   const playBtnRef = useRef<HTMLButtonElement>(null);
   const lbBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -29,8 +30,11 @@ const Splash = () => {
         if (me.profile?.totalWordsTyped != null) {
           setWordsTyped(me.profile.totalWordsTyped as number);
         }
-        if (me.profile?.bestWpm != null) {
-          setBestWpm(me.profile.bestWpm as number);
+        if (me.profile?.bestCorrectWords != null) {
+          setBestCorrectWords(me.profile.bestCorrectWords as number);
+        }
+        if (me.profile?.bestTimeSeconds != null) {
+          setBestTimeSeconds(me.profile.bestTimeSeconds as number);
         }
         if (me.postData && typeof me.postData === 'object') {
           setPostMeta(me.postData as PostMeta);
@@ -74,39 +78,27 @@ const Splash = () => {
 
   const hasPostChallenge = Boolean(postMeta?.challengeId);
   const showStats =
-    (wordsTyped != null && wordsTyped > 0) || (bestWpm != null && bestWpm > 0);
+    (wordsTyped != null && wordsTyped > 0) ||
+    (bestCorrectWords != null && bestCorrectWords > 0);
 
   return (
     <div className="app-shell">
       <div className="app-center" style={{ gap: '0.65rem' }}>
-        {/* Title strip — VS Code status-bar vibe */}
         <div style={{ textAlign: 'center', width: '100%', maxWidth: '24rem' }}>
-          <div
+          <h1
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.4rem',
+              fontSize: 'clamp(1.35rem, 5vw, 1.75rem)',
+              fontWeight: 700,
+              color: 'var(--color-vsc-accent)',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15,
               marginBottom: '0.2rem',
             }}
           >
-            <span style={{ fontSize: '1.15rem', lineHeight: 1 }} aria-hidden>
-              ⌨️
-            </span>
-            <h1
-              style={{
-                fontSize: 'clamp(1.35rem, 5vw, 1.75rem)',
-                fontWeight: 700,
-                color: 'var(--color-vsc-accent)',
-                letterSpacing: '-0.02em',
-                lineHeight: 1.15,
-              }}
-            >
-              Echokeys
-            </h1>
-          </div>
+            Echokeys
+          </h1>
           <p className="muted" style={{ fontSize: '0.75rem' }}>
-            Paste the text. Race typing it. Climb the board.
+            Paste text. Type it. Rank by correct words and time.
           </p>
           {communityLabel && (
             <p
@@ -121,11 +113,10 @@ const Splash = () => {
         <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: '0.875rem', marginBottom: '0.15rem' }}>
-              Welcome,{' '}
               <span style={{ fontWeight: 600, color: 'var(--color-vsc-green)' }}>{username}</span>
             </p>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Most correct words, lowest time. Climb your sub&apos;s weekly board.
+              Most correct words wins; ties break on lowest time.
             </p>
           </div>
 
@@ -134,7 +125,8 @@ const Splash = () => {
               className="mono"
               style={{
                 display: 'grid',
-                gridTemplateColumns: showStats && wordsTyped && bestWpm ? '1fr 1fr' : '1fr',
+                gridTemplateColumns:
+                  wordsTyped && bestCorrectWords ? '1fr 1fr' : '1fr',
                 gap: '0.35rem',
               }}
             >
@@ -146,12 +138,15 @@ const Splash = () => {
                   <div className="stat-lbl">Words</div>
                 </div>
               )}
-              {bestWpm != null && bestWpm > 0 && (
+              {bestCorrectWords != null && bestCorrectWords > 0 && (
                 <div className="stat-box">
-                  <div className="stat-val" style={{ fontSize: '1.05rem' }}>
-                    {bestWpm}
+                  <div className="stat-val" style={{ fontSize: '1.05rem', color: 'var(--color-vsc-green)' }}>
+                    {bestCorrectWords.toLocaleString()}
+                    {bestTimeSeconds != null && bestTimeSeconds > 0
+                      ? ` · ${bestTimeSeconds}s`
+                      : ''}
                   </div>
-                  <div className="stat-lbl">Best WPM</div>
+                  <div className="stat-lbl">Best run</div>
                 </div>
               )}
             </div>
@@ -201,16 +196,16 @@ const Splash = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             <button ref={playBtnRef} className="vsc-btn vsc-btn-lg" style={{ width: '100%' }}>
-              {hasPostChallenge ? '▶ Play Challenge' : '▶ Start Challenge'}
+              {hasPostChallenge ? 'Play challenge' : 'Start challenge'}
             </button>
             <button ref={lbBtnRef} className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }}>
-              🏆 Leaderboard
+              Leaderboard
             </button>
           </div>
         </div>
 
         <p className="muted mono" style={{ fontSize: '0.5625rem', textAlign: 'center', opacity: 0.7 }}>
-          Rank = most correct words · then lowest time
+          Rank: most correct words, then lowest time
         </p>
       </div>
     </div>

@@ -37,7 +37,7 @@ function resetDocumentScroll() {
 export const App = () => {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [fromPost, setFromPost] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -70,7 +70,7 @@ export const App = () => {
     accuracy,
     remaining,
     progress,
-    score,
+    correctWords,
     elapsed,
     muted,
     throttled,
@@ -196,7 +196,7 @@ export const App = () => {
   /**
    * Fit the game shell to the *visible* viewport (keyboard-safe on phones).
    * Without this, mobile browsers push the focused input and users must scroll
-   * up to see the generated text they are supposed to type.
+   * up to see the challenge text they are supposed to type.
    */
   const fitShellToVisibleViewport = useCallback(() => {
     const shell = shellRef.current;
@@ -397,21 +397,21 @@ export const App = () => {
     }
   }, [phase, submitResults]);
 
-  const handleGenerate = async (e: React.FormEvent) => {
+  const handleCreateChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
 
-    setGenerating(true);
+    setCreating(true);
     setError(null);
     setRaceError(null);
     try {
-      const res = await fetch('/api/challenge/generate', {
+      const res = await fetch('/api/challenge/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate challenge');
+      if (!res.ok) throw new Error(data.error || 'Failed to create challenge');
       // Fresh challenge → fresh race clock; never reuse a prior raceId.
       setFromPost(false);
       autoStartedId.current = null;
@@ -423,9 +423,9 @@ export const App = () => {
       reset();
       setChallenge(data.challenge);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred during generation');
+      setError(err instanceof Error ? err.message : 'Could not create challenge');
     } finally {
-      setGenerating(false);
+      setCreating(false);
     }
   };
 
@@ -499,12 +499,12 @@ export const App = () => {
       : `r/${subredditName}`
     : '';
 
-  if (loading || generating || (challenge && phase === 'idle' && raceStarting)) {
+  if (loading || creating || (challenge && phase === 'idle' && raceStarting)) {
     return (
       <div className="app-shell app-center" style={{ gap: '0.65rem' }}>
         <div className="spinner" />
         <p className="loading-text">
-          {generating ? 'Generating…' : raceStarting ? 'Starting race…' : 'Loading…'}
+          {creating ? 'Creating…' : raceStarting ? 'Starting race…' : 'Loading…'}
         </p>
       </div>
     );
@@ -602,8 +602,8 @@ export const App = () => {
             </>
           ) : (
             <div className="mono muted" style={{ fontSize: '0.6875rem', textAlign: 'center' }}>
-              Live: {wpm} WPM · {accuracy}% · score {score}
-              {elapsed > 0 ? ` · ${elapsed}s` : ''}
+              Live: {correctWords} correct · {elapsed > 0 ? `${elapsed}s` : '0s'} · {wpm} WPM ·{' '}
+              {accuracy}%
             </div>
           )}
 
@@ -626,7 +626,7 @@ export const App = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <button onClick={handleTryAgain} className="vsc-btn vsc-btn-lg" style={{ width: '100%' }}>
-              {fromPost ? 'Retry' : 'New Challenge'}
+              {fromPost ? 'Retry' : 'New challenge'}
             </button>
             <button
               onClick={() => {
@@ -674,10 +674,10 @@ export const App = () => {
               }}
               className="vsc-btn vsc-btn-ghost vsc-btn-sm"
               type="button"
-              aria-label="Read generated text aloud"
-              title="Read the generated text aloud while you type"
+              aria-label="Read challenge text aloud"
+              title="Read the challenge text aloud while you type"
             >
-              🔊 {readLabel}
+              {readLabel}
             </button>
             <button
               onClick={() => {
@@ -689,7 +689,7 @@ export const App = () => {
               aria-label={muted ? 'Unmute narration' : 'Mute narration'}
               title={muted ? 'Unmute' : 'Mute'}
             >
-              {muted ? '🔇' : 'Mute'}
+              {muted ? 'Unmute' : 'Mute'}
             </button>
             <button onClick={handleTryAgain} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
               Reset
@@ -824,6 +824,14 @@ export const App = () => {
 
             <div className="game-stats-row">
               <div className="stat-box">
+                <div className="stat-val stat-val-accent">{correctWords}</div>
+                <div className="stat-lbl">Correct</div>
+              </div>
+              <div className="stat-box">
+                <div className="stat-val">{elapsed > 0 ? `${elapsed}s` : '0s'}</div>
+                <div className="stat-lbl">Time</div>
+              </div>
+              <div className="stat-box">
                 <div className="stat-val">{wpm}</div>
                 <div className="stat-lbl">WPM</div>
               </div>
@@ -831,15 +839,11 @@ export const App = () => {
                 <div className="stat-val">{accuracy}%</div>
                 <div className="stat-lbl">Acc</div>
               </div>
-              <div className="stat-box">
-                <div className="stat-val stat-val-accent">{score}</div>
-                <div className="stat-lbl">Score</div>
-              </div>
             </div>
 
             <p className="game-hint">
-              Current line stays locked in the focus band — no scrolling needed. 🔊 Read speaks the
-              generated text while you type.
+              Rank: most correct words, then lowest time. The current line stays in the focus band.
+              Read speaks the challenge text while you type.
             </p>
           </aside>
         </div>
@@ -851,7 +855,7 @@ export const App = () => {
     <div className="app-shell">
       <header className="app-header">
         <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
-          ← Home
+          Home
         </button>
         <span className="app-header-title">New challenge</span>
         <span style={{ width: '3rem' }} />
@@ -861,14 +865,14 @@ export const App = () => {
         <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
           <div>
             <h2 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-vsc-accent)', marginBottom: '0.2rem' }}>
-              Start typing race
+              Start race
             </h2>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Enter the exact text you want to type. What you paste is what you race — nothing is rewritten.
+              Paste the exact text to type. Nothing is rewritten.
             </p>
           </div>
 
-          <form onSubmit={handleGenerate} style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <form onSubmit={handleCreateChallenge} style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
             {error && <div className="alert-error">{error}</div>}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -878,7 +882,7 @@ export const App = () => {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Paste or type the content you want to race…"
+                placeholder="Paste or type the race text…"
                 className="vsc-input"
                 style={{ height: '4.5rem', resize: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
                 required

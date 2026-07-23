@@ -497,7 +497,7 @@ html.ek-lock-scroll #root {
 
 .game-stats-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 0.35rem;
 }
 

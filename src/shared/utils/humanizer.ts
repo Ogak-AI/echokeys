@@ -1,12 +1,13 @@
 /**
  * Runtime encoding of the project `humanizer` skill.
- * Echokeys always injects these rules when generating typing-challenge content.
+ * Challenge text is user-authored (no AI rewrite); this module keeps the skill
+ * rules available for agents and any future text tooling.
  * Keep in sync with `.grok/skills/humanizer/SKILL.md`.
  */
 
 import type { ContentDomain } from '../types/index.js';
 
-/** Full humanizer rules applied to every non-code challenge generation. */
+/** Full humanizer rules for non-code prose. */
 export const HUMANIZER_PROSE_RULES = `You MUST write like a real person, not a default LLM. Players will type this text character-for-character — AI-sounding prose is a product failure.
 
 ## Personality
@@ -64,20 +65,15 @@ For any comments, docstrings, error messages, or string literals:
 - Prefer short, useful comments over essay-like explanations.
 Output ONLY the code (and minimal comments). No markdown fences, no preamble.`;
 
-/**
- * Returns the humanizer instruction block for a content domain.
- * Always used by Echokeys content generation — not optional.
- */
+/** Returns the humanizer instruction block for a content domain. */
 export function getHumanizerRules(domain: ContentDomain): string {
   return domain === 'code' ? HUMANIZER_CODE_RULES : HUMANIZER_PROSE_RULES;
 }
 
-/**
- * System prompt that forces the humanizer skill on every generation call.
- */
+/** System prompt wrapper for the humanizer skill (agent / tooling use). */
 export function buildHumanizerSystemPrompt(domain: ContentDomain): string {
-  return `You generate typing-challenge content for Echokeys, a multiplayer typing game on Reddit used worldwide.
-Players type your output exactly. Your writing must not sound AI-generated.
+  return `You write natural human text for Echokeys, a multiplayer typing race on Reddit used worldwide.
+Your writing must not sound AI-generated.
 
 Content domain: ${domain}
 
