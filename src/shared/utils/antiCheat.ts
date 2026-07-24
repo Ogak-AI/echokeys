@@ -9,13 +9,13 @@ export const MAX_CHARS_PER_SECOND = MAX_WORDS_PER_SECOND * CHARS_PER_WORD; // 35
 export const MAX_INPUT_JUMP = 5;
 /**
  * Race time cap (client + server).
- * ~2000-word races need more than 10 minutes for typical speeds (e.g. 40 WPM ≈ 50 min).
+ * Fixed product duration: 4 minutes per race.
  */
-export const TIME_LIMIT_SECONDS = 90 * 60; // 90 minutes
+export const TIME_LIMIT_SECONDS = 4 * 60; // 4 minutes
 /** Allowed WPM drift between client claim and server recalculation (legacy / display). */
 export const WPM_TOLERANCE = 8;
 /** Race session TTL — must finish (or time out) within this window (+ buffer). */
-export const RACE_TTL_MS = (TIME_LIMIT_SECONDS + 10 * 60) * 1000;
+export const RACE_TTL_MS = (TIME_LIMIT_SECONDS + 2 * 60) * 1000;
 /**
  * Incomplete runs only rank on the community board if the player typed at least
  * this fraction of the challenge (timeouts near the end still count).

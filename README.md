@@ -36,7 +36,7 @@ It does **not** decide leaderboard order.
 - Source text is user-pasted only — **no AI generation or rewrite**  
 - Race text is a contiguous excerpt: random sentence start → ≥ 2,000 words → complete sentence end  
 - Typing math stays on-device; the server revalidates duration, speed, and correctness  
-- Time cap is **90 minutes** (long races)  
+- Time cap is **4 minutes** per race  
 - Leaderboards and badges are **per community**  
 - Weekly top 3 → `Weekly Champion - r/subreddit` (same for monthly / yearly)  
 - Lifetime word counter accumulates on every finished session  

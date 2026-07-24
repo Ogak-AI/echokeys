@@ -833,7 +833,7 @@ export const App = () => {
                 </div>
                 <div
                   className={`timer-display ${
-                    remaining < 60 ? 'timer-danger' : remaining < 180 ? 'timer-warn' : ''
+                    remaining < 30 ? 'timer-danger' : remaining < 60 ? 'timer-warn' : ''
                   }`}
                 >
                   {formatTime(remaining)}
