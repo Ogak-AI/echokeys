@@ -1,8 +1,9 @@
 /**
- * Built-in knowledge base (content pool for free-play races).
+ * Built-in knowledge base (source pool for all races).
  *
- * Paste source text into: content/knowledge-base.txt
+ * Maintainers put source text in: content/knowledge-base.txt
  * It is inlined into the server bundle at build time.
+ * Players never paste — they only race random excerpts from this pool.
  */
 
 import raw from '../../content/knowledge-base.txt?raw';

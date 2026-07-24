@@ -35,7 +35,6 @@ function resetDocumentScroll() {
 }
 
 export const App = () => {
-  const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -51,6 +50,7 @@ export const App = () => {
   const [raceStarting, setRaceStarting] = useState(false);
   const [kbReady, setKbReady] = useState(false);
   const [kbWordCount, setKbWordCount] = useState(0);
+  const [kbError, setKbError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const textTrackRef = useRef<HTMLDivElement>(null);
@@ -183,6 +183,7 @@ export const App = () => {
           if (!cancelled) {
             setKbReady(Boolean(kb.ready));
             setKbWordCount(typeof kb.wordCount === 'number' ? kb.wordCount : 0);
+            setKbError(typeof kb.error === 'string' ? kb.error : null);
           }
         }
       } catch (err) {
@@ -423,38 +424,26 @@ export const App = () => {
     [reset]
   );
 
-  const createChallenge = useCallback(
-    async (body: { prompt?: string; useKnowledgeBase?: boolean }) => {
-      setCreating(true);
-      setError(null);
-      setRaceError(null);
-      try {
-        const res = await fetch('/api/challenge/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to create challenge');
-        applyNewChallenge(data.challenge as Challenge);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Could not create challenge');
-      } finally {
-        setCreating(false);
-      }
-    },
-    [applyNewChallenge]
-  );
-
-  const handleCreateChallenge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-    await createChallenge({ prompt });
-  };
-
-  const handleRaceFromKnowledgeBase = async () => {
-    await createChallenge({ useKnowledgeBase: true });
-  };
+  /** Start a free-play race: server picks a random excerpt from the knowledge base. */
+  const startRandomRace = useCallback(async () => {
+    setCreating(true);
+    setError(null);
+    setRaceError(null);
+    try {
+      const res = await fetch('/api/challenge/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start race');
+      applyNewChallenge(data.challenge as Challenge);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not start race');
+    } finally {
+      setCreating(false);
+    }
+  }, [applyNewChallenge]);
 
   const handleBack = () => {
     window.location.href = 'splash.html';
@@ -550,7 +539,7 @@ export const App = () => {
             Retry start
           </button>
           <button type="button" className="vsc-btn vsc-btn-ghost" style={{ width: '100%' }} onClick={handleTryAgain}>
-            {fromPost ? 'Back' : 'New challenge'}
+            {fromPost ? 'Back' : 'New race'}
           </button>
         </div>
       </div>
@@ -653,7 +642,7 @@ export const App = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <button onClick={handleTryAgain} className="vsc-btn vsc-btn-lg" style={{ width: '100%' }}>
-              {fromPost ? 'Retry' : 'New challenge'}
+              {fromPost ? 'Retry' : 'New race'}
             </button>
             <button
               onClick={() => {
@@ -884,7 +873,7 @@ export const App = () => {
         <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
           Home
         </button>
-        <span className="app-header-title">New challenge</span>
+        <span className="app-header-title">Free play</span>
         <span style={{ width: '3rem' }} />
       </header>
 
@@ -895,57 +884,37 @@ export const App = () => {
               Start race
             </h2>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Paste a source document (at least 2,000 words). The game picks a random sentence,
-              then takes the next 2,000+ words and ends on a complete sentence. Your paste is never rewritten.
+              You type a randomly selected excerpt from the built-in source pool — nothing to paste.
+              Each race starts at a random sentence, takes 2,000+ words, and ends on a complete sentence.
+              Time limit: 4 minutes.
             </p>
           </div>
 
-          <form onSubmit={handleCreateChallenge} style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-            {error && <div className="alert-error">{error}</div>}
-
-            {kbReady && (
-              <button
-                type="button"
-                className="vsc-btn vsc-btn-lg"
-                style={{ width: '100%', fontWeight: 600 }}
-                disabled={creating}
-                onClick={() => void handleRaceFromKnowledgeBase()}
-              >
-                {creating
-                  ? 'Starting…'
-                  : `Race from knowledge base (${kbWordCount.toLocaleString()} words)`}
-              </button>
-            )}
-
-            {kbReady && (
-              <p className="muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
-                or paste a custom source below
-              </p>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label className="muted" style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Source document
-              </label>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Paste an article, chapter, transcript, or other long text (≥ 2,000 words)…"
-                className="vsc-input"
-                style={{ height: '10rem', resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
-                required={!kbReady}
-              />
+          {(error || (!kbReady && kbError)) && (
+            <div className="alert-error">
+              {error || kbError || 'Source pool is not available.'}
             </div>
+          )}
 
-            <button
-              type="submit"
-              className="vsc-btn vsc-btn-lg"
-              style={{ width: '100%', fontWeight: 600 }}
-              disabled={creating || !prompt.trim()}
-            >
-              {creating ? 'Starting…' : 'Start race from paste'}
-            </button>
-          </form>
+          <button
+            type="button"
+            className="vsc-btn vsc-btn-lg"
+            style={{ width: '100%', fontWeight: 600 }}
+            disabled={creating || !kbReady}
+            onClick={() => void startRandomRace()}
+          >
+            {creating
+              ? 'Starting…'
+              : kbReady
+                ? 'Start random race'
+                : 'Source pool unavailable'}
+          </button>
+
+          {kbReady && (
+            <p className="muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
+              Pool size: {kbWordCount.toLocaleString()} words
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 /**
- * Build a race excerpt from a pasted source document.
+ * Build a race excerpt from the built-in source pool.
  *
  * Flow:
  * 1. Find sentence starts in the source
@@ -7,7 +7,8 @@
  * 3. Take at least MIN_RACE_WORDS words from that point
  * 4. Extend to the next complete sentence ending
  *
- * No AI — excerpt is a contiguous slice of the pasted text only.
+ * No AI — excerpt is a contiguous slice of the source pool only.
+ * Players never paste text; they only type what was randomly selected.
  */
 
 import { countWords } from './antiCheat.js';
@@ -15,7 +16,7 @@ import { countWords } from './antiCheat.js';
 /** Target length for a race (words). Excerpt is this many or more, ending on a sentence. */
 export const MIN_RACE_WORDS = 2000;
 
-/** Max characters accepted for a pasted source document. */
+/** Max characters accepted for the built-in source pool. */
 export const MAX_SOURCE_CHARS = 200_000;
 
 /** Minimum source length (words) before we can build a full race. */
@@ -180,7 +181,7 @@ export function extractRaceExcerpt(
 }
 
 /**
- * Sanitize a pasted source document (control chars stripped, length capped).
+ * Sanitize source-pool text (control chars stripped, length capped).
  * Does not rewrite wording.
  */
 export function sanitizeSourceText(raw: string, maxLen = MAX_SOURCE_CHARS): string {

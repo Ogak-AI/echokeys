@@ -2,12 +2,12 @@
 
 Echokeys is a free, open-source typing race on Reddit’s Devvit platform. Anyone can use it — engineers, writers, lawyers, designers, marketers, students.
 
-You paste a **source document** (at least 2,000 words). The game picks a **random sentence**, then takes the **next 2,000+ words**, ending on a **complete sentence**. Players race typing that excerpt character for character. No AI rewrite. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
+Players **do not paste text**. Each race is a **random excerpt** from the built-in source pool: the game picks a **random sentence**, then takes the **next 2,000+ words**, ending on a **complete sentence**. Type that excerpt character for character. No AI rewrite. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
 
 ## How it works
 
-1. **Create a challenge** — Subreddit menu → “Create Echokeys Challenge”, or free-play in the app, and paste a long source document  
-2. **Random excerpt** — Server starts at a random sentence, takes ≥ 2,000 words, ends on a complete sentence  
+1. **Start a race** — Free-play in the app, or open a challenge post (subreddit menu → “Create Echokeys Challenge”)  
+2. **Random excerpt** — Server starts at a random sentence in the source pool, takes ≥ 2,000 words, ends on a complete sentence  
 3. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only** while racing  
 4. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
 5. **One score upload** — On finish or timeout, a single payload hits the server  
@@ -33,7 +33,7 @@ It does **not** decide leaderboard order.
 
 ## Product rules
 
-- Source text is user-pasted only — **no AI generation or rewrite**  
+- Players only race text the server selected — **no player paste**  
 - Race text is a contiguous excerpt: random sentence start → ≥ 2,000 words → complete sentence end  
 - Typing math stays on-device; the server revalidates duration, speed, and correctness  
 - Time cap is **4 minutes** per race  
@@ -69,9 +69,9 @@ npm run login    # devvit login
 
 ```text
 content/
-  knowledge-base.txt   # optional built-in source pool (paste ≥ 2,000 words)
+  knowledge-base.txt   # built-in source pool (bundled at build time)
 src/
-  client/   # splash, game editor, leaderboard UI
+  client/   # splash, game, leaderboard UI
   server/   # Express API, leaderboards, race sessions
   shared/   # types, display score formula, anti-cheat helpers, race excerpt
 tests/
@@ -79,18 +79,18 @@ tests/
 
 ## Configuration
 
-No external API keys. Challenges are built only from pasted source text (or the optional built-in knowledge base).
+No external API keys. Race text comes only from the built-in knowledge base.
 
 ### Built-in knowledge base
 
-Paste a long source document into:
+The source pool lives at:
 
 ```text
 content/knowledge-base.txt
 ```
 
 Requirements: **≥ 2,000 words**, plain text, real sentence endings (`. ! ?`).  
-After editing, run `npm run build` (or `npm run dev`) so the server bundle picks it up. Free-play then offers **Race from knowledge base**.
+After editing, run `npm run build` (or `npm run dev`) so the server bundle picks it up. Free-play and challenge posts both draw **random excerpts** from this pool.
 
 Optional local env (see `.env.template`):
 

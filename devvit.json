@@ -37,16 +37,13 @@
     "items": [
       {
         "label": "Create Echokeys Challenge",
-        "description": "Paste a source document; race a random 2000+ word excerpt",
+        "description": "Post a random 2000+ word race from the built-in source pool",
         "location": "subreddit",
         "forUserType": "user",
         "endpoint": "/internal/menu/create-challenge",
         "postFilter": "none"
       }
     ]
-  },
-  "forms": {
-    "create-challenge": "/internal/form/create-challenge"
   },
   "scheduler": {
     "tasks": {

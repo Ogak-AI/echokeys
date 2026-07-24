@@ -89,7 +89,7 @@ export function minDurationSeconds(charsTyped: number): number {
 
 /**
  * Strip control chars and bound length for short display strings / titles.
- * For pasted race source documents use `sanitizeSourceText` in raceExcerpt.ts.
+ * For source-pool text use `sanitizeSourceText` in raceExcerpt.ts.
  */
 export function sanitizePrompt(raw: string, maxLen = 500): string {
   return raw

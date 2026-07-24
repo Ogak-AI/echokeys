@@ -38,17 +38,11 @@ import {
   validatePlayMetrics,
 } from '../shared/utils/antiCheat.js';
 import { detectContentDomain } from '../shared/utils/contentDomain.js';
-import {
-  MIN_RACE_WORDS,
-  MIN_SOURCE_WORDS,
-  extractRaceExcerpt,
-  sanitizeSourceText,
-} from '../shared/utils/raceExcerpt.js';
+import { extractRaceExcerpt } from '../shared/utils/raceExcerpt.js';
 import { getKnowledgeBaseSource } from './knowledgeBase.js';
 
 const app = express();
-// Large source pastes (up to MAX_SOURCE_CHARS ≈ 200k).
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '256kb' }));
 
 type RaceSession = {
   id: string;
@@ -256,16 +250,24 @@ function newId(prefix: string): string {
 }
 
 /**
- * Build a challenge from a pasted source document (no AI).
+ * Build a challenge from the built-in knowledge base (no player paste).
  * Picks a random sentence start, then ≥ MIN_RACE_WORDS ending on a complete sentence.
  * Players type that excerpt character for character.
  */
-async function createChallengeFromSource(source: string, createdBy: string): Promise<Challenge> {
+async function createChallengeFromKnowledgeBase(createdBy: string): Promise<{
+  challenge: Challenge;
+  sourceWordCount: number;
+}> {
+  const kb = getKnowledgeBaseSource();
+  if (!kb.ok) {
+    throw new Error(kb.error);
+  }
+
   const subId = getSubredditId();
-  const excerpt = extractRaceExcerpt(source);
+  const excerpt = extractRaceExcerpt(kb.source);
   const content = excerpt.content;
   if (!content || excerpt.wordCount < 1) {
-    throw new Error('Could not extract a race excerpt from the pasted text');
+    throw new Error('Could not extract a race excerpt from the knowledge base');
   }
 
   const domain = detectContentDomain(content);
@@ -286,24 +288,7 @@ async function createChallengeFromSource(source: string, createdBy: string): Pro
   };
 
   await saveChallenge(redis, challenge);
-  return challenge;
-}
-
-function parseSourceBody(raw: unknown):
-  | { ok: true; source: string; wordCount: number }
-  | { ok: false; error: string } {
-  if (!raw || typeof raw !== 'string') {
-    return { ok: false, error: 'Paste a source document to race from' };
-  }
-  const source = sanitizeSourceText(raw);
-  const wordCount = countWords(source);
-  if (wordCount < MIN_SOURCE_WORDS) {
-    return {
-      ok: false,
-      error: `Source must be at least ${MIN_SOURCE_WORDS.toLocaleString()} words (got ${wordCount.toLocaleString()}). The race picks a random sentence and takes the next ${MIN_RACE_WORDS.toLocaleString()}+ words, ending on a complete sentence.`,
-    };
-  }
-  return { ok: true, source, wordCount };
+  return { challenge, sourceWordCount: kb.wordCount };
 }
 
 // ---- Health ----
@@ -334,41 +319,23 @@ app.get('/api/me', async (_req, res) => {
   }
 });
 
-// ---- Create challenge from pasted source or built-in knowledge base ----
-app.post('/api/challenge/create', async (req, res) => {
+// ---- Create free-play challenge: random excerpt from built-in knowledge base ----
+app.post('/api/challenge/create', async (_req, res) => {
   try {
-    const body = req.body as {
-      prompt?: string;
-      source?: string;
-      /** When true, ignore paste and use content/knowledge-base.txt. */
-      useKnowledgeBase?: boolean;
-    };
-
-    let parsed: { ok: true; source: string; wordCount: number } | { ok: false; error: string };
-    if (body.useKnowledgeBase) {
-      parsed = getKnowledgeBaseSource();
-    } else {
-      // Accept either field name (UI may send `prompt` for compatibility).
-      parsed = parseSourceBody(body.source ?? body.prompt);
-    }
-    if (!parsed.ok) {
-      return res.status(400).json({ error: parsed.error });
-    }
-
     const username = await resolveUsername();
-    const allowed = await checkRateLimit(username, 'challenge', 5);
+    const allowed = await checkRateLimit(username, 'challenge', 20);
     if (!allowed) {
       return res.status(429).json({
-        error: 'Rate limit exceeded: max 5 challenges per hour',
+        error: 'Rate limit exceeded: max 20 races per hour',
       });
     }
 
-    const challenge = await createChallengeFromSource(parsed.source, username);
+    const { challenge, sourceWordCount } = await createChallengeFromKnowledgeBase(username);
     return res.json({
       challenge,
-      sourceWordCount: parsed.wordCount,
+      sourceWordCount,
       excerptWordCount: countWords(challenge.content),
-      fromKnowledgeBase: Boolean(body.useKnowledgeBase),
+      fromKnowledgeBase: true,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create challenge';
@@ -377,7 +344,7 @@ app.post('/api/challenge/create', async (req, res) => {
   }
 });
 
-// Knowledge base status (free-play UI can offer "race from KB" when ready).
+// Knowledge base status (free-play UI shows ready / not ready).
 app.get('/api/knowledge-base', (_req, res) => {
   const kb = getKnowledgeBaseSource();
   if (!kb.ok) {
@@ -685,54 +652,21 @@ app.get('/api/profile/:username', async (req, res) => {
   }
 });
 
-// ---- Menu: open create-challenge form ----
+// ---- Menu: post a random knowledge-base race (no paste form) ----
 app.post('/internal/menu/create-challenge', async (_req, res) => {
-  const response: UiResponse = {
-    showForm: {
-      name: 'create-challenge',
-      form: {
-        title: 'Create Echokeys Challenge',
-        description: `Paste a source document (≥ ${MIN_SOURCE_WORDS.toLocaleString()} words). The game picks a random sentence, then takes the next ${MIN_RACE_WORDS.toLocaleString()}+ words, ending on a complete sentence. No rewriting.`,
-        acceptLabel: 'Post Challenge',
-        cancelLabel: 'Cancel',
-        fields: [
-          {
-            type: 'paragraph',
-            name: 'prompt',
-            label: 'Source document',
-            helpText: `Paste the full text pool (article, chapter, transcript, code dump, etc.). Must be at least ${MIN_SOURCE_WORDS.toLocaleString()} words. Players type a random contiguous excerpt, not the whole paste.`,
-            required: true,
-          },
-        ],
-      },
-    },
-  };
-  return res.json(response);
-});
-
-// ---- Form submit: source paste → random excerpt challenge + custom post ----
-app.post('/internal/form/create-challenge', async (req, res) => {
   try {
-    const values = req.body as { prompt?: string };
-    const parsed = parseSourceBody(values.prompt ?? '');
-    if (!parsed.ok) {
-      return res.json({
-        showToast: { text: parsed.error, appearance: 'neutral' },
-      } satisfies UiResponse);
-    }
-
     const username = await resolveUsername();
     const allowed = await checkRateLimit(username, 'challenge', 5);
     if (!allowed) {
       return res.json({
         showToast: {
-          text: 'Rate limit: max 5 challenges per hour.',
+          text: 'Rate limit: max 5 challenge posts per hour.',
           appearance: 'neutral',
         },
       } satisfies UiResponse);
     }
 
-    const challenge = await createChallengeFromSource(parsed.source, username);
+    const { challenge } = await createChallengeFromKnowledgeBase(username);
 
     const rawSubName = context.subredditName || (await reddit.getCurrentSubreddit()).name;
     const subredditName = rawSubName.replace(/^r\//i, '');

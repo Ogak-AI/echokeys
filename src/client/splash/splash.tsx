@@ -98,7 +98,7 @@ const Splash = () => {
             Echokeys
           </h1>
           <p className="muted" style={{ fontSize: '0.75rem' }}>
-            Paste a source. Race a random 2,000+ word excerpt. Rank by correct words and time.
+            Race a random 2,000+ word excerpt. Rank by correct words and time.
           </p>
           {communityLabel && (
             <p
