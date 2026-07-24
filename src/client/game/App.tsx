@@ -49,6 +49,8 @@ export const App = () => {
   const [raceId, setRaceId] = useState<string | null>(null);
   const [raceError, setRaceError] = useState<string | null>(null);
   const [raceStarting, setRaceStarting] = useState(false);
+  const [kbReady, setKbReady] = useState(false);
+  const [kbWordCount, setKbWordCount] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const textTrackRef = useRef<HTMLDivElement>(null);
@@ -157,9 +159,10 @@ export const App = () => {
 
     (async () => {
       try {
-        const [meRes, postRes] = await Promise.all([
+        const [meRes, postRes, kbRes] = await Promise.all([
           fetch('/api/me'),
           fetch('/api/post/challenge'),
+          fetch('/api/knowledge-base'),
         ]);
         if (meRes.ok) {
           const me = await meRes.json();
@@ -173,6 +176,13 @@ export const App = () => {
           if (!cancelled && data.challenge) {
             setChallenge(data.challenge as Challenge);
             setFromPost(true);
+          }
+        }
+        if (kbRes.ok) {
+          const kb = await kbRes.json();
+          if (!cancelled) {
+            setKbReady(Boolean(kb.ready));
+            setKbWordCount(typeof kb.wordCount === 'number' ? kb.wordCount : 0);
           }
         }
       } catch (err) {
@@ -397,21 +407,8 @@ export const App = () => {
     }
   }, [phase, submitResults]);
 
-  const handleCreateChallenge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-
-    setCreating(true);
-    setError(null);
-    setRaceError(null);
-    try {
-      const res = await fetch('/api/challenge/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create challenge');
+  const applyNewChallenge = useCallback(
+    (challengeData: Challenge) => {
       // Fresh challenge → fresh race clock; never reuse a prior raceId.
       setFromPost(false);
       autoStartedId.current = null;
@@ -421,12 +418,42 @@ export const App = () => {
       submitInFlight.current = false;
       submittedKeys.clear();
       reset();
-      setChallenge(data.challenge);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Could not create challenge');
-    } finally {
-      setCreating(false);
-    }
+      setChallenge(challengeData);
+    },
+    [reset]
+  );
+
+  const createChallenge = useCallback(
+    async (body: { prompt?: string; useKnowledgeBase?: boolean }) => {
+      setCreating(true);
+      setError(null);
+      setRaceError(null);
+      try {
+        const res = await fetch('/api/challenge/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create challenge');
+        applyNewChallenge(data.challenge as Challenge);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Could not create challenge');
+      } finally {
+        setCreating(false);
+      }
+    },
+    [applyNewChallenge]
+  );
+
+  const handleCreateChallenge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prompt.trim()) return;
+    await createChallenge({ prompt });
+  };
+
+  const handleRaceFromKnowledgeBase = async () => {
+    await createChallenge({ useKnowledgeBase: true });
   };
 
   const handleBack = () => {
@@ -868,30 +895,55 @@ export const App = () => {
               Start race
             </h2>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Paste the exact text to type. Nothing is rewritten.
+              Paste a source document (at least 2,000 words). The game picks a random sentence,
+              then takes the next 2,000+ words and ends on a complete sentence. Your paste is never rewritten.
             </p>
           </div>
 
           <form onSubmit={handleCreateChallenge} style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
             {error && <div className="alert-error">{error}</div>}
 
+            {kbReady && (
+              <button
+                type="button"
+                className="vsc-btn vsc-btn-lg"
+                style={{ width: '100%', fontWeight: 600 }}
+                disabled={creating}
+                onClick={() => void handleRaceFromKnowledgeBase()}
+              >
+                {creating
+                  ? 'Starting…'
+                  : `Race from knowledge base (${kbWordCount.toLocaleString()} words)`}
+              </button>
+            )}
+
+            {kbReady && (
+              <p className="muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
+                or paste a custom source below
+              </p>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <label className="muted" style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Text to type
+                Source document
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Paste or type the race text…"
+                placeholder="Paste an article, chapter, transcript, or other long text (≥ 2,000 words)…"
                 className="vsc-input"
-                style={{ height: '4.5rem', resize: 'none', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
-                required
-                minLength={3}
+                style={{ height: '10rem', resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
+                required={!kbReady}
               />
             </div>
 
-            <button type="submit" className="vsc-btn vsc-btn-lg" style={{ width: '100%', fontWeight: 600 }}>
-              Start race
+            <button
+              type="submit"
+              className="vsc-btn vsc-btn-lg"
+              style={{ width: '100%', fontWeight: 600 }}
+              disabled={creating || !prompt.trim()}
+            >
+              {creating ? 'Starting…' : 'Start race from paste'}
             </button>
           </form>
         </div>

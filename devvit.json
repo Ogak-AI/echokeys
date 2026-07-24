@@ -37,7 +37,7 @@
     "items": [
       {
         "label": "Create Echokeys Challenge",
-        "description": "Post exact text for the community to type-race",
+        "description": "Paste a source document; race a random 2000+ word excerpt",
         "location": "subreddit",
         "forUserType": "user",
         "endpoint": "/internal/menu/create-challenge",

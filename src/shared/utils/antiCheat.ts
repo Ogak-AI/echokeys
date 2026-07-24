@@ -7,12 +7,15 @@ export const CHARS_PER_WORD = 5;
 export const MAX_CHARS_PER_SECOND = MAX_WORDS_PER_SECOND * CHARS_PER_WORD; // 35
 /** Paste / bulk-insert jumps larger than this trigger an immediate lock. */
 export const MAX_INPUT_JUMP = 5;
-/** 10-minute challenge cap (client + server). */
-export const TIME_LIMIT_SECONDS = 600;
+/**
+ * Race time cap (client + server).
+ * ~2000-word races need more than 10 minutes for typical speeds (e.g. 40 WPM ≈ 50 min).
+ */
+export const TIME_LIMIT_SECONDS = 90 * 60; // 90 minutes
 /** Allowed WPM drift between client claim and server recalculation (legacy / display). */
 export const WPM_TOLERANCE = 8;
-/** Race session TTL — must finish (or time out) within this window. */
-export const RACE_TTL_MS = 15 * 60 * 1000;
+/** Race session TTL — must finish (or time out) within this window (+ buffer). */
+export const RACE_TTL_MS = (TIME_LIMIT_SECONDS + 10 * 60) * 1000;
 /**
  * Incomplete runs only rank on the community board if the player typed at least
  * this fraction of the challenge (timeouts near the end still count).
@@ -84,8 +87,11 @@ export function minDurationSeconds(charsTyped: number): number {
   return charsTyped / MAX_CHARS_PER_SECOND;
 }
 
-/** Strip control chars and bound length for user prompts. */
-export function sanitizePrompt(raw: string, maxLen = 2000): string {
+/**
+ * Strip control chars and bound length for short display strings / titles.
+ * For pasted race source documents use `sanitizeSourceText` in raceExcerpt.ts.
+ */
+export function sanitizePrompt(raw: string, maxLen = 500): string {
   return raw
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .trim()

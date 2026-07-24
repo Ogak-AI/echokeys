@@ -53,7 +53,7 @@ test('countCorrectWords matches tokens by position', () => {
 
 test('7 wps ceiling is 420 WPM', () => {
   assert.equal(MAX_WPM, 420);
-  assert.equal(TIME_LIMIT_SECONDS, 600);
+  assert.equal(TIME_LIMIT_SECONDS, 90 * 60);
   assert.equal(MIN_LEADERBOARD_PROGRESS, 0.5);
 });
 
@@ -74,7 +74,7 @@ test('calculateWpm and accuracy', () => {
 
 test('sanitizePrompt strips control chars and bounds length', () => {
   assert.equal(sanitizePrompt('  hello\u0000world  '), 'helloworld');
-  assert.equal(sanitizePrompt('x'.repeat(5000)).length, 2000);
+  assert.equal(sanitizePrompt('x'.repeat(5000)).length, 500);
 });
 
 test('countWords and formatSubredditLabel', () => {
@@ -101,7 +101,10 @@ test('raceElapsedSeconds clamps to time limit', () => {
   const started = Date.now() - 5000;
   assert.equal(raceElapsedSeconds(started, started + 5000), 5);
   assert.equal(raceElapsedSeconds(started, started + 999), 0);
-  assert.equal(raceElapsedSeconds(started, started + 700_000), TIME_LIMIT_SECONDS);
+  assert.equal(
+    raceElapsedSeconds(started, started + (TIME_LIMIT_SECONDS + 100) * 1000),
+    TIME_LIMIT_SECONDS
+  );
 });
 
 test('validatePlayMetrics derives accuracy from typed text', () => {

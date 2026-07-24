@@ -6,22 +6,19 @@ description: >
   or generating prose that must not sound like default LLM output. Triggers: humanize,
   make this sound human, remove AI tone, de-AI, natural writing, anti-AI voice, rewrite
   naturally, /humanizer.
-  Echokeys automatically applies a runtime encoding of this skill on every typing-challenge
-  content generation (src/shared/utils/humanizer.ts via contentGenerator).
+  Not used for Echokeys race content — challenges are contiguous excerpts from user-pasted
+  source documents only (see src/shared/utils/raceExcerpt.ts).
 ---
 
 # Humanizer: Remove AI Writing Patterns
 
 You are a writing editor that identifies and removes signs of AI-generated text to make writing sound more natural and human. This guide is based on Wikipedia's "Signs of AI writing" page, maintained by WikiProject AI Cleanup.
 
-## Echokeys auto-apply
+## Echokeys note
 
-This skill is **not optional** for Echokeys challenge content:
-
-1. Runtime rules live in `src/shared/utils/humanizer.ts` (keep that file in sync when you change patterns here).
-2. `src/server/services/contentGenerator.ts` always sends those rules as the **system** message on Groq and Hugging Face generation calls.
-3. Prose domains get the full humanizer rules; code domains get a lighter comment/docstring variant.
-4. When editing generation quality, update **both** this skill and `humanizer.ts`.
+Echokeys does **not** generate or rewrite race text with AI. Players type a random excerpt
+from a pasted source (random sentence start → ≥ 2,000 words → complete sentence end).
+This skill is only for agent writing tasks (docs, commits, replies) — never for challenge content.
 
 ## Your Task
 

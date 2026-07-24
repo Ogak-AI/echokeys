@@ -2,15 +2,16 @@
 
 Echokeys is a free, open-source typing race on Reddit’s Devvit platform. Anyone can use it — engineers, writers, lawyers, designers, marketers, students.
 
-You paste the **exact text** players will type (a paragraph, a code snippet, a brief). Players race typing that same text, character for character. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
+You paste a **source document** (at least 2,000 words). The game picks a **random sentence**, then takes the **next 2,000+ words**, ending on a **complete sentence**. Players race typing that excerpt character for character. No AI rewrite. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
 
 ## How it works
 
-1. **Create a challenge** — Subreddit menu → “Create Echokeys Challenge”, or start free-play in the app, and paste the text to race  
-2. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only** while racing  
-3. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
-4. **One score upload** — On finish or timeout, a single payload hits the server  
-5. **Community boards** — Per-subreddit weekly (Sun 00:00 UTC), monthly, yearly, all-time  
+1. **Create a challenge** — Subreddit menu → “Create Echokeys Challenge”, or free-play in the app, and paste a long source document  
+2. **Random excerpt** — Server starts at a random sentence, takes ≥ 2,000 words, ends on a complete sentence  
+3. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only** while racing  
+4. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
+5. **One score upload** — On finish or timeout, a single payload hits the server  
+6. **Community boards** — Per-subreddit weekly (Sun 00:00 UTC), monthly, yearly, all-time  
 
 ### Ranking rule
 
@@ -32,8 +33,10 @@ It does **not** decide leaderboard order.
 
 ## Product rules
 
-- Players type **exactly the challenge text** — nothing is rewritten or AI-expanded  
+- Source text is user-pasted only — **no AI generation or rewrite**  
+- Race text is a contiguous excerpt: random sentence start → ≥ 2,000 words → complete sentence end  
 - Typing math stays on-device; the server revalidates duration, speed, and correctness  
+- Time cap is **90 minutes** (long races)  
 - Leaderboards and badges are **per community**  
 - Weekly top 3 → `Weekly Champion - r/subreddit` (same for monthly / yearly)  
 - Lifetime word counter accumulates on every finished session  
@@ -65,16 +68,29 @@ npm run login    # devvit login
 ## Project layout
 
 ```text
+content/
+  knowledge-base.txt   # optional built-in source pool (paste ≥ 2,000 words)
 src/
   client/   # splash, game editor, leaderboard UI
   server/   # Express API, leaderboards, race sessions
-  shared/   # types, display score formula, anti-cheat helpers, time keys
+  shared/   # types, display score formula, anti-cheat helpers, race excerpt
 tests/
 ```
 
 ## Configuration
 
-No external AI API keys are required. Challenges use the exact text the creator provides.
+No external API keys. Challenges are built only from pasted source text (or the optional built-in knowledge base).
+
+### Built-in knowledge base
+
+Paste a long source document into:
+
+```text
+content/knowledge-base.txt
+```
+
+Requirements: **≥ 2,000 words**, plain text, real sentence endings (`. ! ?`).  
+After editing, run `npm run build` (or `npm run dev`) so the server bundle picks it up. Free-play then offers **Race from knowledge base**.
 
 Optional local env (see `.env.template`):
 
