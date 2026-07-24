@@ -1,14 +1,7 @@
 /**
  * Build a race excerpt from the built-in source pool.
- *
- * Flow:
- * 1. Find sentence starts in the source
- * 2. Pick one at random (prefer starts that leave enough words)
- * 3. Take at least MIN_RACE_WORDS words from that point
- * 4. Extend to the next complete sentence ending
- *
- * No AI — excerpt is a contiguous slice of the source pool only.
- * Players never paste text; they only type what was randomly selected.
+ * Random sentence start → ≥ MIN_RACE_WORDS → complete sentence end.
+ * Contiguous slice only; no rewrite.
  */
 
 import { countWords } from './antiCheat.js';

@@ -291,6 +291,65 @@ async function createChallengeFromKnowledgeBase(createdBy: string): Promise<{
   return { challenge, sourceWordCount: kb.wordCount };
 }
 
+/** Bare subreddit name for submitCustomPost (no "r/" prefix). */
+async function resolveSubredditName(preferred?: string): Promise<string> {
+  const raw =
+    preferred ||
+    context.subredditName ||
+    (await reddit.getCurrentSubreddit()).name;
+  return String(raw).replace(/^r\//i, '');
+}
+
+/**
+ * Publish an interactive custom post (Devvit Web entrypoints in devvit.json).
+ * entry "default" → splash.html; expanded modes open game.html / leaderboard.html.
+ */
+async function submitInteractiveCustomPost(opts: {
+  title: string;
+  subredditName?: string;
+  mode?: 'play' | 'challenge';
+  challengeId?: string;
+  domain?: string;
+  prompt?: string;
+  createdBy?: string;
+  runAs?: 'USER' | 'APP';
+  /** Required when runAs is USER. */
+  userGeneratedContentText?: string;
+  textFallback?: string;
+}) {
+  const subredditName = await resolveSubredditName(opts.subredditName);
+  const mode = opts.mode ?? (opts.challengeId ? 'challenge' : 'play');
+
+  const postData: Record<string, string> = { mode };
+  if (opts.challengeId) postData.challengeId = opts.challengeId;
+  if (opts.domain) postData.domain = opts.domain;
+  if (opts.prompt) postData.prompt = opts.prompt.slice(0, 200);
+  if (opts.createdBy) postData.createdBy = opts.createdBy;
+
+  const runAs = opts.runAs ?? 'APP';
+  const textFallback =
+    opts.textFallback ??
+    (mode === 'challenge'
+      ? `Echokeys typing challenge${opts.prompt ? `: ${opts.prompt.slice(0, 80)}` : ''}`
+      : 'Play Echokeys — race a random 2000+ word excerpt. Rank by correct words and time.');
+
+  return reddit.submitCustomPost({
+    subredditName,
+    title: opts.title,
+    entry: 'default',
+    postData,
+    textFallback: { text: textFallback },
+    ...(runAs === 'USER'
+      ? {
+          runAs: 'USER' as const,
+          userGeneratedContent: {
+            text: opts.userGeneratedContentText || textFallback,
+          },
+        }
+      : { runAs: 'APP' as const }),
+  });
+}
+
 // ---- Health ----
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -335,7 +394,6 @@ app.post('/api/challenge/create', async (_req, res) => {
       challenge,
       sourceWordCount,
       excerptWordCount: countWords(challenge.content),
-      fromKnowledgeBase: true,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create challenge';
@@ -652,7 +710,39 @@ app.get('/api/profile/:username', async (req, res) => {
   }
 });
 
-// ---- Menu: post a random knowledge-base race (no paste form) ----
+// ---- Menu: publish the interactive play hub custom post ----
+app.post('/internal/menu/post-play-game', async (_req, res) => {
+  try {
+    const username = await resolveUsername();
+    const allowed = await checkRateLimit(username, 'play-post', 5);
+    if (!allowed) {
+      return res.json({
+        showToast: {
+          text: 'Rate limit: max 5 play posts per hour.',
+          appearance: 'neutral',
+        },
+      } satisfies UiResponse);
+    }
+
+    const post = await submitInteractiveCustomPost({
+      title: 'Play Echokeys Typing Game',
+      mode: 'play',
+      createdBy: username,
+      runAs: 'APP',
+    });
+
+    await redis.set(`hub-post:${getSubredditId()}`, post.id);
+    return res.json({ navigateTo: post.url } satisfies UiResponse);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to publish play post';
+    console.error('[Menu] Post play game error:', err);
+    return res.json({
+      showToast: { text: message, appearance: 'neutral' },
+    } satisfies UiResponse);
+  }
+});
+
+// ---- Menu: post a random knowledge-base race (challenge-bound custom post) ----
 app.post('/internal/menu/create-challenge', async (_req, res) => {
   try {
     const username = await resolveUsername();
@@ -667,37 +757,25 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
     }
 
     const { challenge } = await createChallengeFromKnowledgeBase(username);
-
-    const rawSubName = context.subredditName || (await reddit.getCurrentSubreddit()).name;
-    const subredditName = rawSubName.replace(/^r\//i, '');
     const titlePrompt =
       challenge.prompt.length > 80
         ? `${challenge.prompt.slice(0, 77)}…`
         : challenge.prompt;
-    const title = `Echokeys: ${titlePrompt}`;
 
-    const post = await reddit.submitCustomPost({
-      subredditName,
-      title,
-      entry: 'default',
-      postData: {
-        challengeId: challenge.id,
-        domain: challenge.domain,
-        prompt: challenge.prompt,
-        createdBy: username,
-      },
-      textFallback: {
-        text: `Echokeys typing challenge (${countWords(challenge.content)} words)`,
-      },
+    const post = await submitInteractiveCustomPost({
+      title: `Echokeys: ${titlePrompt}`,
+      mode: 'challenge',
+      challengeId: challenge.id,
+      domain: challenge.domain,
+      prompt: challenge.prompt,
+      createdBy: username,
       runAs: 'USER',
-      userGeneratedContent: {
-        text: challenge.content,
-      },
+      userGeneratedContentText: challenge.content,
+      textFallback: `Echokeys typing challenge (${countWords(challenge.content)} words)`,
     });
 
     challenge.postId = post.id;
     await saveChallenge(redis, challenge);
-
     return res.json({ navigateTo: post.url } satisfies UiResponse);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create challenge';
@@ -710,8 +788,24 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
 
 // ---- Install + Scheduler Endpoints ----
 app.post('/internal/on-app-install', async (_req, res) => {
-  console.log('[Echokeys] App installed. Cron jobs registered via devvit.json scheduler.');
-  return res.json({ ok: true });
+  try {
+    const subId = getSubredditId();
+    const existing = await redis.get(`hub-post:${subId}`);
+    if (!existing) {
+      const post = await submitInteractiveCustomPost({
+        title: 'Play Echokeys Typing Game',
+        mode: 'play',
+        runAs: 'APP',
+      });
+      await redis.set(`hub-post:${subId}`, post.id);
+      console.log('[Echokeys] Published hub post:', post.id);
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    // Don't fail install if post creation is blocked.
+    console.error('[Echokeys] Install hub post error:', err);
+    return res.json({ ok: true });
+  }
 });
 
 app.post('/internal/weekly-snapshot', async (_req, res) => {

@@ -36,6 +36,14 @@
   "menu": {
     "items": [
       {
+        "label": "Post Echokeys Game",
+        "description": "Publish an interactive Play Echokeys Typing Game custom post",
+        "location": "subreddit",
+        "forUserType": "user",
+        "endpoint": "/internal/menu/post-play-game",
+        "postFilter": "none"
+      },
+      {
         "label": "Create Echokeys Challenge",
         "description": "Post a random 2000+ word race from the built-in source pool",
         "location": "subreddit",

@@ -4,6 +4,7 @@ import { StrictMode, useRef, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 type PostMeta = {
+  mode?: string;
   challengeId?: string;
   prompt?: string;
   domain?: string;
@@ -196,7 +197,7 @@ const Splash = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             <button ref={playBtnRef} className="vsc-btn vsc-btn-lg" style={{ width: '100%' }}>
-              {hasPostChallenge ? 'Play challenge' : 'Start challenge'}
+              {hasPostChallenge ? 'Play challenge' : 'Play Echokeys'}
             </button>
             <button ref={lbBtnRef} className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }}>
               Leaderboard

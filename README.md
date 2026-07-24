@@ -6,7 +6,7 @@ Players **do not paste text**. Each race is a **random excerpt** from the built-
 
 ## How it works
 
-1. **Start a race** — Free-play in the app, or open a challenge post (subreddit menu → “Create Echokeys Challenge”)  
+1. **Start a race** — Interactive post **Play Echokeys Typing Game**, free-play, or a challenge post (subreddit menu)  
 2. **Random excerpt** — Server starts at a random sentence in the source pool, takes ≥ 2,000 words, ends on a complete sentence  
 3. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only** while racing  
 4. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
@@ -76,6 +76,25 @@ src/
   shared/   # types, display score formula, anti-cheat helpers, race excerpt
 tests/
 ```
+
+## Interactive custom post (Devvit Web)
+
+UI is defined by `post.entrypoints` in `devvit.json` (`default` → splash, `game`, `leaderboard`) — not Blocks `src/main.tsx`.
+
+```ts
+await reddit.submitCustomPost({
+  subredditName: 'echokeys', // current subreddit if omitted
+  title: 'Play Echokeys Typing Game',
+  entry: 'default', // splash.html → expand to game.html
+  postData: { mode: 'play' },
+  textFallback: {
+    text: 'Play Echokeys — race a random 2000+ word excerpt.',
+  },
+  runAs: 'APP',
+});
+```
+
+Subreddit menu → **Post Echokeys Game**. On install, one hub post is created per community.
 
 ## Configuration
 

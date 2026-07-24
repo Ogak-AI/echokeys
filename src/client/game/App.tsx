@@ -884,9 +884,8 @@ export const App = () => {
               Start race
             </h2>
             <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              You type a randomly selected excerpt from the built-in source pool — nothing to paste.
-              Each race starts at a random sentence, takes 2,000+ words, and ends on a complete sentence.
-              Time limit: 4 minutes.
+              Race a random excerpt from the built-in source pool: random sentence start,
+              2,000+ words, complete sentence end. Time limit: 4 minutes.
             </p>
           </div>
 
