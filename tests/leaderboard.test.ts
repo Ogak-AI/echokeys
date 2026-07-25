@@ -166,7 +166,9 @@ test('weekly snapshot archives, awards badges, and feeds all-time top 100', asyn
 
   const archived = await redis.get(`lb:sub-x:weekly:archive:${endedWeek}`);
   assert.ok(archived);
-  assert.equal(await redis.get(`lb:sub-x:weekly:${endedWeek}`), undefined);
+  // Live weekly key must survive snapshot — never wipe leaderboard Redis keys.
+  const live = await redis.get(`lb:sub-x:weekly:${endedWeek}`);
+  assert.ok(live);
 
   const champ = await getPlayerProfile(redis, 'champ');
   assert.ok(champ?.badges.includes('Weekly Champion - r/typing'));
@@ -174,6 +176,45 @@ test('weekly snapshot archives, awards badges, and feeds all-time top 100', asyn
   const allTime = await getAllTimeLeaderboard(redis, 'sub-x');
   assert.equal(allTime.length, 2);
   assert.equal(allTime[0]?.username, 'champ');
+});
+
+test('persist refuses empty overwrite of all-time leaderboard', async () => {
+  memoryCache.clear();
+  const redis = new MockRedis();
+
+  await saveScore(
+    redis,
+    makeScore({
+      id: 'sc-keep',
+      username: 'keeper',
+      communityId: 'sub-keep',
+      correctWords: 50,
+      timeSeconds: 40,
+    })
+  );
+
+  const before = await getAllTimeLeaderboard(redis, 'sub-keep');
+  assert.equal(before.length, 1);
+
+  // Simulate a bad empty write path via snapshot-style merge of nothing:
+  // re-saving a low-progress score must not clear all-time.
+  await saveScore(
+    redis,
+    makeScore({
+      id: 'sc-ignore',
+      username: 'nobody',
+      communityId: 'sub-keep',
+      correctWords: 1,
+      timeSeconds: 10,
+      wordsTyped: 1,
+      completed: false,
+    }),
+    { rankOnLeaderboard: false }
+  );
+
+  const after = await getAllTimeLeaderboard(redis, 'sub-keep');
+  assert.equal(after.length, 1);
+  assert.equal(after[0]?.username, 'keeper');
 });
 
 test('current week key is Sunday UTC', () => {

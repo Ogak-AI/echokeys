@@ -1,117 +1,93 @@
 # Echokeys
 
-Echokeys is a free, open-source typing race on Reddit’s Devvit platform. Anyone can use it — engineers, writers, lawyers, designers, marketers, students.
+Echokeys is a free typing race that runs inside Reddit. Anyone can play — engineers, writers, students, or anyone who likes a timed challenge.
 
-Players **do not paste text**. Each race is a **random excerpt** from the built-in source pool: the game picks a **random sentence**, then takes the **next 2,000+ words**, ending on a **complete sentence**. Type that excerpt character for character. No AI rewrite. Each subreddit has its own leaderboard (weekly / monthly / yearly / all-time).
+You open a community post, start a race, and type a long excerpt the app picked for you. Scores rank on that community’s leaderboards (weekly, monthly, yearly, and all-time).
 
-## How it works
+## What players do
 
-1. **Start a race** — Interactive post **Play Echokeys Typing Game**, free-play, or a challenge post (subreddit menu)  
-2. **Random excerpt** — Server starts at a random sentence in the source pool, takes ≥ 2,000 words, ends on a complete sentence  
-3. **Players type it** — Green = correct, red = error; WPM / accuracy / timer are **client-side only** while racing  
-4. **Anti-bot** — Cap at **7 words/sec**; exceed → **1.5s input lock**  
-5. **One score upload** — On finish or timeout, a single payload hits the server  
-6. **Community boards** — Per-subreddit weekly (Sun 00:00 UTC), monthly, yearly, all-time  
+1. Open a **Play Echokeys Typing Game** post in the community.
+2. Tap **Play** to start a race.
+3. Type the on-screen excerpt as accurately and quickly as you can (about 2,000+ words, 4-minute cap).
+4. Finish or time out — eligible runs appear on the community leaderboard.
+5. Open **Leaderboard** from the same post to see weekly / monthly / yearly / all-time ranks.
 
-### Ranking rule
+You never paste your own text. The app always chooses a random excerpt from its built-in source pool (starts at a random sentence, takes the next 2,000+ words, ends on a complete sentence).
 
-```
-1. Most correct words wins
-2. If tied, lowest time wins
-3. Further ties: accuracy, then WPM
-```
+### Ranking
 
-Each player keeps their **best single run** for the period. Partial runs need **50%+** progress to rank.
+1. Most correct words wins  
+2. If tied, lowest time wins  
+3. Further ties: accuracy, then WPM  
 
-A display composite still exists for history only:
+Partial runs need **50%+** progress to rank. Each player keeps their **best single run** for the period.
 
-```
-Display score = (Accuracy% × 100) + WPM − (Time_in_Seconds / 60)
-```
+## What moderators do
 
-It does **not** decide leaderboard order.
+1. Install **echokeys** on your subreddit from the Reddit apps directory (or Devvit developer tools).
+2. On install, the app creates a **Play Echokeys Typing Game** hub post if one is not already live.
+3. Optionally pin that post so members always see it.
+4. Use the subreddit menu when you need more posts:
+   - **Post Echokeys Game** — free-play hub  
+   - **Create Echokeys Challenge** — fixed race posted as the user who created it  
 
-## Product rules
+No API keys or external services. No configuration required.
 
-- Players only race text the server selected — **no player paste**  
-- Race text is a contiguous excerpt: random sentence start → ≥ 2,000 words → complete sentence end  
-- Typing math stays on-device; the server revalidates duration, speed, and correctness  
-- Time cap is **4 minutes** per race  
-- Leaderboards and badges are **per community**  
-- Weekly top 3 → `Weekly Champion - r/subreddit` (same for monthly / yearly)  
-- Lifetime word counter accumulates on every finished session  
-- Teleprompter view keeps the cursor centered; TTS reads the challenge text (toggle with mute)
+## Leaderboards that survive reinstall
 
-## Tech stack
+Devvit clears installation Redis when an app is uninstalled. Echokeys mirrors ranks to a **private subreddit wiki page** (`echokeys/leaderboard-backup`, mods-only, unlisted) so data can come back:
 
-| Layer | Choice |
-|--------|--------|
-| Platform | Devvit (auto-scales with Reddit) |
-| Frontend | React + TypeScript + Tailwind (VS Code dark theme) |
-| Backend | Express on Devvit |
-| Storage | Devvit Redis/KV + in-memory cache |
-| Realtime | Devvit realtime (leaderboard rank changes only) |
-| Build | Vite |
+| Event | What happens |
+|--------|----------------|
+| Ranked score (throttled) | Backup to wiki |
+| Daily job (06:00 UTC) | Full wiki backup |
+| Weekly / monthly / yearly snapshot | Snapshot + wiki backup |
+| Install or upgrade | Restore from wiki into Redis, then refresh wiki |
 
-## Scripts
+App code **never deletes** leaderboard Redis keys, never overwrites a non-empty board with empty data, and **merges** on restore (best run wins).
+
+**Notes**
+
+- The **Weekly** tab is the current week only (new week starts empty by design). Past weeks and **All-time** stay stored.
+- Wiki restore needs the app to edit the subreddit wiki (normal for installed apps with mod rights). If wiki is disabled for the community, ranks still work in Redis until uninstall.
+- Moderators should not manually edit the backup page.
+
+## Privacy and data
+
+- Stores usernames, scores, and typing stats for races played in communities where the app is installed.
+- Data is used only for gameplay, leaderboards, and badges in that community.
+- No ads, no external analytics, no sale of data.
+- No account linking outside Reddit.
+
+## For developers
 
 ```bash
 npm install
 npm test
 npm run check
 npm run build
-npm run dev      # build + devvit playtest
-npm run deploy   # build + devvit upload
-npm run login    # devvit login
+npm run dev       # build + playtest on r/echokeys_dev
+npm run deploy    # build + upload
+npx devvit publish
 ```
 
-## Project layout
+| Path | Purpose |
+|------|---------|
+| `content/knowledge-base.txt` | Built-in race source pool (≥ 2,000 words) |
+| `src/client/` | Splash, game, leaderboard UI |
+| `src/server/` | API, leaderboards, wiki backup |
+| `src/shared/` | Types, ranking helpers, race excerpt |
+| `tests/` | Unit tests |
 
-```text
-content/
-  knowledge-base.txt   # built-in source pool (bundled at build time)
-src/
-  client/   # splash, game, leaderboard UI
-  server/   # Express API, leaderboards, race sessions
-  shared/   # types, display score formula, anti-cheat helpers, race excerpt
-tests/
-```
+Playtest community: `r/echokeys_dev` (`dev.subreddit` in `devvit.json`).
 
-## Interactive custom post (Devvit Web)
+Example review post: create or open **Play Echokeys Typing Game** on the development subreddit after `npx devvit install echokeys_dev`.
 
-UI is defined by `post.entrypoints` in `devvit.json` (`default` → splash, `game`, `leaderboard`) — not Blocks `src/main.tsx`.
+### Knowledge base
 
-```ts
-await reddit.submitCustomPost({
-  subredditName: 'echokeys', // current subreddit if omitted
-  title: 'Play Echokeys Typing Game',
-  entry: 'default', // splash.html → expand to game.html
-  postData: { mode: 'play' },
-  textFallback: {
-    text: 'Play Echokeys — race a random 2000+ word excerpt.',
-  },
-  runAs: 'APP',
-});
-```
+Edit `content/knowledge-base.txt`, then `npm run build`. Plain text with real sentence endings (`. ! ?`).
 
-Subreddit menu → **Post Echokeys Game**. On install, one hub post is created per community.
-
-## Configuration
-
-No external API keys. Race text comes only from the built-in knowledge base.
-
-### Built-in knowledge base
-
-The source pool lives at:
-
-```text
-content/knowledge-base.txt
-```
-
-Requirements: **≥ 2,000 words**, plain text, real sentence endings (`. ! ?`).  
-After editing, run `npm run build` (or `npm run dev`) so the server bundle picks it up. Free-play and challenge posts both draw **random excerpts** from this pool.
-
-Optional local env (see `.env.template`):
+Optional local env (`.env.template`):
 
 - `DEVVIT_SUBREDDIT` — playtest subreddit for `npm run dev`
 

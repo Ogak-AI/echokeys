@@ -123,6 +123,74 @@ async function writeJson(redis: RedisLike, key: string, value: unknown): Promise
   await redis.set(key, JSON.stringify(value));
 }
 
+/**
+ * Durable leaderboard write rules:
+ * - Never delete Redis leaderboard keys (callers must not redis.del lb:*).
+ * - Never replace a non-empty board with an empty payload.
+ * - Merge mode unions rows so partial writes cannot erase other players.
+ * - Replace mode writes a full board snapshot but still refuses empty wipes.
+ */
+async function persistLeaderboardEntries(
+  redis: RedisLike,
+  key: string,
+  incoming: LeaderboardEntry[],
+  limit: number,
+  mode: 'period' | 'alltime' | 'replace' = 'period'
+): Promise<LeaderboardEntry[]> {
+  const existing = await readJson<LeaderboardEntry[]>(redis, key, []);
+
+  if (incoming.length === 0 && existing.length > 0) {
+    console.warn(
+      `[Leaderboard] Refusing to wipe ${key} (${existing.length} existing entries)`
+    );
+    return sortAndRank(
+      existing.map((e) => ({ ...e, badges: [...(e.badges ?? [])] })),
+      limit
+    );
+  }
+
+  let merged: LeaderboardEntry[];
+  if (mode === 'replace') {
+    merged = incoming.map((e) => ({
+      ...e,
+      badges: [...(e.badges ?? [])],
+    }));
+    // Keep any existing players missing from this snapshot (defense in depth).
+    for (const entry of existing) {
+      if (!merged.some((e) => e.username === entry.username)) {
+        merged.push({ ...entry, badges: [...(entry.badges ?? [])] });
+      }
+    }
+  } else {
+    merged = existing.map((e) => ({
+      ...e,
+      badges: [...(e.badges ?? [])],
+    }));
+    for (const entry of incoming) {
+      if (mode === 'alltime') {
+        mergeAllTimeEntry(merged, entry);
+      } else {
+        mergePeriodEntry(merged, entry);
+      }
+    }
+  }
+
+  if (merged.length === 0 && existing.length > 0) {
+    console.warn(
+      `[Leaderboard] Refusing to wipe ${key} (${existing.length} existing entries)`
+    );
+    return sortAndRank(
+      existing.map((e) => ({ ...e, badges: [...(e.badges ?? [])] })),
+      limit
+    );
+  }
+
+  const ranked = sortAndRank(merged, limit);
+  await writeJson(redis, key, ranked);
+  memoryCache.delete(key);
+  return ranked;
+}
+
 async function awardBadge(redis: RedisLike, username: string, badge: string): Promise<void> {
   const profile = await getPlayerProfile(redis, username);
   if (!profile) return;
@@ -150,24 +218,27 @@ async function upsertAllTimeFromProfile(
   profile: PlayerProfile
 ): Promise<void> {
   const key = `lb:${subredditId}:alltime`;
-  const allTime = await readJson<LeaderboardEntry[]>(redis, key, []);
-
-  mergeAllTimeEntry(allTime, {
-    rank: 0,
-    username: score.username,
-    score: score.score,
-    accuracy: score.accuracy,
-    bestWpm: Math.max(profile.bestWpm, score.wpm),
-    challengesCompleted: profile.totalChallenges,
-    lastPlayed: score.playedAt,
-    badges: [...profile.badges],
-    totalWordsTyped: profile.totalWordsTyped,
-    bestCorrectWords: score.correctWords ?? 0,
-    bestTimeSeconds: score.timeSeconds ?? 0,
-  });
-
-  await writeJson(redis, key, sortAndRank(allTime, 100));
-  memoryCache.delete(key);
+  await persistLeaderboardEntries(
+    redis,
+    key,
+    [
+      {
+        rank: 0,
+        username: score.username,
+        score: score.score,
+        accuracy: score.accuracy,
+        bestWpm: Math.max(profile.bestWpm, score.wpm),
+        challengesCompleted: profile.totalChallenges,
+        lastPlayed: score.playedAt,
+        badges: [...profile.badges],
+        totalWordsTyped: profile.totalWordsTyped,
+        bestCorrectWords: score.correctWords ?? 0,
+        bestTimeSeconds: score.timeSeconds ?? 0,
+      },
+    ],
+    100,
+    'alltime'
+  );
 }
 
 // ---- Score Storage ----
@@ -321,8 +392,8 @@ async function updateWeeklyLeaderboard(
     });
   }
 
-  // Top 25 weekly per community
-  await writeJson(redis, key, sortAndRank(entries, 25));
+  // Full-board replace with wipe protection — never redis.del the weekly key.
+  await persistLeaderboardEntries(redis, key, entries, 25, 'replace');
 }
 
 // ---- Leaderboard Reads ----
@@ -338,26 +409,32 @@ export async function getWeeklyLeaderboard(
     return memoryCache.get<LeaderboardEntry[]>(cacheKey) ?? [];
   }
 
-  const active = await redis.get(`lb:${subredditId}:weekly:${key}`);
-  if (active) {
-    try {
-      const parsed = JSON.parse(active) as LeaderboardEntry[];
-      memoryCache.set(cacheKey, parsed, 5000);
-      return parsed;
-    } catch {
-      return [];
-    }
-  }
+  // Prefer live key; fall back to archive. If both exist, merge so nothing is lost.
+  const active = await readJson<LeaderboardEntry[]>(
+    redis,
+    `lb:${subredditId}:weekly:${key}`,
+    []
+  );
+  const archived = await readJson<LeaderboardEntry[]>(
+    redis,
+    `lb:${subredditId}:weekly:archive:${key}`,
+    []
+  );
 
-  const archived = await redis.get(`lb:${subredditId}:weekly:archive:${key}`);
-  if (!archived) return [];
-  try {
-    const parsed = JSON.parse(archived) as LeaderboardEntry[];
-    memoryCache.set(cacheKey, parsed, 5000);
-    return parsed;
-  } catch {
+  if (active.length === 0 && archived.length === 0) {
     return [];
   }
+
+  const merged: LeaderboardEntry[] = [];
+  for (const entry of archived) {
+    mergePeriodEntry(merged, entry);
+  }
+  for (const entry of active) {
+    mergePeriodEntry(merged, entry);
+  }
+  const ranked = sortAndRank(merged, 25);
+  memoryCache.set(cacheKey, ranked, 5000);
+  return ranked;
 }
 
 export async function getMonthlyLeaderboard(
@@ -573,8 +650,16 @@ export async function snapshotWeekly(
     return;
   }
 
-  await writeJson(redis, `lb:${subredditId}:weekly:archive:${endedWeek}`, entries);
-  await redis.del(`lb:${subredditId}:weekly:${endedWeek}`);
+  // Copy into archive only — never delete the live weekly key.
+  // Leaderboard history must survive upgrades, snapshots, and re-reads.
+  // Use replace (not period-sum) so re-running the job is idempotent.
+  await persistLeaderboardEntries(
+    redis,
+    `lb:${subredditId}:weekly:archive:${endedWeek}`,
+    entries,
+    25,
+    'replace'
+  );
   memoryCache.delete(`lb:${subredditId}:weekly:${endedWeek}`);
   await pushIndex(redis, `lb:${subredditId}:weekly:archives`, endedWeek);
 
@@ -607,10 +692,13 @@ export async function snapshotWeekly(
         profile
       );
     } else {
-      const allTime = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:alltime`, []);
-      mergeAllTimeEntry(allTime, entry);
-      await writeJson(redis, `lb:${subredditId}:alltime`, sortAndRank(allTime, 100));
-      memoryCache.delete(`lb:${subredditId}:alltime`);
+      await persistLeaderboardEntries(
+        redis,
+        `lb:${subredditId}:alltime`,
+        [entry],
+        100,
+        'alltime'
+      );
     }
   }
 
@@ -652,8 +740,14 @@ export async function snapshotMonthly(
   }
 
   const monthEntries = sortAndRank(merged, 25);
-  await writeJson(redis, `lb:${subredditId}:monthly:${mk}`, monthEntries);
-  memoryCache.delete(`lb:${subredditId}:monthly:${mk}`);
+  // Full month snapshot — replace mode keeps extra rows, refuses empty wipe.
+  await persistLeaderboardEntries(
+    redis,
+    `lb:${subredditId}:monthly:${mk}`,
+    monthEntries,
+    25,
+    'replace'
+  );
   await pushIndex(redis, `lb:${subredditId}:monthly:index`, mk);
 
   const badgeLabel = `Monthly Champion - ${formatSubredditLabel(subredditName)}`;
@@ -696,8 +790,13 @@ export async function snapshotYearly(
   }
 
   const yearEntries = sortAndRank(merged, 50);
-  await writeJson(redis, `lb:${subredditId}:yearly:${yk}`, yearEntries);
-  memoryCache.delete(`lb:${subredditId}:yearly:${yk}`);
+  await persistLeaderboardEntries(
+    redis,
+    `lb:${subredditId}:yearly:${yk}`,
+    yearEntries,
+    50,
+    'replace'
+  );
 
   const badgeLabel = `Yearly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, yearEntries.length); i++) {
@@ -729,6 +828,266 @@ export async function getChallenge(redis: RedisLike, id: string): Promise<Challe
     memoryCache.set(cacheKey, challenge, 3600000);
   }
   return challenge;
+}
+
+// ---- Durable backup (survives uninstall via subreddit wiki) ----
+
+/** Compact snapshot written outside Redis so reinstall can restore ranks. */
+export type LeaderboardBackupV1 = {
+  v: 1;
+  subredditId: string;
+  savedAt: number;
+  alltime: LeaderboardEntry[];
+  /** Live weekly boards keyed by week-start (YYYY-MM-DD). */
+  weekly: Record<string, LeaderboardEntry[]>;
+  /** Archived weekly boards. */
+  weeklyArchives: Record<string, LeaderboardEntry[]>;
+  weeklyArchiveIndex: string[];
+  monthly: Record<string, LeaderboardEntry[]>;
+  monthlyIndex: string[];
+  yearly: Record<string, LeaderboardEntry[]>;
+  profiles: PlayerProfile[];
+};
+
+const BACKUP_WEEK_CAP = 16;
+const BACKUP_MONTH_CAP = 24;
+const BACKUP_YEAR_CAP = 5;
+
+function collectUsernames(boards: LeaderboardEntry[][]): Set<string> {
+  const names = new Set<string>();
+  for (const board of boards) {
+    for (const entry of board) {
+      if (entry.username) names.add(entry.username);
+    }
+  }
+  return names;
+}
+
+/** Build a full leaderboard backup from Redis for wiki persistence. */
+export async function exportLeaderboardBackup(
+  redis: RedisLike,
+  subredditId: string,
+  now = new Date()
+): Promise<LeaderboardBackupV1> {
+  const alltime = await getAllTimeLeaderboard(redis, subredditId);
+  const currentWeek = weekStartKey(now);
+  const weeklyArchiveIndex = (
+    await readJson<string[]>(redis, `lb:${subredditId}:weekly:archives`, [])
+  ).slice(0, BACKUP_WEEK_CAP);
+  const monthlyIndex = (
+    await readJson<string[]>(redis, `lb:${subredditId}:monthly:index`, [])
+  ).slice(0, BACKUP_MONTH_CAP);
+
+  const weekly: Record<string, LeaderboardEntry[]> = {};
+  const currentWeekly = await getWeeklyLeaderboard(redis, subredditId, currentWeek);
+  if (currentWeekly.length > 0) weekly[currentWeek] = currentWeekly;
+
+  // Also keep a few prior live week keys if still present (no delete policy).
+  for (let i = 1; i <= 4; i++) {
+    const wk = weekStartWithOffsetLocal(-i, now);
+    if (weekly[wk]) continue;
+    const rows = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:weekly:${wk}`, []);
+    if (rows.length > 0) weekly[wk] = sortAndRank(rows, 25);
+  }
+
+  const weeklyArchives: Record<string, LeaderboardEntry[]> = {};
+  for (const wk of weeklyArchiveIndex) {
+    const rows = await readJson<LeaderboardEntry[]>(
+      redis,
+      `lb:${subredditId}:weekly:archive:${wk}`,
+      []
+    );
+    if (rows.length > 0) weeklyArchives[wk] = sortAndRank(rows, 25);
+  }
+
+  const monthly: Record<string, LeaderboardEntry[]> = {};
+  for (const mk of monthlyIndex) {
+    const rows = await getMonthlyLeaderboard(redis, subredditId, mk);
+    if (rows.length > 0) monthly[mk] = rows;
+  }
+
+  const yearly: Record<string, LeaderboardEntry[]> = {};
+  const years = new Set<string>([yearKey(now)]);
+  for (let i = 1; i < BACKUP_YEAR_CAP; i++) {
+    years.add(String(Number(yearKey(now)) - i));
+  }
+  for (const y of years) {
+    const rows = await getYearlyLeaderboard(redis, subredditId, y);
+    if (rows.length > 0) yearly[y] = rows;
+  }
+
+  const names = collectUsernames([
+    alltime,
+    ...Object.values(weekly),
+    ...Object.values(weeklyArchives),
+    ...Object.values(monthly),
+    ...Object.values(yearly),
+  ]);
+
+  const profiles: PlayerProfile[] = [];
+  for (const username of names) {
+    const profile = await getPlayerProfile(redis, username);
+    if (profile) profiles.push(profile);
+  }
+
+  return {
+    v: 1,
+    subredditId,
+    savedAt: Date.now(),
+    alltime,
+    weekly,
+    weeklyArchives,
+    weeklyArchiveIndex,
+    monthly,
+    monthlyIndex,
+    yearly,
+    profiles,
+  };
+}
+
+/** True when backup holds any rank/profile data worth restoring. */
+export function backupHasData(backup: LeaderboardBackupV1 | null | undefined): boolean {
+  if (!backup || backup.v !== 1) return false;
+  if (backup.alltime?.length) return true;
+  if (backup.profiles?.length) return true;
+  if (backup.weekly && Object.values(backup.weekly).some((b) => b.length > 0)) return true;
+  if (backup.weeklyArchives && Object.values(backup.weeklyArchives).some((b) => b.length > 0)) {
+    return true;
+  }
+  if (backup.monthly && Object.values(backup.monthly).some((b) => b.length > 0)) return true;
+  if (backup.yearly && Object.values(backup.yearly).some((b) => b.length > 0)) return true;
+  return false;
+}
+
+/**
+ * Merge a backup into Redis. Never wipes existing rows — only unions / best-run merges.
+ * Used after reinstall when platform Redis was cleared.
+ */
+export async function importLeaderboardBackup(
+  redis: RedisLike,
+  backup: LeaderboardBackupV1
+): Promise<{ imported: boolean; players: number }> {
+  if (!backupHasData(backup)) {
+    return { imported: false, players: 0 };
+  }
+
+  if (backup.alltime?.length) {
+    await persistLeaderboardEntries(
+      redis,
+      `lb:${backup.subredditId}:alltime`,
+      backup.alltime,
+      100,
+      'alltime'
+    );
+  }
+
+  for (const [wk, rows] of Object.entries(backup.weekly ?? {})) {
+    if (!rows.length) continue;
+    await persistLeaderboardEntries(
+      redis,
+      `lb:${backup.subredditId}:weekly:${wk}`,
+      rows,
+      25,
+      'alltime'
+    );
+  }
+
+  for (const [wk, rows] of Object.entries(backup.weeklyArchives ?? {})) {
+    if (!rows.length) continue;
+    await persistLeaderboardEntries(
+      redis,
+      `lb:${backup.subredditId}:weekly:archive:${wk}`,
+      rows,
+      25,
+      'alltime'
+    );
+  }
+
+  for (const wk of backup.weeklyArchiveIndex ?? []) {
+    await pushIndex(redis, `lb:${backup.subredditId}:weekly:archives`, wk);
+  }
+
+  for (const [mk, rows] of Object.entries(backup.monthly ?? {})) {
+    if (!rows.length) continue;
+    await persistLeaderboardEntries(
+      redis,
+      `lb:${backup.subredditId}:monthly:${mk}`,
+      rows,
+      25,
+      'alltime'
+    );
+  }
+
+  for (const mk of backup.monthlyIndex ?? []) {
+    await pushIndex(redis, `lb:${backup.subredditId}:monthly:index`, mk);
+  }
+
+  for (const [yk, rows] of Object.entries(backup.yearly ?? {})) {
+    if (!rows.length) continue;
+    await persistLeaderboardEntries(
+      redis,
+      `lb:${backup.subredditId}:yearly:${yk}`,
+      rows,
+      50,
+      'alltime'
+    );
+  }
+
+  for (const profile of backup.profiles ?? []) {
+    if (!profile?.username) continue;
+    const key = `player:${profile.username}`;
+    const existing = await getPlayerProfile(redis, profile.username);
+    if (!existing) {
+      await writeJson(redis, key, profile);
+      memoryCache.delete(key);
+      continue;
+    }
+
+    const existingBest = {
+      correctWords: existing.bestCorrectWords ?? 0,
+      timeSeconds: existing.bestTimeSeconds ?? 0,
+    };
+    const incomingBest = {
+      correctWords: profile.bestCorrectWords ?? 0,
+      timeSeconds: profile.bestTimeSeconds ?? 0,
+    };
+    const takeIncomingBest = isBetterRun(incomingBest, existingBest);
+
+    const merged: PlayerProfile = {
+      ...existing,
+      bestWpm: Math.max(existing.bestWpm, profile.bestWpm),
+      bestAccuracy: Math.max(existing.bestAccuracy, profile.bestAccuracy),
+      totalChallenges: Math.max(existing.totalChallenges, profile.totalChallenges),
+      totalWordsTyped: Math.max(existing.totalWordsTyped || 0, profile.totalWordsTyped || 0),
+      badges: [...new Set([...(existing.badges ?? []), ...(profile.badges ?? [])])],
+      domainCounts: { ...existing.domainCounts },
+      lastPlayed:
+        Math.max(existing.lastPlayed ?? 0, profile.lastPlayed ?? 0) || existing.lastPlayed,
+      joinedAt: Math.min(existing.joinedAt || Date.now(), profile.joinedAt || Date.now()),
+      communityId: existing.communityId || profile.communityId,
+      bestCorrectWords: takeIncomingBest
+        ? incomingBest.correctWords
+        : existingBest.correctWords,
+      bestTimeSeconds: takeIncomingBest
+        ? incomingBest.timeSeconds
+        : existingBest.timeSeconds,
+    };
+    for (const [domain, count] of Object.entries(profile.domainCounts ?? {})) {
+      const d = domain as keyof PlayerProfile['domainCounts'];
+      merged.domainCounts[d] = Math.max(merged.domainCounts[d] ?? 0, count ?? 0);
+    }
+    await writeJson(redis, key, merged);
+    memoryCache.delete(key);
+  }
+
+  return { imported: true, players: backup.profiles?.length ?? backup.alltime?.length ?? 0 };
+}
+
+/** Local week offset helper (avoids circular import from shared time in older call sites). */
+function weekStartWithOffsetLocal(offset: number, date = new Date()): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay() + offset * 7);
+  return d.toISOString().split('T')[0]!;
 }
 
 export { monthKey, weekStartKey, yearKey };

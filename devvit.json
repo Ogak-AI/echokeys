@@ -66,11 +66,16 @@
       "yearly-snapshot": {
         "endpoint": "/internal/yearly-snapshot",
         "cron": "0 0 1 1 *"
+      },
+      "leaderboard-backup": {
+        "endpoint": "/internal/leaderboard-backup",
+        "cron": "0 6 * * *"
       }
     }
   },
   "triggers": {
-    "onAppInstall": "/internal/on-app-install"
+    "onAppInstall": "/internal/on-app-install",
+    "onAppUpgrade": "/internal/on-app-upgrade"
   },
   "dev": {
     "subreddit": "echokeys_dev"

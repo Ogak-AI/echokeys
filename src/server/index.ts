@@ -27,6 +27,11 @@ import {
   weekStartKey,
 } from './services/leaderboard.js';
 import { broadcastWeeklyLeaderboard } from './services/realtime.js';
+import {
+  backupLeaderboardToWiki,
+  backupLeaderboardToWikiThrottled,
+  syncLeaderboardWithWiki,
+} from './services/wikiBackup.js';
 import { calculateScore } from '../shared/types/index.js';
 import type { Challenge, PlayerScore, LeaderboardEntry } from '../shared/types/index.js';
 import { memoryCache } from './services/memoryCache.js';
@@ -602,6 +607,14 @@ app.post('/api/score/submit', async (req, res) => {
       console.log(`[Realtime] Broadcasted weekly leaderboard for ${subId}`);
     }
 
+    // Mirror ranks to subreddit wiki (throttled) so uninstall cannot permanently erase them.
+    if (metrics.eligibleForLeaderboard) {
+      const subName = await getSubredditName();
+      void backupLeaderboardToWikiThrottled(redis, reddit, subId, subName).catch((err) => {
+        console.warn('[WikiBackup] Throttled backup after score failed:', err);
+      });
+    }
+
     console.log(
       `[API] Score submitted: ${player} — WPM:${metrics.wpm} Acc:${metrics.accuracy}% CorrectWords:${metrics.correctWords} Time:${metrics.timeSeconds}s Score:${scoreValue} completed=${metrics.completed} ranked=${metrics.eligibleForLeaderboard}`
     );
@@ -786,25 +799,69 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
   }
 });
 
+/**
+ * Ensure the community has a live interactive hub post for reviewers and players.
+ * Recreates the post if Redis has no id or the stored post was deleted/removed.
+ */
+async function ensureHubPost(): Promise<{ postId: string; created: boolean } | null> {
+  const subId = getSubredditId();
+  const existingId = await redis.get(`hub-post:${subId}`);
+
+  if (existingId) {
+    try {
+      const postId = existingId.startsWith('t3_')
+        ? (existingId as `t3_${string}`)
+        : (`t3_${existingId}` as `t3_${string}`);
+      const existing = await reddit.getPostById(postId);
+      const gone =
+        existing.removed ||
+        existing.removedByCategory === 'deleted' ||
+        existing.authorName === '[deleted]';
+      if (!gone) {
+        return { postId: existing.id, created: false };
+      }
+    } catch {
+      // Stale id or missing post — create a fresh hub below.
+    }
+  }
+
+  const post = await submitInteractiveCustomPost({
+    title: 'Play Echokeys Typing Game',
+    mode: 'play',
+    runAs: 'APP',
+  });
+  await redis.set(`hub-post:${subId}`, post.id);
+  console.log('[Echokeys] Published hub post:', post.id, post.url);
+  return { postId: post.id, created: true };
+}
+
 // ---- Install + Scheduler Endpoints ----
 app.post('/internal/on-app-install', async (_req, res) => {
   try {
     const subId = getSubredditId();
-    const existing = await redis.get(`hub-post:${subId}`);
-    if (!existing) {
-      const post = await submitInteractiveCustomPost({
-        title: 'Play Echokeys Typing Game',
-        mode: 'play',
-        runAs: 'APP',
-      });
-      await redis.set(`hub-post:${subId}`, post.id);
-      console.log('[Echokeys] Published hub post:', post.id);
-    }
-    return res.json({ ok: true });
+    const subName = await getSubredditName();
+    // Redis is empty after reinstall — restore ranks from subreddit wiki first.
+    await syncLeaderboardWithWiki(redis, reddit, subId, subName);
+    await ensureHubPost();
+    return res.json({ status: 'ok' });
   } catch (err) {
-    // Don't fail install if post creation is blocked.
-    console.error('[Echokeys] Install hub post error:', err);
-    return res.json({ ok: true });
+    // Don't fail install if post/wiki is blocked.
+    console.error('[Echokeys] Install error:', err);
+    return res.json({ status: 'ok' });
+  }
+});
+
+app.post('/internal/on-app-upgrade', async (_req, res) => {
+  try {
+    const subId = getSubredditId();
+    const subName = await getSubredditName();
+    // Merge any wiki backup, then refresh wiki from live Redis.
+    await syncLeaderboardWithWiki(redis, reddit, subId, subName);
+    await ensureHubPost();
+    return res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('[Echokeys] Upgrade error:', err);
+    return res.json({ status: 'ok' });
   }
 });
 
@@ -813,6 +870,13 @@ app.post('/internal/weekly-snapshot', async (_req, res) => {
     const subId = getSubredditId();
     const subName = await getSubredditName();
     await snapshotWeekly(redis, subId, subName);
+    await backupLeaderboardToWiki(
+      redis,
+      reddit,
+      subId,
+      subName,
+      'Echokeys leaderboard backup (weekly snapshot)'
+    );
     return res.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Weekly snapshot failed';
@@ -826,6 +890,13 @@ app.post('/internal/monthly-snapshot', async (_req, res) => {
     const subId = getSubredditId();
     const subName = await getSubredditName();
     await snapshotMonthly(redis, subId, subName);
+    await backupLeaderboardToWiki(
+      redis,
+      reddit,
+      subId,
+      subName,
+      'Echokeys leaderboard backup (monthly snapshot)'
+    );
     return res.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Monthly snapshot failed';
@@ -839,10 +910,37 @@ app.post('/internal/yearly-snapshot', async (_req, res) => {
     const subId = getSubredditId();
     const subName = await getSubredditName();
     await snapshotYearly(redis, subId, subName);
+    await backupLeaderboardToWiki(
+      redis,
+      reddit,
+      subId,
+      subName,
+      'Echokeys leaderboard backup (yearly snapshot)'
+    );
     return res.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Yearly snapshot failed';
     console.error('[Scheduler] Yearly snapshot error:', err);
+    return res.status(500).json({ error: message });
+  }
+});
+
+/** Daily wiki mirror so ranks survive uninstall even without a weekly boundary. */
+app.post('/internal/leaderboard-backup', async (_req, res) => {
+  try {
+    const subId = getSubredditId();
+    const subName = await getSubredditName();
+    const ok = await backupLeaderboardToWiki(
+      redis,
+      reddit,
+      subId,
+      subName,
+      'Echokeys leaderboard backup (daily)'
+    );
+    return res.json({ ok: true, backedUp: ok });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Leaderboard backup failed';
+    console.error('[Scheduler] Leaderboard backup error:', err);
     return res.status(500).json({ error: message });
   }
 });
