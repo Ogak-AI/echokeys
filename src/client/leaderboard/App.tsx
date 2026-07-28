@@ -4,13 +4,14 @@ import type {
   ContentDomain,
   PlayerProfile,
   PlayerScore,
+  Tournament,
 } from '../../shared/types/index';
 import { ALL_DOMAINS, DOMAIN_COLORS } from '../../shared/types/index';
 import { context } from '../shims/devvit-web-client';
 import { useLiveLeaderboard } from '../hooks/useLiveLeaderboard';
 import { weekStartWithOffset } from '../../shared/utils/time';
 
-type Tab = 'weekly' | 'monthly' | 'yearly' | 'all-time' | 'profile';
+type Tab = 'tournament' | 'weekly' | 'monthly' | 'yearly' | 'all-time' | 'profile';
 
 type ProfilePayload = {
   profile: PlayerProfile;
@@ -38,6 +39,8 @@ export const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [subredditId, setSubredditId] = useState<string | null>(null);
   const [subredditName, setSubredditName] = useState('');
+  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [hasTournament, setHasTournament] = useState(false);
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -50,7 +53,7 @@ export const App = () => {
   const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
   const [profileLoadedOnce, setProfileLoadedOnce] = useState(false);
 
-  const liveEnabled = activeTab === 'weekly' && weekOffset === 0;
+  const liveEnabled = activeTab === 'weekly' && weekOffset === 0 && !hasTournament;
   const live = useLiveLeaderboard({
     subredditId,
     enabled: liveEnabled,
@@ -59,13 +62,24 @@ export const App = () => {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch('/api/me');
-        if (!res.ok) return;
-        const me = await res.json();
-        if (me.subredditId) setSubredditId(me.subredditId);
-        if (me.subredditName) setSubredditName(me.subredditName);
-        if (me.username) {
-          setProfileSearch((prev) => prev || me.username);
+        const [meRes, tRes] = await Promise.all([fetch('/api/me'), fetch('/api/post/tournament')]);
+        if (meRes.ok) {
+          const me = await meRes.json();
+          if (me.subredditId) setSubredditId(me.subredditId);
+          if (me.subredditName) setSubredditName(me.subredditName);
+          if (me.username) {
+            setProfileSearch((prev) => prev || me.username);
+          }
+        }
+        if (tRes.ok) {
+          const tData = await tRes.json();
+          if (tData.tournament) {
+            setTournament(tData.tournament as Tournament);
+            setHasTournament(true);
+            setActiveTab('tournament');
+            setEntries((tData.standings as LeaderboardEntry[]) || []);
+            setLoading(false);
+          }
         }
       } catch {
         // offline / local
@@ -89,7 +103,9 @@ export const App = () => {
     try {
       let url = '/api/leaderboard/weekly';
 
-      if (activeTab === 'weekly' && weekOffset !== 0) {
+      if (activeTab === 'tournament' && tournament?.id) {
+        url = `/api/tournament/${encodeURIComponent(tournament.id)}`;
+      } else if (activeTab === 'weekly' && weekOffset !== 0) {
         url = `/api/leaderboard/weekly/${weekStartWithOffset(weekOffset)}`;
       } else if (activeTab === 'monthly') {
         url = `/api/leaderboard/monthly/${selectedMonth}`;
@@ -97,19 +113,25 @@ export const App = () => {
         url = `/api/leaderboard/yearly/${selectedYear}`;
       } else if (activeTab === 'all-time') {
         url = '/api/leaderboard/all-time';
+      } else if (activeTab === 'weekly') {
+        url = '/api/leaderboard/weekly';
       }
 
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch leaderboard');
-      setEntries(data.entries || []);
+      if (activeTab === 'tournament') {
+        setEntries(data.standings || []);
+        if (data.tournament) setTournament(data.tournament as Tournament);
+      } else {
+        setEntries(data.entries || []);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error fetching leaderboard data');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, weekOffset, selectedMonth, selectedYear, liveEnabled]);
-
+  }, [activeTab, weekOffset, selectedMonth, selectedYear, liveEnabled, tournament?.id]);
   const fetchProfile = useCallback(async (targetUsername: string) => {
     if (!targetUsername.trim()) return;
     setLoading(true);
@@ -178,7 +200,9 @@ export const App = () => {
     <div className="app-shell">
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-          <span className="app-header-title">Rankings</span>
+          <span className="app-header-title">
+            {activeTab === 'tournament' ? 'Tournament' : 'Rankings'}
+          </span>
           <span className="mono muted truncate" style={{ fontSize: '0.625rem' }}>
             {communityLabel}
           </span>
@@ -196,6 +220,7 @@ export const App = () => {
       <div className="tab-bar">
         {(
           [
+            ...(hasTournament ? ([['tournament', 'Cup']] as const) : []),
             ['weekly', 'Week'],
             ['monthly', 'Month'],
             ['yearly', 'Year'],
@@ -218,7 +243,16 @@ export const App = () => {
         ))}
       </div>
 
-      {activeTab !== 'profile' && activeTab !== 'all-time' && (
+      {activeTab === 'tournament' && tournament && (
+        <div className="toolbar">
+          <span className="mono" style={{ color: 'var(--color-vsc-cyan)', fontSize: '0.6875rem' }}>
+            {tournament.name} · {tournament.participants.length}/{tournament.maxPlayers} ·{' '}
+            {tournament.status}
+          </span>
+        </div>
+      )}
+
+      {activeTab !== 'profile' && activeTab !== 'all-time' && activeTab !== 'tournament' && (
         <div className="toolbar">
           {activeTab === 'weekly' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>

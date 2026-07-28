@@ -98,6 +98,39 @@ export type LeaderboardUpdate = {
   updatedAt: number;
 };
 
+/** Community typing tournament — shared excerpt, join, best-run standings. */
+export type TournamentStatus = 'open' | 'closed';
+
+export type Tournament = {
+  id: string;
+  name: string;
+  communityId: string;
+  createdBy: string;
+  createdAt: number;
+  /** Unix ms — after this, no new joins or ranked runs. */
+  endsAt: number;
+  challengeId: string;
+  maxPlayers: number;
+  /** Lowercase usernames who joined. */
+  participants: string[];
+  status: TournamentStatus;
+  postId?: string;
+  prompt?: string;
+  domain?: ContentDomain;
+};
+
+export type TournamentSummary = {
+  id: string;
+  name: string;
+  createdBy: string;
+  endsAt: number;
+  status: TournamentStatus;
+  participantCount: number;
+  maxPlayers: number;
+  postId?: string;
+  prompt?: string;
+};
+
 /**
  * Display composite for a single run (not the leaderboard sort key).
  * Score = (Accuracy% × 100) + WPM − (TimeSeconds / 60)

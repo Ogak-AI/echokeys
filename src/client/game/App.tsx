@@ -14,6 +14,8 @@ type Results = {
   correctWords: number;
   timeSeconds: number;
   ranked: boolean;
+  tournamentRank: number | null;
+  tournamentError: string | null;
 };
 
 /** Guard against React StrictMode double-submits in development. */
@@ -51,6 +53,10 @@ export const App = () => {
   const [kbReady, setKbReady] = useState(false);
   const [kbWordCount, setKbWordCount] = useState(0);
   const [kbError, setKbError] = useState<string | null>(null);
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+  const [tournamentName, setTournamentName] = useState<string | null>(null);
+  const [tournamentJoined, setTournamentJoined] = useState(false);
+  const tournamentIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const textTrackRef = useRef<HTMLDivElement>(null);
@@ -97,6 +103,10 @@ export const App = () => {
   useEffect(() => {
     raceIdRef.current = raceId;
   }, [raceId]);
+
+  useEffect(() => {
+    tournamentIdRef.current = tournamentId;
+  }, [tournamentId]);
 
   const isPlaying = phase === 'playing' || phase === 'idle';
   const isEnded = phase === 'finished' || phase === 'timeout';
@@ -159,21 +169,41 @@ export const App = () => {
 
     (async () => {
       try {
-        const [meRes, postRes, kbRes] = await Promise.all([
+        const [meRes, postRes, kbRes, tournamentRes] = await Promise.all([
           fetch('/api/me'),
           fetch('/api/post/challenge'),
           fetch('/api/knowledge-base'),
+          fetch('/api/post/tournament'),
         ]);
         if (meRes.ok) {
           const me = await meRes.json();
           if (!cancelled) {
             if (me.username) setUsername(me.username);
             if (me.subredditName) setSubredditName(me.subredditName);
+            const pd = me.postData as { tournamentId?: string } | null;
+            if (pd?.tournamentId) {
+              setTournamentId(pd.tournamentId);
+              tournamentIdRef.current = pd.tournamentId;
+            }
+          }
+        }
+        let postTournamentJoined = false;
+        let postIsTournament = false;
+        if (tournamentRes.ok) {
+          const tData = await tournamentRes.json();
+          if (!cancelled && tData.tournament) {
+            postIsTournament = true;
+            postTournamentJoined = Boolean(tData.joined);
+            setTournamentId(tData.tournament.id as string);
+            tournamentIdRef.current = tData.tournament.id as string;
+            setTournamentName((tData.tournament.name as string) || null);
+            setTournamentJoined(postTournamentJoined);
           }
         }
         if (postRes.ok) {
           const data = await postRes.json();
-          if (!cancelled && data.challenge) {
+          // Tournament races require join first — do not auto-load the shared excerpt otherwise.
+          if (!cancelled && data.challenge && (!postIsTournament || postTournamentJoined)) {
             setChallenge(data.challenge as Challenge);
             setFromPost(true);
           }
@@ -362,6 +392,7 @@ export const App = () => {
           challengeId: challenge.id,
           raceId: activeRaceId,
           typed,
+          tournamentId: tournamentIdRef.current || undefined,
         }),
       });
       const data = await res.json();
@@ -382,6 +413,10 @@ export const App = () => {
         correctWords: data.score.correctWords ?? 0,
         timeSeconds: data.score.timeSeconds ?? 0,
         ranked: data.ranked !== false,
+        tournamentRank:
+          typeof data.tournamentRank === 'number' ? data.tournamentRank : null,
+        tournamentError:
+          typeof data.tournamentError === 'string' ? data.tournamentError : null,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Submit failed';
@@ -564,6 +599,7 @@ export const App = () => {
             {communityLabel && (
               <p className="mono muted" style={{ fontSize: '0.625rem', marginTop: '0.15rem' }}>
                 {communityLabel}
+                {tournamentName ? ` · ${tournamentName}` : ''}
               </p>
             )}
           </div>
@@ -605,11 +641,20 @@ export const App = () => {
                 }}
               >
                 <span>
+                  {tournamentId
+                    ? `Tournament ${results.tournamentRank ? `#${results.tournamentRank}` : '—'}`
+                    : null}
+                  {tournamentId ? ' · ' : ''}
                   Weekly {results.weeklyRank ? `#${results.weeklyRank}` : '—'} · All-time{' '}
                   {results.allTimeRank ? `#${results.allTimeRank}` : '—'}
                 </span>
                 <span>{results.wordsTyped.toLocaleString()} typed</span>
               </div>
+              {results.tournamentError && (
+                <p className="mono" style={{ fontSize: '0.625rem', textAlign: 'center', color: 'var(--color-vsc-orange)' }}>
+                  Tournament: {results.tournamentError}
+                </p>
+              )}
               {!results.ranked && (
                 <p className="mono muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
                   Partial run saved — needs 50%+ progress to rank on the board
@@ -651,12 +696,31 @@ export const App = () => {
               className="vsc-btn vsc-btn-ghost"
               style={{ width: '100%' }}
             >
-              Leaderboard
+              {tournamentId ? 'Tournament standings' : 'Leaderboard'}
             </button>
             <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" style={{ width: '100%' }}>
               Home
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Tournament post but user has not joined yet
+  if (tournamentId && !tournamentJoined && !challenge) {
+    return (
+      <div className="app-shell app-center">
+        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-vsc-accent)' }}>
+            Join to race
+          </h2>
+          <p className="muted" style={{ fontSize: '0.75rem' }}>
+            {tournamentName || 'This tournament'} requires joining before you can race the shared excerpt.
+          </p>
+          <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} onClick={handleBack}>
+            Back to join
+          </button>
         </div>
       </div>
     );
@@ -669,7 +733,7 @@ export const App = () => {
       <div className="app-shell app-shell-game" ref={shellRef}>
         <header className="app-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
-            <span className="app-header-title">Echokeys</span>
+            <span className="app-header-title">{tournamentId ? 'Tournament' : 'Echokeys'}</span>
             <span
               className="chip"
               style={{ color: DOMAIN_COLORS[challenge.domain], flexShrink: 0 }}

@@ -50,6 +50,14 @@
         "forUserType": "user",
         "endpoint": "/internal/menu/create-challenge",
         "postFilter": "none"
+      },
+      {
+        "label": "Create Echokeys Tournament",
+        "description": "Start a timed community tournament — others join and race the same excerpt",
+        "location": "subreddit",
+        "forUserType": "user",
+        "endpoint": "/internal/menu/create-tournament",
+        "postFilter": "none"
       }
     ]
   },

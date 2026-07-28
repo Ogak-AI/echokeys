@@ -30,8 +30,20 @@ Partial runs need **50%+** progress to rank. Each player keeps their **best sing
 4. Use the subreddit menu when you need more posts:
    - **Post Echokeys Game** — free-play hub  
    - **Create Echokeys Challenge** — fixed race posted as the user who created it  
+   - **Create Echokeys Tournament** — timed community cup with a shared excerpt  
 
 No API keys or external services. No configuration required.
+
+## Tournaments
+
+Anyone logged in can start a **24-hour tournament** (menu or hub post → Create tournament):
+
+1. **Create** — app picks one shared excerpt; creator is auto-joined; a tournament post is published.
+2. **Join** — others open the post and tap **Join tournament** (capacity capped, default 50).
+3. **Race** — same text for everyone; best correct-words run ranks on tournament standings.
+4. **Standings** — Cup tab on the leaderboard while the tournament post is open.
+
+When the end time passes, the tournament closes (no new joins or ranked runs). Community weekly/all-time boards still update from eligible races.
 
 ## Leaderboards that survive reinstall
 

@@ -32,6 +32,18 @@ import {
   backupLeaderboardToWikiThrottled,
   syncLeaderboardWithWiki,
 } from './services/wikiBackup.js';
+import {
+  createTournament,
+  getTournament,
+  getTournamentStandings,
+  isParticipant,
+  joinTournament,
+  listCommunityTournaments,
+  recordTournamentScore,
+  saveTournament,
+  sanitizeTournamentName,
+  DEFAULT_TOURNAMENT_DURATION_MS,
+} from './services/tournament.js';
 import { calculateScore } from '../shared/types/index.js';
 import type { Challenge, PlayerScore, LeaderboardEntry } from '../shared/types/index.js';
 import { memoryCache } from './services/memoryCache.js';
@@ -312,8 +324,9 @@ async function resolveSubredditName(preferred?: string): Promise<string> {
 async function submitInteractiveCustomPost(opts: {
   title: string;
   subredditName?: string;
-  mode?: 'play' | 'challenge';
+  mode?: 'play' | 'challenge' | 'tournament';
   challengeId?: string;
+  tournamentId?: string;
   domain?: string;
   prompt?: string;
   createdBy?: string;
@@ -323,10 +336,13 @@ async function submitInteractiveCustomPost(opts: {
   textFallback?: string;
 }) {
   const subredditName = await resolveSubredditName(opts.subredditName);
-  const mode = opts.mode ?? (opts.challengeId ? 'challenge' : 'play');
+  const mode =
+    opts.mode ??
+    (opts.tournamentId ? 'tournament' : opts.challengeId ? 'challenge' : 'play');
 
   const postData: Record<string, string> = { mode };
   if (opts.challengeId) postData.challengeId = opts.challengeId;
+  if (opts.tournamentId) postData.tournamentId = opts.tournamentId;
   if (opts.domain) postData.domain = opts.domain;
   if (opts.prompt) postData.prompt = opts.prompt.slice(0, 200);
   if (opts.createdBy) postData.createdBy = opts.createdBy;
@@ -334,9 +350,11 @@ async function submitInteractiveCustomPost(opts: {
   const runAs = opts.runAs ?? 'APP';
   const textFallback =
     opts.textFallback ??
-    (mode === 'challenge'
-      ? `Echokeys typing challenge${opts.prompt ? `: ${opts.prompt.slice(0, 80)}` : ''}`
-      : 'Play Echokeys — race a random 2000+ word excerpt. Rank by correct words and time.');
+    (mode === 'tournament'
+      ? `Echokeys tournament${opts.prompt ? `: ${opts.prompt.slice(0, 80)}` : ''} — join and race the shared excerpt.`
+      : mode === 'challenge'
+        ? `Echokeys typing challenge${opts.prompt ? `: ${opts.prompt.slice(0, 80)}` : ''}`
+        : 'Play Echokeys — race a random 2000+ word excerpt. Rank by correct words and time.');
 
   return reddit.submitCustomPost({
     subredditName,
@@ -447,7 +465,7 @@ app.get('/api/post/challenge', async (_req, res) => {
 // ---- Start race (server clock + one-shot session token) ----
 app.post('/api/race/start', async (req, res) => {
   try {
-    const body = req.body as { challengeId?: string };
+    const body = req.body as { challengeId?: string; tournamentId?: string };
     const player = await resolveUsername();
     if (player === 'anonymous') {
       return res.status(401).json({ error: 'Authentication required' });
@@ -469,6 +487,29 @@ app.post('/api/race/start', async (req, res) => {
       return res.status(404).json({ error: 'Challenge not found' });
     }
 
+    const postData = context.postData as
+      | { tournamentId?: string; mode?: string }
+      | undefined;
+    const tournamentId =
+      (typeof body.tournamentId === 'string' && body.tournamentId) ||
+      (typeof postData?.tournamentId === 'string' ? postData.tournamentId : undefined);
+
+    if (tournamentId) {
+      const tournament = await getTournament(redis, tournamentId);
+      if (!tournament) {
+        return res.status(404).json({ error: 'Tournament not found' });
+      }
+      if (tournament.status === 'closed') {
+        return res.status(400).json({ error: 'Tournament has ended' });
+      }
+      if (tournament.challengeId !== body.challengeId) {
+        return res.status(400).json({ error: 'Challenge does not match tournament' });
+      }
+      if (!isParticipant(tournament, player)) {
+        return res.status(403).json({ error: 'Join the tournament before racing' });
+      }
+    }
+
     // Invalidate any previous open race for this user+challenge
     const openKey = `race_open:${player}:${body.challengeId}`;
     const prevId = await redis.get(openKey);
@@ -483,6 +524,7 @@ app.post('/api/race/start', async (req, res) => {
       raceId: session.id,
       startedAt: session.startedAt,
       expiresInMs: RACE_TTL_MS,
+      tournamentId: tournamentId ?? null,
     });
   } catch (err) {
     console.error('[API] Race start error:', err);
@@ -499,12 +541,20 @@ app.post('/api/score/submit', async (req, res) => {
       challengeId?: string;
       raceId?: string;
       typed?: string;
+      tournamentId?: string;
       // Legacy client fields — ignored for scoring
       wpm?: number;
       accuracy?: number;
       timeSeconds?: number;
       completed?: boolean;
     };
+
+    const postData = context.postData as
+      | { tournamentId?: string; challengeId?: string; mode?: string }
+      | undefined;
+    const tournamentId =
+      (typeof body.tournamentId === 'string' && body.tournamentId) ||
+      (typeof postData?.tournamentId === 'string' ? postData.tournamentId : undefined);
 
     // Identity from Reddit OAuth context only — never trust client username
     const player = await resolveUsername();
@@ -590,6 +640,18 @@ app.post('/api/score/submit', async (req, res) => {
       rankOnLeaderboard: metrics.eligibleForLeaderboard,
     });
 
+    let tournamentRank: number | null = null;
+    let tournamentError: string | undefined;
+    if (tournamentId && metrics.eligibleForLeaderboard) {
+      const tr = await recordTournamentScore(redis, tournamentId, playerScore);
+      if (tr.ok) {
+        tournamentRank = tr.rank;
+      } else {
+        tournamentError = tr.error;
+        console.warn(`[Tournament] Score not ranked for ${player}: ${tr.error}`);
+      }
+    }
+
     const weeklyRank = await getPlayerWeeklyRank(redis, subId, player);
     const allTimeRank = await getPlayerAllTimeRank(redis, subId, player);
     const entries = await enrichPlayerBadges(redis, await getWeeklyLeaderboard(redis, subId));
@@ -616,7 +678,7 @@ app.post('/api/score/submit', async (req, res) => {
     }
 
     console.log(
-      `[API] Score submitted: ${player} — WPM:${metrics.wpm} Acc:${metrics.accuracy}% CorrectWords:${metrics.correctWords} Time:${metrics.timeSeconds}s Score:${scoreValue} completed=${metrics.completed} ranked=${metrics.eligibleForLeaderboard}`
+      `[API] Score submitted: ${player} — WPM:${metrics.wpm} Acc:${metrics.accuracy}% CorrectWords:${metrics.correctWords} Time:${metrics.timeSeconds}s Score:${scoreValue} completed=${metrics.completed} ranked=${metrics.eligibleForLeaderboard}${tournamentId ? ` tournament=${tournamentId}` : ''}`
     );
 
     return res.json({
@@ -624,6 +686,9 @@ app.post('/api/score/submit', async (req, res) => {
       weeklyRank,
       allTimeRank,
       ranked: metrics.eligibleForLeaderboard,
+      tournamentId: tournamentId ?? null,
+      tournamentRank,
+      tournamentError: tournamentError ?? null,
     });
   } catch (err) {
     console.error('[API] Submit score error:', err);
@@ -723,6 +788,167 @@ app.get('/api/profile/:username', async (req, res) => {
   }
 });
 
+// ---- Tournaments ----
+app.get('/api/tournaments', async (_req, res) => {
+  try {
+    const subId = getSubredditId();
+    const tournaments = await listCommunityTournaments(redis, subId);
+    return res.json({ tournaments, updatedAt: Date.now() });
+  } catch (err) {
+    console.error('[API] List tournaments error:', err);
+    return res.status(500).json({ error: 'Failed to list tournaments' });
+  }
+});
+
+app.get('/api/tournament/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ error: 'Tournament id required' });
+    const tournament = await getTournament(redis, id);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+    const standings = await getTournamentStandings(redis, id);
+    const username = await resolveUsername();
+    return res.json({
+      tournament,
+      standings,
+      joined: username !== 'anonymous' && isParticipant(tournament, username),
+      username,
+    });
+  } catch (err) {
+    console.error('[API] Get tournament error:', err);
+    return res.status(500).json({ error: 'Failed to get tournament' });
+  }
+});
+
+app.get('/api/post/tournament', async (_req, res) => {
+  try {
+    const postData = context.postData as { tournamentId?: string } | undefined;
+    const tournamentId = postData?.tournamentId;
+    if (!tournamentId) {
+      return res.json({ tournament: null, standings: [], joined: false });
+    }
+    const tournament = await getTournament(redis, tournamentId);
+    if (!tournament) {
+      return res.json({ tournament: null, standings: [], joined: false });
+    }
+    const standings = await getTournamentStandings(redis, tournamentId);
+    const username = await resolveUsername();
+    return res.json({
+      tournament,
+      standings,
+      joined: username !== 'anonymous' && isParticipant(tournament, username),
+      username,
+    });
+  } catch (err) {
+    console.error('[API] Post tournament error:', err);
+    return res.status(500).json({ error: 'Failed to load post tournament' });
+  }
+});
+
+app.post('/api/tournament/create', async (req, res) => {
+  try {
+    const username = await resolveUsername();
+    if (username === 'anonymous') {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const allowed = await checkRateLimit(username, 'tournament-create', 5);
+    if (!allowed) {
+      return res.status(429).json({ error: 'Rate limit: max 5 tournaments per hour' });
+    }
+
+    const body = req.body as {
+      name?: string;
+      durationHours?: number;
+      maxPlayers?: number;
+    };
+
+    const { challenge } = await createChallengeFromKnowledgeBase(username);
+    const durationHours =
+      typeof body.durationHours === 'number' && Number.isFinite(body.durationHours)
+        ? body.durationHours
+        : 24;
+    const durationMs = Math.round(durationHours * 60 * 60 * 1000) || DEFAULT_TOURNAMENT_DURATION_MS;
+    const name = sanitizeTournamentName(
+      typeof body.name === 'string' ? body.name : '',
+      `Tournament by ${username}`
+    );
+
+    const tournamentId = newId('trn');
+    const tournament = await createTournament(redis, {
+      id: tournamentId,
+      name,
+      communityId: getSubredditId(),
+      createdBy: username,
+      challengeId: challenge.id,
+      durationMs,
+      maxPlayers: typeof body.maxPlayers === 'number' ? body.maxPlayers : undefined,
+      prompt: challenge.prompt,
+      domain: challenge.domain,
+    });
+
+    const post = await submitInteractiveCustomPost({
+      title: `Echokeys Tournament: ${tournament.name}`,
+      mode: 'tournament',
+      tournamentId: tournament.id,
+      challengeId: challenge.id,
+      domain: challenge.domain,
+      prompt: challenge.prompt,
+      createdBy: username,
+      runAs: 'USER',
+      userGeneratedContentText: challenge.content,
+      textFallback: `Echokeys tournament — join and race the same ${countWords(challenge.content)}-word excerpt. Best correct words wins.`,
+    });
+
+    tournament.postId = post.id;
+    challenge.postId = post.id;
+    await saveTournament(redis, tournament);
+    await saveChallenge(redis, challenge);
+
+    return res.json({
+      tournament,
+      postId: post.id,
+      postUrl: post.url,
+      challengeId: challenge.id,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create tournament';
+    console.error('[API] Tournament create error:', err);
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.post('/api/tournament/:id/join', async (req, res) => {
+  try {
+    const username = await resolveUsername();
+    if (username === 'anonymous') {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ error: 'Tournament id required' });
+
+    const allowed = await checkRateLimit(username, 'tournament-join', 30);
+    if (!allowed) {
+      return res.status(429).json({ error: 'Rate limit: too many join attempts' });
+    }
+
+    const result = await joinTournament(redis, id, username);
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    const standings = await getTournamentStandings(redis, id);
+    return res.json({
+      tournament: result.tournament,
+      alreadyJoined: result.alreadyJoined,
+      standings,
+      joined: true,
+    });
+  } catch (err) {
+    console.error('[API] Tournament join error:', err);
+    return res.status(500).json({ error: 'Failed to join tournament' });
+  }
+});
+
 // ---- Menu: publish the interactive play hub custom post ----
 app.post('/internal/menu/post-play-game', async (_req, res) => {
   try {
@@ -793,6 +1019,65 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create challenge';
     console.error('[Menu] Create challenge error:', err);
+    return res.json({
+      showToast: { text: message, appearance: 'neutral' },
+    } satisfies UiResponse);
+  }
+});
+
+// ---- Menu: create a community tournament (shared excerpt + join + standings) ----
+app.post('/internal/menu/create-tournament', async (_req, res) => {
+  try {
+    const username = await resolveUsername();
+    if (username === 'anonymous') {
+      return res.json({
+        showToast: { text: 'Log in to create a tournament.', appearance: 'neutral' },
+      } satisfies UiResponse);
+    }
+    const allowed = await checkRateLimit(username, 'tournament-create', 5);
+    if (!allowed) {
+      return res.json({
+        showToast: {
+          text: 'Rate limit: max 5 tournaments per hour.',
+          appearance: 'neutral',
+        },
+      } satisfies UiResponse);
+    }
+
+    const { challenge } = await createChallengeFromKnowledgeBase(username);
+    const name = sanitizeTournamentName('', `Tournament by ${username}`);
+    const tournamentId = newId('trn');
+    const tournament = await createTournament(redis, {
+      id: tournamentId,
+      name,
+      communityId: getSubredditId(),
+      createdBy: username,
+      challengeId: challenge.id,
+      prompt: challenge.prompt,
+      domain: challenge.domain,
+    });
+
+    const post = await submitInteractiveCustomPost({
+      title: `Echokeys Tournament: ${tournament.name}`,
+      mode: 'tournament',
+      tournamentId: tournament.id,
+      challengeId: challenge.id,
+      domain: challenge.domain,
+      prompt: challenge.prompt,
+      createdBy: username,
+      runAs: 'USER',
+      userGeneratedContentText: challenge.content,
+      textFallback: `Echokeys tournament — join and race the same ${countWords(challenge.content)}-word excerpt.`,
+    });
+
+    tournament.postId = post.id;
+    challenge.postId = post.id;
+    await saveTournament(redis, tournament);
+    await saveChallenge(redis, challenge);
+    return res.json({ navigateTo: post.url } satisfies UiResponse);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create tournament';
+    console.error('[Menu] Create tournament error:', err);
     return res.json({
       showToast: { text: message, appearance: 'neutral' },
     } satisfies UiResponse);
