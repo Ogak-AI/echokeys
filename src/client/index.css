@@ -119,6 +119,49 @@ html.ek-lock-scroll #root {
   white-space: nowrap;
 }
 
+/* Audio / mute controls */
+.audio-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--color-vsc-panel);
+  border-bottom: 1px solid var(--color-vsc-border);
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.audio-control-bar-active {
+  background: rgba(206, 145, 120, 0.18);
+  border-bottom-color: var(--color-vsc-orange);
+}
+
+.mute-btn {
+  font-weight: 700;
+  min-width: 5.5rem;
+  min-height: 2rem;
+  flex-shrink: 0;
+}
+
+.mute-btn-on {
+  background: var(--color-vsc-orange) !important;
+  color: #1e1e1e !important;
+}
+
+.mute-btn-on:hover {
+  background: #e0a88f !important;
+}
+
+.mute-btn-off {
+  background: var(--color-vsc-panel) !important;
+  color: var(--color-vsc-text) !important;
+  border: 1px solid var(--color-vsc-border);
+}
+
+.mute-btn-off:hover {
+  background: var(--color-vsc-border) !important;
+}
+
 .app-main {
   flex: 1;
   min-height: 0;

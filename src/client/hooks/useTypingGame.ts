@@ -97,7 +97,7 @@ export function useTypingGame(challenge: Challenge | null) {
     progress: 0,
     score: 0,
     correctWords: 0,
-    muted: false,
+    muted: true, // require Read / Unmute before TTS
     throttled: false,
     speaking: false,
   });
@@ -108,7 +108,7 @@ export function useTypingGame(challenge: Challenge | null) {
   const lastTypeAt = useRef(0);
   const lastLen = useRef(0);
   const inputRef = useRef('');
-  const mutedRef = useRef(false);
+  const mutedRef = useRef(true);
   const phaseRef = useRef<TypingState['phase']>('idle');
   const challengeRef = useRef(challenge);
   /** True once we have queued narration for this race (user-gesture unlock). */

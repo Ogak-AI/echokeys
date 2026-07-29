@@ -94,6 +94,44 @@ async function resolveUsername(): Promise<string> {
   return 'anonymous';
 }
 
+/** True if the acting user mods the install subreddit. */
+async function isCurrentUserModerator(): Promise<boolean> {
+  const username = await resolveUsername();
+  if (username === 'anonymous') return false;
+
+  try {
+    const listing = await reddit.getModerators({
+      subredditName: await resolveSubredditName(),
+      username,
+      limit: 1,
+      pageSize: 1,
+    });
+    const mods = await listing.all();
+    return mods.some((m) => m.username?.toLowerCase() === username);
+  } catch (err) {
+    console.warn('[Auth] Moderator check failed:', err);
+    return false;
+  }
+}
+
+async function requireModerator(): Promise<
+  { ok: true; username: string } | { ok: false; error: string; status: number }
+> {
+  const username = await resolveUsername();
+  if (username === 'anonymous') {
+    return { ok: false, error: 'Authentication required', status: 401 };
+  }
+  const isMod = await isCurrentUserModerator();
+  if (!isMod) {
+    return {
+      ok: false,
+      error: 'Only community moderators can create tournaments',
+      status: 403,
+    };
+  }
+  return { ok: true, username };
+}
+
 /**
  * Hour-bucket rate limit. Count is re-read after write to reduce concurrent overshoot
  * (Devvit Redis surface is get/set only — not fully atomic, but tighter than before).
@@ -387,6 +425,8 @@ app.get('/api/me', async (_req, res) => {
   try {
     const username = await resolveUsername();
     const profile = username !== 'anonymous' ? await getPlayerProfile(redis, username) : null;
+    const isModerator =
+      username !== 'anonymous' ? await isCurrentUserModerator() : false;
     return res.json({
       username,
       postId: context.postId,
@@ -394,6 +434,7 @@ app.get('/api/me', async (_req, res) => {
       profile,
       subredditId: getSubredditId(),
       subredditName: await getSubredditName(),
+      isModerator,
     });
   } catch (err) {
     console.error('[API] /api/me error:', err);
@@ -847,10 +888,11 @@ app.get('/api/post/tournament', async (_req, res) => {
 
 app.post('/api/tournament/create', async (req, res) => {
   try {
-    const username = await resolveUsername();
-    if (username === 'anonymous') {
-      return res.status(401).json({ error: 'Authentication required' });
+    const mod = await requireModerator();
+    if (!mod.ok) {
+      return res.status(mod.status).json({ error: mod.error });
     }
+    const username = mod.username;
     const allowed = await checkRateLimit(username, 'tournament-create', 5);
     if (!allowed) {
       return res.status(429).json({ error: 'Rate limit: max 5 tournaments per hour' });
@@ -1025,15 +1067,19 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
   }
 });
 
-// ---- Menu: create a community tournament (shared excerpt + join + standings) ----
+// Menu: create tournament (mods only)
 app.post('/internal/menu/create-tournament', async (_req, res) => {
   try {
-    const username = await resolveUsername();
-    if (username === 'anonymous') {
+    const mod = await requireModerator();
+    if (!mod.ok) {
       return res.json({
-        showToast: { text: 'Log in to create a tournament.', appearance: 'neutral' },
+        showToast: {
+          text: 'Only moderators can create tournaments. Join an open tournament post instead.',
+          appearance: 'neutral',
+        },
       } satisfies UiResponse);
     }
+    const username = mod.username;
     const allowed = await checkRateLimit(username, 'tournament-create', 5);
     if (!allowed) {
       return res.json({

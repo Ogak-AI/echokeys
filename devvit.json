@@ -53,9 +53,9 @@
       },
       {
         "label": "Create Echokeys Tournament",
-        "description": "Start a timed community tournament — others join and race the same excerpt",
+        "description": "Moderators only: start a timed community tournament others can join",
         "location": "subreddit",
-        "forUserType": "user",
+        "forUserType": "moderator",
         "endpoint": "/internal/menu/create-tournament",
         "postFilter": "none"
       }

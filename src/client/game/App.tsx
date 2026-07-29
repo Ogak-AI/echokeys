@@ -728,6 +728,11 @@ export const App = () => {
 
   if (challenge && isPlaying) {
     const readLabel = muted ? 'Read' : speaking ? 'Reading…' : 'Read';
+    const muteLabel = muted ? '🔇 Unmute' : '🔊 Mute';
+    const onMuteClick = () => {
+      toggleMute();
+      focusCapture();
+    };
 
     return (
       <div className="app-shell app-shell-game" ref={shellRef}>
@@ -760,22 +765,40 @@ export const App = () => {
               {readLabel}
             </button>
             <button
-              onClick={() => {
-                toggleMute();
-                focusCapture();
-              }}
-              className="vsc-btn vsc-btn-ghost vsc-btn-sm"
+              onClick={onMuteClick}
+              className={`vsc-btn vsc-btn-sm mute-btn ${muted ? 'mute-btn-off' : 'mute-btn-on'}`}
               type="button"
               aria-label={muted ? 'Unmute narration' : 'Mute narration'}
-              title={muted ? 'Unmute' : 'Mute'}
+              title={muted ? 'Unmute audio' : 'Mute audio'}
+              aria-pressed={!muted}
             >
-              {muted ? 'Unmute' : 'Mute'}
+              {muteLabel}
             </button>
             <button onClick={handleTryAgain} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
               Reset
             </button>
           </div>
         </header>
+
+        <div
+          className={`audio-control-bar ${speaking && !muted ? 'audio-control-bar-active' : ''}`}
+          role="region"
+          aria-label="Audio controls"
+        >
+          <span className="mono" style={{ fontSize: '0.6875rem', flex: 1, minWidth: 0 }}>
+            {muted ? 'Audio muted' : speaking ? 'Reading aloud' : 'Tap Read or Unmute to hear'}
+          </span>
+          <button
+            type="button"
+            className={`vsc-btn vsc-btn-sm mute-btn ${muted ? 'mute-btn-off' : 'mute-btn-on'}`}
+            onClick={onMuteClick}
+            aria-label={muted ? 'Unmute narration' : 'Mute narration'}
+            title={muted ? 'Unmute audio' : 'Mute audio'}
+            aria-pressed={!muted}
+          >
+            {muteLabel}
+          </button>
+        </div>
 
         <div className="game-layout">
           <div className="game-editor-col">
@@ -922,8 +945,8 @@ export const App = () => {
             </div>
 
             <p className="game-hint">
-              Rank: most correct words, then lowest time. The current line stays in the focus band.
-              Read speaks the challenge text while you type.
+              Rank: most correct words, then lowest time. Use <strong>Mute</strong> anytime to stop
+              narration instantly.
             </p>
           </aside>
         </div>

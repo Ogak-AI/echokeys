@@ -37,6 +37,7 @@ const Splash = () => {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [createName, setCreateName] = useState('');
+  const [isModerator, setIsModerator] = useState(false);
 
   const playBtnRef = useRef<HTMLButtonElement>(null);
   const lbBtnRef = useRef<HTMLButtonElement>(null);
@@ -51,6 +52,7 @@ const Splash = () => {
     const me = await res.json();
     if (me.username) setUsername(me.username);
     if (me.subredditName) setSubredditName(me.subredditName);
+    setIsModerator(Boolean(me.isModerator));
     if (me.profile?.totalWordsTyped != null) {
       setWordsTyped(me.profile.totalWordsTyped as number);
     }
@@ -418,32 +420,41 @@ const Splash = () => {
               >
                 Tournaments
               </p>
-              <input
-                type="text"
-                className="vsc-input"
-                placeholder="Name (optional)"
-                value={createName}
-                maxLength={80}
-                onChange={(e) => setCreateName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.4rem 0.5rem',
-                  borderRadius: 2,
-                  border: '1px solid var(--color-vsc-border)',
-                  background: 'var(--color-vsc-bg-darker)',
-                  color: 'var(--color-vsc-text)',
-                  fontSize: '0.75rem',
-                }}
-              />
-              <button
-                type="button"
-                className="vsc-btn vsc-btn-ghost"
-                style={{ width: '100%' }}
-                disabled={busy}
-                onClick={() => void onCreateTournament()}
-              >
-                {busy ? 'Creating…' : 'Create 24h tournament'}
-              </button>
+              {isModerator ? (
+                <>
+                  <input
+                    type="text"
+                    className="vsc-input"
+                    placeholder="Name (optional)"
+                    value={createName}
+                    maxLength={80}
+                    onChange={(e) => setCreateName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.4rem 0.5rem',
+                      borderRadius: 2,
+                      border: '1px solid var(--color-vsc-border)',
+                      background: 'var(--color-vsc-bg-darker)',
+                      color: 'var(--color-vsc-text)',
+                      fontSize: '0.75rem',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="vsc-btn vsc-btn-ghost"
+                    style={{ width: '100%' }}
+                    disabled={busy}
+                    onClick={() => void onCreateTournament()}
+                  >
+                    {busy ? 'Creating…' : 'Create 24h tournament'}
+                  </button>
+                </>
+              ) : (
+                <p className="muted" style={{ fontSize: '0.625rem', lineHeight: 1.4 }}>
+                  Mods create tournaments. Open a tournament post to{' '}
+                  <strong style={{ color: 'var(--color-vsc-green)', fontWeight: 600 }}>join</strong>.
+                </p>
+              )}
               {openTournaments.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                   {openTournaments.map((t) => (
@@ -467,7 +478,9 @@ const Splash = () => {
                     </div>
                   ))}
                   <p className="muted" style={{ fontSize: '0.5625rem' }}>
-                    Open a tournament post from the feed (or subreddit menu → Create Echokeys Tournament).
+                    {isModerator
+                      ? 'Or use subreddit menu → Create Echokeys Tournament.'
+                      : 'Find open tournament posts in the community feed to join.'}
                   </p>
                 </div>
               )}
