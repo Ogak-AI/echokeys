@@ -17,10 +17,17 @@ export const WPM_TOLERANCE = 8;
 /** Race session TTL — must finish (or time out) within this window (+ buffer). */
 export const RACE_TTL_MS = (TIME_LIMIT_SECONDS + 2 * 60) * 1000;
 /**
- * Incomplete runs only rank on the community board if the player typed at least
- * this fraction of the challenge (timeouts near the end still count).
+ * Incomplete runs rank when either:
+ * - progress ≥ MIN_LEADERBOARD_PROGRESS, or
+ * - correctWords ≥ MIN_LEADERBOARD_CORRECT_WORDS
+ *
+ * Races are ~2000 words / 4 min, so a pure 50% bar is unreachable for normal
+ * typists (~80 WPM → ~320 words). Prefer an absolute correct-word floor so
+ * timeouts still appear on the board (ranked by correct words, then time).
  */
 export const MIN_LEADERBOARD_PROGRESS = 0.5;
+/** ~20–30s of accurate typing at ~40–60 WPM — blocks empty/drive-by submits. */
+export const MIN_LEADERBOARD_CORRECT_WORDS = 20;
 /** Small grace on theoretical min duration (clock / network jitter). */
 export const MIN_TIME_GRACE_SECONDS = 0.75;
 
@@ -185,7 +192,10 @@ export function validatePlayMetrics(params: {
   const progress = content.length > 0 ? typed.length / content.length : 0;
   const wordsTyped = countWords(typed);
   const correctWords = countCorrectWords(typed, content);
-  const eligibleForLeaderboard = completed || progress >= MIN_LEADERBOARD_PROGRESS;
+  const eligibleForLeaderboard =
+    completed ||
+    progress >= MIN_LEADERBOARD_PROGRESS ||
+    correctWords >= MIN_LEADERBOARD_CORRECT_WORDS;
 
   return {
     ok: true,

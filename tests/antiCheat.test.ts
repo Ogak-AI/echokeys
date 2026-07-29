@@ -55,6 +55,7 @@ test('7 wps ceiling is 420 WPM', () => {
   assert.equal(MAX_WPM, 420);
   assert.equal(TIME_LIMIT_SECONDS, 4 * 60);
   assert.equal(MIN_LEADERBOARD_PROGRESS, 0.5);
+  // Imported below in eligibility tests — keep progress bar + word floor in sync.
 });
 
 test('isSpeedViolation catches bursts above 7 words/sec', () => {
