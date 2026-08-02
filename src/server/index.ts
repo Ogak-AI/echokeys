@@ -51,7 +51,10 @@ import {
   RACE_TTL_MS,
   countWords,
   formatSubredditLabel,
+  humanTypingConfidence,
+  isBotLikeTyping,
   raceElapsedSeconds,
+  sanitizeKeyIntervals,
   validatePlayMetrics,
 } from '../shared/utils/antiCheat.js';
 import { detectContentDomain } from '../shared/utils/contentDomain.js';
@@ -133,21 +136,37 @@ async function requireModerator(): Promise<
 }
 
 /**
- * Hour-bucket rate limit. Count is re-read after write to reduce concurrent overshoot
- * (Devvit Redis surface is get/set only — not fully atomic, but tighter than before).
+ * Hour-bucket rate limit.
+ *
+ * Devvit Redis has no atomic INCR or WATCH/MULTI, so a small burst can
+ * briefly overshoot. We mitigate by:
+ *  1. Using per-user keys (never anonymous aggregation) to limit blast radius.
+ *  2. Reading the confirmed value after the write and rejecting when it
+ *     overshoots by more than a small tolerance (handles the common "two
+ *     concurrent tabs" case).
+ *  3. Anonymous users that cannot be identified reliably get a very tight cap
+ *     per-subreddit so a single unauthenticated actor cannot DOS the community.
  */
 async function checkRateLimit(username: string, action: string, maxCount: number): Promise<boolean> {
-  const identity = username === 'anonymous' ? `anon:${getSubredditId()}` : username;
+  // Never aggregate all anonymous users under one key — use sub-scoped keys
+  // so one anon cannot block others in the same community.
+  const identity = username === 'anonymous'
+    ? `anon:${getSubredditId()}:${action}`
+    : username;
   const hourKey = Math.floor(Date.now() / 3600000);
   const key = `ratelimit:${action}:${identity}:${hourKey}`;
+
   const raw = await redis.get(key);
   const count = raw ? parseInt(raw, 10) : 0;
   if (!Number.isFinite(count) || count >= maxCount) return false;
-  const next = count + 1;
-  await redis.set(key, String(next));
-  // Best-effort double-check: if another writer raced past the cap, reject latecomers.
+
+  await redis.set(key, String(count + 1));
+
+  // Best-effort confirm: reject when a concurrent burst put us well over cap.
+  // Tolerance of +2 handles the "two tabs submit simultaneously" case without
+  // being too strict and blocking legitimate users under light contention.
   const confirmRaw = await redis.get(key);
-  const confirmed = confirmRaw ? parseInt(confirmRaw, 10) : next;
+  const confirmed = confirmRaw ? parseInt(confirmRaw, 10) : count + 1;
   if (Number.isFinite(confirmed) && confirmed > maxCount + 2) {
     return false;
   }
@@ -217,6 +236,12 @@ async function loadRaceSession(
 ): Promise<RaceLookupResult> {
   if (!raceId || typeof raceId !== 'string') {
     return { ok: false, error: 'Race session required', status: 400 };
+  }
+
+  // Validate raceId format to prevent Redis key injection
+  // Expected format: "race-<timestamp>-<random6>" from newId('race')
+  if (!/^race-\d+-[a-z0-9]{6}$/.test(raceId)) {
+    return { ok: false, error: 'Invalid race session ID format', status: 400 };
   }
 
   const raw = await redis.get(`race:${raceId}`);
@@ -446,6 +471,9 @@ app.get('/api/me', async (_req, res) => {
 app.post('/api/challenge/create', async (_req, res) => {
   try {
     const username = await resolveUsername();
+    if (username === 'anonymous') {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const allowed = await checkRateLimit(username, 'challenge', 20);
     if (!allowed) {
       return res.status(429).json({
@@ -480,6 +508,10 @@ app.get('/api/challenge/:id', async (req, res) => {
   try {
     const challenge = await getChallenge(redis, req.params.id);
     if (!challenge) return res.status(404).json({ error: 'Challenge not found' });
+    // Scope reads to the install community to reduce cross-subreddit IDOR.
+    if (challenge.communityId && challenge.communityId !== getSubredditId()) {
+      return res.status(404).json({ error: 'Challenge not found' });
+    }
     return res.json({ challenge });
   } catch (err) {
     console.error('[API] Get challenge error:', err);
@@ -526,6 +558,9 @@ app.post('/api/race/start', async (req, res) => {
     const challenge = await getChallenge(redis, body.challengeId);
     if (!challenge) {
       return res.status(404).json({ error: 'Challenge not found' });
+    }
+    if (challenge.communityId && challenge.communityId !== getSubredditId()) {
+      return res.status(403).json({ error: 'Challenge does not belong to this community' });
     }
 
     const postData = context.postData as
@@ -583,6 +618,8 @@ app.post('/api/score/submit', async (req, res) => {
       raceId?: string;
       typed?: string;
       tournamentId?: string;
+      /** Advisory inter-key intervals — never used for score acceptance. */
+      keyIntervals?: unknown;
       // Legacy client fields — ignored for scoring
       wpm?: number;
       accuracy?: number;
@@ -621,6 +658,10 @@ app.post('/api/score/submit', async (req, res) => {
     if (!challenge) {
       return res.status(404).json({ error: 'Challenge not found' });
     }
+    // Reject cross-community challenge IDs (prevents farming foreign excerpts into this board).
+    if (challenge.communityId && challenge.communityId !== getSubredditId()) {
+      return res.status(403).json({ error: 'Challenge does not belong to this community' });
+    }
 
     // 1) Load race (server clock). 2) Derive metrics. 3) Claim one-shot. 4) Persist.
     const race = await loadRaceSession(body.raceId ?? '', player, body.challengeId);
@@ -654,6 +695,17 @@ app.post('/api/score/submit', async (req, res) => {
       console.log(
         `[Monitor] High WPM: ${player} WPM=${metrics.wpm} Acc=${metrics.accuracy}% challenge=${body.challengeId}`
       );
+    }
+
+    // Bot-like interval telemetry (advisory). Never rejects a valid race on its own.
+    const intervals = sanitizeKeyIntervals(body.keyIntervals);
+    if (intervals.length > 0) {
+      const confidence = humanTypingConfidence(intervals);
+      if (isBotLikeTyping(intervals)) {
+        console.warn(
+          `[Monitor] Bot-like typing: ${player} confidence=${confidence} samples=${intervals.length} WPM=${metrics.wpm} Acc=${metrics.accuracy}% challenge=${body.challengeId}`
+        );
+      }
     }
 
     const id = newId('sc');

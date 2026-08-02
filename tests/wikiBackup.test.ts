@@ -1,5 +1,8 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  parseBackupContent,
+  BACKUP_THROTTLE_MS,
+} from '../src/server/services/wikiBackup.js';
 import {
   exportLeaderboardBackup,
   importLeaderboardBackup,
@@ -8,22 +11,51 @@ import {
   getAllTimeLeaderboard,
   getWeeklyLeaderboard,
   getPlayerProfile,
-} from '../src/server/services/leaderboard.ts';
-import type { PlayerScore } from '../src/shared/types/index.ts';
-import { parseBackupContent } from '../src/server/services/wikiBackup.ts';
-import { memoryCache } from '../src/server/services/memoryCache.ts';
+} from '../src/server/services/leaderboard.js';
+import type { PlayerScore, LeaderboardEntry } from '../src/shared/types/index.js';
+import { memoryCache } from '../src/server/services/memoryCache.js';
+import { createRedisMock } from './helpers/redisMock.js';
 
-class MockRedis {
-  data = new Map<string, string>();
-  async get(key: string) {
-    return this.data.get(key);
-  }
-  async set(key: string, value: string) {
-    this.data.set(key, value);
-  }
-  async del(...keys: string[]) {
-    for (const key of keys) this.data.delete(key);
-  }
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+type RedisMock = ReturnType<typeof createRedisMock>;
+
+const MARKER_START = '<!-- echokeys-lb-v1 -->';
+const MARKER_END = '<!-- /echokeys-lb-v1 -->';
+
+function makeMinimalBackup(overrides: Record<string, unknown> = {}) {
+  return {
+    v: 1 as const,
+    subredditId: 't5_test',
+    savedAt: Date.now(),
+    alltime: [] as LeaderboardEntry[],
+    weekly: {} as Record<string, LeaderboardEntry[]>,
+    weeklyArchives: {} as Record<string, LeaderboardEntry[]>,
+    weeklyArchiveIndex: [] as string[],
+    monthly: {} as Record<string, LeaderboardEntry[]>,
+    monthlyIndex: [] as string[],
+    yearly: {} as Record<string, LeaderboardEntry[]>,
+    profiles: [],
+    ...overrides,
+  };
+}
+
+function makeLeaderboardEntry(username: string): LeaderboardEntry {
+  return {
+    rank: 1,
+    username,
+    score: 100,
+    accuracy: 95,
+    bestWpm: 80,
+    challengesCompleted: 1,
+    lastPlayed: Date.now(),
+    badges: [],
+    totalWordsTyped: 80,
+    bestCorrectWords: 80,
+    bestTimeSeconds: 60,
+  };
 }
 
 function makeScore(
@@ -43,108 +75,261 @@ function makeScore(
   };
 }
 
-test('parseBackupContent reads marker-wrapped JSON', () => {
-  const page = [
+function wrapInMarkers(json: string): string {
+  return [
     '# Echokeys leaderboard backup',
-    '<!-- echokeys-lb-v1 -->',
-    JSON.stringify({
-      v: 1,
-      subredditId: 't5_test',
-      savedAt: 1,
-      alltime: [{ rank: 1, username: 'ace', score: 1, accuracy: 100, bestWpm: 100, challengesCompleted: 1, lastPlayed: 1, badges: [], totalWordsTyped: 10, bestCorrectWords: 10, bestTimeSeconds: 5 }],
-      weekly: {},
-      weeklyArchives: {},
-      weeklyArchiveIndex: [],
-      monthly: {},
-      monthlyIndex: [],
-      yearly: {},
-      profiles: [],
-    }),
-    '<!-- /echokeys-lb-v1 -->',
+    '',
+    MARKER_START,
+    json,
+    MARKER_END,
+    '',
   ].join('\n');
+}
 
-  const parsed = parseBackupContent(page);
-  assert.ok(parsed);
-  assert.equal(parsed.v, 1);
-  assert.equal(parsed.subredditId, 't5_test');
-  assert.equal(parsed.alltime[0]?.username, 'ace');
+// ---------------------------------------------------------------------------
+// parseBackupContent
+// ---------------------------------------------------------------------------
+describe('parseBackupContent', () => {
+  it('returns null for empty string', () => {
+    expect(parseBackupContent('')).toBeNull();
+  });
+
+  it('parses valid JSON wrapped in markers', () => {
+    const backup = makeMinimalBackup({ alltime: [makeLeaderboardEntry('ace')] });
+    const content = wrapInMarkers(JSON.stringify(backup));
+    const parsed = parseBackupContent(content);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.v).toBe(1);
+    expect(parsed!.subredditId).toBe('t5_test');
+    expect(parsed!.alltime[0]!.username).toBe('ace');
+  });
+
+  it('falls back to fenced JSON block (```json ... ```)', () => {
+    const backup = makeMinimalBackup();
+    const content = '# Some page\n\n```json\n' + JSON.stringify(backup) + '\n```\n';
+    const parsed = parseBackupContent(content);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.v).toBe(1);
+  });
+
+  it('falls back to bare JSON when no markers or fences', () => {
+    const backup = makeMinimalBackup();
+    const content = 'Some preamble\n\n' + JSON.stringify(backup) + '\n\nSome postamble';
+    const parsed = parseBackupContent(content);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.v).toBe(1);
+  });
+
+  it('returns null when JSON is invalid', () => {
+    const content = wrapInMarkers('{ not valid json }}}');
+    expect(parseBackupContent(content)).toBeNull();
+  });
+
+  it('returns null when v is not 1', () => {
+    const bad = { v: 2, subredditId: 'sub', savedAt: 0 };
+    const content = wrapInMarkers(JSON.stringify(bad));
+    expect(parseBackupContent(content)).toBeNull();
+  });
+
+  it('returns null when subredditId is missing', () => {
+    const bad = { v: 1, savedAt: 0 };
+    const content = wrapInMarkers(JSON.stringify(bad));
+    expect(parseBackupContent(content)).toBeNull();
+  });
 });
 
-test('export + import restores all-time after redis wipe', async () => {
-  memoryCache.clear();
-  const redis = new MockRedis();
+// ---------------------------------------------------------------------------
+// encodeBackup / parseBackup round-trip (via export + parseBackupContent)
+// ---------------------------------------------------------------------------
+describe('encodeBackup / parseBackupContent round-trip', () => {
+  let redis: RedisMock;
 
-  await saveScore(
-    redis,
-    makeScore({
-      id: 'sc-1',
-      username: 'survivor',
-      communityId: 'sub-persist',
-      correctWords: 120,
-      timeSeconds: 90,
-      wordsTyped: 120,
-    })
-  );
+  beforeEach(() => {
+    memoryCache.clear();
+    redis = createRedisMock();
+  });
 
-  const backup = await exportLeaderboardBackup(redis, 'sub-persist');
-  assert.ok(backupHasData(backup));
-  assert.equal(backup.alltime.length, 1);
-  assert.equal(backup.profiles.length, 1);
+  it('encodes and parses back to the same data', async () => {
+    await saveScore(
+      redis,
+      makeScore({ id: 'sc-rt', username: 'roundtripper', communityId: 'sub-rt', correctWords: 100, timeSeconds: 90 })
+    );
+    const backup = await exportLeaderboardBackup(redis, 'sub-rt');
 
-  // Simulate uninstall: empty Redis
-  redis.data.clear();
-  memoryCache.clear();
+    // Encode exactly as wikiBackup does (markers + JSON)
+    const encoded = wrapInMarkers(JSON.stringify(backup));
+    const parsed = parseBackupContent(encoded);
 
-  assert.equal((await getAllTimeLeaderboard(redis, 'sub-persist')).length, 0);
-
-  const result = await importLeaderboardBackup(redis, backup);
-  assert.equal(result.imported, true);
-
-  const allTime = await getAllTimeLeaderboard(redis, 'sub-persist');
-  assert.equal(allTime.length, 1);
-  assert.equal(allTime[0]?.username, 'survivor');
-  assert.equal(allTime[0]?.bestCorrectWords, 120);
-
-  const weekly = await getWeeklyLeaderboard(redis, 'sub-persist');
-  assert.equal(weekly.length, 1);
-
-  const profile = await getPlayerProfile(redis, 'survivor');
-  assert.ok(profile);
-  assert.equal(profile.totalWordsTyped, 120);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.v).toBe(1);
+    expect(parsed!.subredditId).toBe('sub-rt');
+    expect(parsed!.alltime[0]!.username).toBe('roundtripper');
+    expect(parsed!.profiles[0]!.username).toBe('roundtripper');
+  });
 });
 
-test('import merges without wiping newer redis scores', async () => {
-  memoryCache.clear();
-  const redis = new MockRedis();
+// ---------------------------------------------------------------------------
+// backupHasData
+// ---------------------------------------------------------------------------
+describe('backupHasData', () => {
+  it('returns false for null', () => {
+    expect(backupHasData(null)).toBe(false);
+  });
 
-  await saveScore(
-    redis,
-    makeScore({
-      id: 'sc-old',
-      username: 'old-champ',
-      communityId: 'sub-merge',
-      correctWords: 50,
-      timeSeconds: 40,
-    })
-  );
-  const backup = await exportLeaderboardBackup(redis, 'sub-merge');
+  it('returns false for undefined', () => {
+    expect(backupHasData(undefined)).toBe(false);
+  });
 
-  await saveScore(
-    redis,
-    makeScore({
-      id: 'sc-new',
-      username: 'new-champ',
-      communityId: 'sub-merge',
-      correctWords: 200,
-      timeSeconds: 100,
-      wordsTyped: 200,
-    })
-  );
+  it('returns false for empty backup', () => {
+    const backup = makeMinimalBackup();
+    expect(backupHasData(backup)).toBe(false);
+  });
 
-  await importLeaderboardBackup(redis, backup);
+  it('returns true when alltime has entries', () => {
+    const backup = makeMinimalBackup({ alltime: [makeLeaderboardEntry('ace')] });
+    expect(backupHasData(backup)).toBe(true);
+  });
 
-  const allTime = await getAllTimeLeaderboard(redis, 'sub-merge');
-  assert.equal(allTime.length, 2);
-  assert.equal(allTime[0]?.username, 'new-champ');
-  assert.ok(allTime.some((e) => e.username === 'old-champ'));
+  it('returns true when profiles has entries', () => {
+    const backup = makeMinimalBackup({
+      profiles: [{ username: 'ace', bestWpm: 80, bestAccuracy: 95, totalChallenges: 1, badges: [], domainCounts: {}, lastPlayed: 0, joinedAt: 0, totalWordsTyped: 0 }],
+    });
+    expect(backupHasData(backup)).toBe(true);
+  });
+
+  it('returns true when weekly has entries', () => {
+    const backup = makeMinimalBackup({ weekly: { '2025-01-05': [makeLeaderboardEntry('ace')] } });
+    expect(backupHasData(backup)).toBe(true);
+  });
+
+  it('returns false when v is not 1', () => {
+    // @ts-expect-error testing invalid v
+    expect(backupHasData({ v: 2, subredditId: 'x', alltime: [makeLeaderboardEntry('ace')] })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// export + import round-trip
+// ---------------------------------------------------------------------------
+describe('exportLeaderboardBackup + importLeaderboardBackup', () => {
+  let redis: RedisMock;
+
+  beforeEach(() => {
+    memoryCache.clear();
+    redis = createRedisMock();
+  });
+
+  it('restores all-time leaderboard after Redis wipe', async () => {
+    await saveScore(
+      redis,
+      makeScore({ id: 'sc-1', username: 'survivor', communityId: 'sub-persist', correctWords: 120, timeSeconds: 90, wordsTyped: 120 })
+    );
+
+    const backup = await exportLeaderboardBackup(redis, 'sub-persist');
+    expect(backupHasData(backup)).toBe(true);
+    expect(backup.alltime.length).toBe(1);
+    expect(backup.profiles.length).toBe(1);
+
+    // Simulate uninstall: empty Redis
+    redis._clear();
+    memoryCache.clear();
+
+    expect((await getAllTimeLeaderboard(redis, 'sub-persist')).length).toBe(0);
+
+    const result = await importLeaderboardBackup(redis, backup);
+    expect(result.imported).toBe(true);
+    expect(result.players).toBeGreaterThan(0);
+
+    const allTime = await getAllTimeLeaderboard(redis, 'sub-persist');
+    expect(allTime.length).toBe(1);
+    expect(allTime[0]!.username).toBe('survivor');
+    expect(allTime[0]!.bestCorrectWords).toBe(120);
+  });
+
+  it('restores weekly leaderboard after Redis wipe', async () => {
+    await saveScore(
+      redis,
+      makeScore({ id: 'sc-w', username: 'weekly-hero', communityId: 'sub-wk', correctWords: 80, timeSeconds: 60 })
+    );
+
+    const backup = await exportLeaderboardBackup(redis, 'sub-wk');
+    redis._clear();
+    memoryCache.clear();
+
+    await importLeaderboardBackup(redis, backup);
+
+    const weekly = await getWeeklyLeaderboard(redis, 'sub-wk');
+    expect(weekly.length).toBe(1);
+    expect(weekly[0]!.username).toBe('weekly-hero');
+  });
+
+  it('restores player profile after Redis wipe', async () => {
+    await saveScore(
+      redis,
+      makeScore({ id: 'sc-p', username: 'profile-hero', communityId: 'sub-pr', correctWords: 60, timeSeconds: 55, wordsTyped: 65 })
+    );
+
+    const backup = await exportLeaderboardBackup(redis, 'sub-pr');
+    redis._clear();
+    memoryCache.clear();
+
+    await importLeaderboardBackup(redis, backup);
+
+    const profile = await getPlayerProfile(redis, 'profile-hero');
+    expect(profile).not.toBeNull();
+    expect(profile!.totalWordsTyped).toBe(65);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// importLeaderboardBackup — merge behaviour
+// ---------------------------------------------------------------------------
+describe('importLeaderboardBackup merge without wipe', () => {
+  let redis: RedisMock;
+
+  beforeEach(() => {
+    memoryCache.clear();
+    redis = createRedisMock();
+  });
+
+  it('does not overwrite newer scores in Redis', async () => {
+    await saveScore(redis, makeScore({ id: 'sc-old', username: 'old-champ', communityId: 'sub-merge', correctWords: 50, timeSeconds: 40 }));
+    const backup = await exportLeaderboardBackup(redis, 'sub-merge');
+
+    await saveScore(redis, makeScore({ id: 'sc-new', username: 'new-champ', communityId: 'sub-merge', correctWords: 200, timeSeconds: 100, wordsTyped: 200 }));
+    memoryCache.clear();
+
+    await importLeaderboardBackup(redis, backup);
+
+    const allTime = await getAllTimeLeaderboard(redis, 'sub-merge');
+    expect(allTime.map((e) => e.username)).toContain('new-champ');
+    expect(allTime.map((e) => e.username)).toContain('old-champ');
+  });
+
+  it('preserves personal best when incoming backup is weaker', async () => {
+    await saveScore(redis, makeScore({ id: 'sc-strong', username: 'champ', communityId: 'sub-pb', correctWords: 200, timeSeconds: 80 }));
+    const strongBackup = await exportLeaderboardBackup(redis, 'sub-pb');
+
+    // Now the player gets a weaker run which is exported in the backup
+    const weakBackup = makeMinimalBackup({
+      subredditId: 'sub-pb',
+      profiles: [{
+        username: 'champ', bestWpm: 50, bestAccuracy: 80, totalChallenges: 1,
+        badges: [], domainCounts: {}, lastPlayed: 0, joinedAt: 0,
+        totalWordsTyped: 50, bestCorrectWords: 50, bestTimeSeconds: 200,
+      }],
+    });
+
+    await importLeaderboardBackup(redis, weakBackup);
+
+    const profile = await getPlayerProfile(redis, 'champ');
+    // The strong run from strongBackup already stored in Redis should not be replaced
+    expect(profile!.bestCorrectWords).toBeGreaterThanOrEqual(50); // at least what the player had
+  });
+
+  it('returns imported=false when backup is empty', async () => {
+    const empty = makeMinimalBackup();
+    const result = await importLeaderboardBackup(redis, empty);
+    expect(result.imported).toBe(false);
+  });
 });

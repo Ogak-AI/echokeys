@@ -137,7 +137,8 @@ async function pushCommunityIndex(
   const list = await readJson<string[]>(redis, key, []);
   if (!list.includes(tournamentId)) {
     list.unshift(tournamentId);
-    if (list.length > 100) list.length = 100;
+    // Cap the community index to avoid unbounded growth and slow list reads.
+    if (list.length > MAX_OPEN_LIST * 4) list.length = MAX_OPEN_LIST * 4;
     await writeJson(redis, key, list);
   }
   memoryCache.delete(key);

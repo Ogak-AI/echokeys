@@ -85,6 +85,8 @@ export const App = () => {
     speaking,
     start,
     type,
+    setComposing,
+    getKeyIntervals,
     toggleMute,
     readAloud,
     ensureNarration,
@@ -122,7 +124,11 @@ export const App = () => {
       const res = await fetch('/api/race/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeId }),
+        body: JSON.stringify({
+          challengeId,
+          // Explicit id so tournament gates work even if postData is slow/missing.
+          tournamentId: tournamentIdRef.current || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -393,6 +399,8 @@ export const App = () => {
           raceId: activeRaceId,
           typed,
           tournamentId: tournamentIdRef.current || undefined,
+          // Advisory only — server never trusts intervals for score; used for bot logging.
+          keyIntervals: getKeyIntervals(),
         }),
       });
       const data = await res.json();
@@ -435,7 +443,7 @@ export const App = () => {
       submitInFlight.current = false;
       setSubmitting(false);
     }
-  }, [challenge, phase]);
+  }, [challenge, phase, getKeyIntervals]);
 
   useEffect(() => {
     if (phase === 'finished' || phase === 'timeout') {
@@ -513,17 +521,19 @@ export const App = () => {
 
   const renderCodeChars = () => {
     if (!challenge) return null;
-    const content = challenge.content;
+    // Code-point iteration — never split() UTF-16 (emoji / surrogate pairs break the cursor).
+    const contentChars = Array.from(challenge.content);
+    const inputChars = Array.from(input);
     const domainColor = DOMAIN_COLORS[challenge.domain as ContentDomain] ?? '#d4d4d4';
 
-    return content.split('').map((char, idx) => {
+    return contentChars.map((char, idx) => {
       let className = 'ch-pending';
       let style: React.CSSProperties | undefined;
       let ref: React.RefObject<HTMLSpanElement | null> | undefined;
 
-      if (idx < input.length) {
-        className = input[idx] === char ? 'ch-correct' : 'ch-error';
-      } else if (idx === input.length) {
+      if (idx < inputChars.length) {
+        className = inputChars[idx] === char ? 'ch-correct' : 'ch-error';
+      } else if (idx === inputChars.length) {
         className = 'ch-cursor';
         ref = cursorRef;
       } else if (challenge.domain === 'code') {
@@ -552,11 +562,9 @@ export const App = () => {
 
   if (loading || creating || (challenge && phase === 'idle' && raceStarting)) {
     return (
-      <div className="app-shell app-center" style={{ gap: '0.65rem' }}>
+      <div className="app-shell" style={{ alignItems: 'center', justifyContent: 'center', gap: '0.65rem', display: 'flex', flexDirection: 'column' }}>
         <div className="spinner" />
-        <p className="loading-text">
-          {creating ? 'Creating…' : raceStarting ? 'Starting race…' : 'Loading…'}
-        </p>
+        <p className="loading-text">{creating ? 'Creating…' : raceStarting ? 'Starting…' : 'Loading…'}</p>
       </div>
     );
   }
@@ -564,163 +572,159 @@ export const App = () => {
   // Race session failed before typing could begin.
   if (challenge && phase === 'idle' && (raceError || error) && !raceId) {
     return (
-      <div className="app-shell app-center">
-        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-vsc-accent)' }}>
-            Could not start race
-          </h2>
-          <div className="alert-error">{raceError || error}</div>
-          <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} onClick={handleRetryRaceStart}>
-            Retry start
-          </button>
-          <button type="button" className="vsc-btn vsc-btn-ghost" style={{ width: '100%' }} onClick={handleTryAgain}>
-            {fromPost ? 'Back' : 'New race'}
-          </button>
+      <div className="app-shell">
+        <header className="app-header">
+          <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">Home</button>
+          <span className="app-header-title">Race error</span>
+          <span style={{ width: '3rem' }} />
+        </header>
+        <div className="freeplay-shell">
+          <div className="freeplay-hero">
+            <div className="freeplay-hero-label">Could not start race</div>
+            <div className="alert-error" style={{ marginTop: '0.5rem' }}>{raceError || error}</div>
+          </div>
+          <div className="freeplay-cta">
+            <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} onClick={handleRetryRaceStart}>Retry</button>
+            <button type="button" className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }} onClick={handleTryAgain}>{fromPost ? 'Back' : 'New race'}</button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Always show end-of-race shell when finished/timeout so upload errors stay reachable.
+  // Results / uploading
   if (results || isEnded || submitting) {
+    const isTimeout = phase === 'timeout';
     return (
-      <div className="app-shell app-center">
-        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div style={{ textAlign: 'center' }}>
-            <h2
-              style={{
-                fontSize: 'clamp(1.05rem, 4vw, 1.25rem)',
-                fontWeight: 700,
-                color: 'var(--color-vsc-green)',
-              }}
-            >
-              {phase === 'timeout' ? "Time's Up" : 'Complete'}
-            </h2>
-            {communityLabel && (
-              <p className="mono muted" style={{ fontSize: '0.625rem', marginTop: '0.15rem' }}>
-                {communityLabel}
-                {tournamentName ? ` · ${tournamentName}` : ''}
-              </p>
-            )}
+      <div className="app-shell">
+        <header className="app-header">
+          <span className="app-header-title">{tournamentId ? 'Tournament' : 'Echokeys'}</span>
+          {communityLabel && <span className="mono muted truncate" style={{ fontSize: '0.625rem' }}>{communityLabel}{tournamentName ? ` · ${tournamentName}` : ''}</span>}
+          <span style={{ width: '3rem' }} />
+        </header>
+
+        <div className="results-shell">
+          {/* Outcome headline */}
+          <div className="results-hero">
+            <div className={`results-outcome ${isTimeout ? 'timeout' : 'complete'}`}>
+              {isTimeout ? "Time's up" : 'Complete'}
+            </div>
+            {communityLabel && <div className="results-community">{communityLabel}{tournamentName ? ` · ${tournamentName}` : ''}</div>}
           </div>
 
           {submitting && !results ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 0' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>
               <div className="spinner" />
-              <p className="muted" style={{ fontSize: '0.6875rem' }}>Uploading…</p>
+              <p className="muted" style={{ fontSize: '0.75rem' }}>Saving results…</p>
             </div>
           ) : results ? (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
-                <div className="stat-box">
-                  <div className="stat-val stat-val-green">
-                    {results.correctWords.toLocaleString()}
+              {/* Big numbers */}
+              <div className="results-grid">
+                <div className="results-cell">
+                  <div className="results-cell-val primary">{results.correctWords.toLocaleString()}</div>
+                  <div className="results-cell-lbl">Correct words</div>
+                </div>
+                <div className="results-cell">
+                  <div className="results-cell-val neutral">{results.timeSeconds}s</div>
+                  <div className="results-cell-lbl">Time</div>
+                </div>
+                <div className="results-cell">
+                  <div className="results-cell-val good">{results.wpm}</div>
+                  <div className="results-cell-lbl">WPM</div>
+                </div>
+                <div className="results-cell">
+                  <div className={`results-cell-val ${results.accuracy >= 90 ? 'good' : results.accuracy >= 70 ? 'warn' : 'neutral'}`}>{results.accuracy}%</div>
+                  <div className="results-cell-lbl">Accuracy</div>
+                </div>
+              </div>
+
+              {/* Rank strip */}
+              <div className="results-ranks">
+                {tournamentId && (
+                  <div className="results-rank-item">
+                    <div className="results-rank-val">{results.tournamentRank ? `#${results.tournamentRank}` : '—'}</div>
+                    <div className="results-rank-lbl">Tournament</div>
                   </div>
-                  <div className="stat-lbl">Correct words</div>
+                )}
+                <div className="results-rank-item">
+                  <div className="results-rank-val">{results.weeklyRank ? `#${results.weeklyRank}` : '—'}</div>
+                  <div className="results-rank-lbl">Weekly</div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-val">{results.timeSeconds}s</div>
-                  <div className="stat-lbl">Time</div>
+                <div className="results-rank-item">
+                  <div className="results-rank-val">{results.allTimeRank ? `#${results.allTimeRank}` : '—'}</div>
+                  <div className="results-rank-lbl">All-time</div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-val">{results.wpm}</div>
-                  <div className="stat-lbl">WPM</div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-val">{results.accuracy}%</div>
-                  <div className="stat-lbl">Accuracy</div>
+                <div className="results-rank-item">
+                  <div className="results-rank-val" style={{ color: 'var(--color-muted)' }}>{results.wordsTyped.toLocaleString()}</div>
+                  <div className="results-rank-lbl">Total typed</div>
                 </div>
               </div>
-              <div
-                className="mono muted"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: '0.625rem',
-                  gap: '0.5rem',
-                }}
-              >
-                <span>
-                  {tournamentId
-                    ? `Tournament ${results.tournamentRank ? `#${results.tournamentRank}` : '—'}`
-                    : null}
-                  {tournamentId ? ' · ' : ''}
-                  Weekly {results.weeklyRank ? `#${results.weeklyRank}` : '—'} · All-time{' '}
-                  {results.allTimeRank ? `#${results.allTimeRank}` : '—'}
-                </span>
-                <span>{results.wordsTyped.toLocaleString()} typed</span>
-              </div>
-              {results.tournamentError && (
-                <p className="mono" style={{ fontSize: '0.625rem', textAlign: 'center', color: 'var(--color-vsc-orange)' }}>
-                  Tournament: {results.tournamentError}
-                </p>
-              )}
-              {!results.ranked && (
-                <p className="mono muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
-                  Partial run saved — needs 50%+ progress to rank on the board
-                </p>
+
+              {/* Eligibility / tournament notes */}
+              {(results.tournamentError || !results.ranked) && (
+                <div style={{ padding: '0.65rem 1.25rem', borderBottom: '1px solid var(--color-border)' }}>
+                  {results.tournamentError && (
+                    <p className="mono" style={{ fontSize: '0.625rem', color: 'var(--color-orange)' }}>Tournament: {results.tournamentError}</p>
+                  )}
+                  {!results.ranked && (
+                    <p className="mono muted" style={{ fontSize: '0.625rem' }}>
+                      Run saved — needs 20+ correct words or 50%+ progress to rank.
+                    </p>
+                  )}
+                </div>
               )}
             </>
           ) : (
-            <div className="mono muted" style={{ fontSize: '0.6875rem', textAlign: 'center' }}>
-              Live: {correctWords} correct · {elapsed > 0 ? `${elapsed}s` : '0s'} · {wpm} WPM ·{' '}
-              {accuracy}%
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+              <div className="mono muted" style={{ fontSize: '0.75rem', textAlign: 'center' }}>
+                {correctWords} correct · {elapsed > 0 ? `${elapsed}s` : '0s'} · {wpm} WPM · {accuracy}%
+              </div>
             </div>
           )}
 
           {error && (
-            <div className="alert-error">
-              {error}
-              <button
-                type="button"
-                className="vsc-btn vsc-btn-sm"
-                style={{ display: 'block', marginTop: '0.4rem' }}
-                onClick={() => {
-                  submittedKeys.clear();
-                  void submitResults();
-                }}
-              >
-                Retry upload
-              </button>
+            <div style={{ padding: '0.65rem 1.25rem', borderBottom: '1px solid var(--color-border)' }}>
+              <div className="alert-error">
+                {error}
+                <button type="button" className="vsc-btn vsc-btn-sm" style={{ marginTop: '0.4rem' }} onClick={() => { submittedKeys.clear(); void submitResults(); }}>Retry upload</button>
+              </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          {/* Actions pinned to bottom */}
+          <div className="results-actions">
             <button onClick={handleTryAgain} className="vsc-btn vsc-btn-lg" style={{ width: '100%' }}>
-              {fromPost ? 'Retry' : 'New race'}
+              {fromPost ? 'Race again' : 'New race'}
             </button>
-            <button
-              onClick={() => {
-                window.location.href = 'leaderboard.html';
-              }}
-              className="vsc-btn vsc-btn-ghost"
-              style={{ width: '100%' }}
-            >
+            <button onClick={() => { window.location.href = 'leaderboard.html'; }} className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }}>
               {tournamentId ? 'Tournament standings' : 'Leaderboard'}
             </button>
-            <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" style={{ width: '100%' }}>
-              Home
-            </button>
+            <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" style={{ width: '100%' }}>Home</button>
           </div>
         </div>
       </div>
     );
   }
 
-  // Tournament post but user has not joined yet
+  // Tournament post — user hasn't joined yet
   if (tournamentId && !tournamentJoined && !challenge) {
     return (
-      <div className="app-shell app-center">
-        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-vsc-accent)' }}>
-            Join to race
-          </h2>
-          <p className="muted" style={{ fontSize: '0.75rem' }}>
-            {tournamentName || 'This tournament'} requires joining before you can race the shared excerpt.
-          </p>
-          <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} onClick={handleBack}>
-            Back to join
-          </button>
+      <div className="app-shell">
+        <header className="app-header">
+          <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">Back</button>
+          <span className="app-header-title">Join to race</span>
+          <span style={{ width: '3rem' }} />
+        </header>
+        <div className="freeplay-shell">
+          <div className="freeplay-hero">
+            <div className="freeplay-hero-label">Tournament</div>
+            <div className="freeplay-hero-title">{tournamentName || 'This tournament'}</div>
+            <div className="freeplay-hero-desc">Join the tournament from the post page before you can race the shared excerpt.</div>
+          </div>
+          <div className="freeplay-cta">
+            <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} onClick={handleBack}>Back to join</button>
+          </div>
         </div>
       </div>
     );
@@ -859,10 +863,19 @@ export const App = () => {
                     // Keep the next character locked after every keystroke.
                     requestAnimationFrame(lockCursorInView);
                   }}
+                  onCompositionStart={() => setComposing(true)}
+                  onCompositionEnd={(e) => {
+                    setComposing(false);
+                    // Commit composed cluster through the same validation path.
+                    type(e.currentTarget.value);
+                    requestAnimationFrame(lockCursorInView);
+                  }}
                   onPaste={(e) => {
                     // Paste is never a valid typing path.
                     e.preventDefault();
                   }}
+                  onCopy={(e) => e.preventDefault()}
+                  onCut={(e) => e.preventDefault()}
                   onDrop={(e) => e.preventDefault()}
                   onFocus={(e) => {
                     // Stop browser from scrolling the field into a different place.
@@ -957,50 +970,40 @@ export const App = () => {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
-          Home
-        </button>
+        <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">Home</button>
         <span className="app-header-title">Free play</span>
         <span style={{ width: '3rem' }} />
       </header>
 
-      <div className="app-center">
-        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-          <div>
-            <h2 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-vsc-accent)', marginBottom: '0.2rem' }}>
-              Start race
-            </h2>
-            <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              Race a random excerpt from the built-in source pool: random sentence start,
-              2,000+ words, complete sentence end. Time limit: 4 minutes.
-            </p>
+      <div className="freeplay-shell">
+        <div className="freeplay-hero">
+          <div className="freeplay-hero-label">Race</div>
+          <div className="freeplay-hero-title">echo<em style={{ fontStyle: 'normal', color: 'var(--color-accent)' }}>keys</em></div>
+          <div className="freeplay-hero-desc">
+            A random 2,000+ word excerpt. Race starts immediately. 4-minute time limit.
+            Rank by correct words, then lowest time.
           </div>
-
-          {(error || (!kbReady && kbError)) && (
-            <div className="alert-error">
-              {error || kbError || 'Source pool is not available.'}
-            </div>
+          {kbReady && (
+            <div className="freeplay-hero-pool">Pool: {kbWordCount.toLocaleString()} words</div>
           )}
+        </div>
 
+        {(error || (!kbReady && kbError)) && (
+          <div className="freeplay-error">
+            <div className="alert-error">{error || kbError || 'Source pool unavailable.'}</div>
+          </div>
+        )}
+
+        <div className="freeplay-cta">
           <button
             type="button"
             className="vsc-btn vsc-btn-lg"
-            style={{ width: '100%', fontWeight: 600 }}
+            style={{ width: '100%' }}
             disabled={creating || !kbReady}
             onClick={() => void startRandomRace()}
           >
-            {creating
-              ? 'Starting…'
-              : kbReady
-                ? 'Start random race'
-                : 'Source pool unavailable'}
+            {creating ? 'Starting…' : kbReady ? 'Start random race' : 'Source pool unavailable'}
           </button>
-
-          {kbReady && (
-            <p className="muted" style={{ fontSize: '0.625rem', textAlign: 'center' }}>
-              Pool size: {kbWordCount.toLocaleString()} words
-            </p>
-          )}
         </div>
       </div>
     </div>

@@ -4,13 +4,7 @@ import { StrictMode, useRef, useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { LeaderboardEntry, Tournament, TournamentSummary } from '../../shared/types/index';
 
-type PostMeta = {
-  mode?: string;
-  challengeId?: string;
-  tournamentId?: string;
-  prompt?: string;
-  domain?: string;
-};
+type PostMeta = { mode?: string; challengeId?: string; tournamentId?: string; prompt?: string; domain?: string };
 
 function formatEndsAt(endsAt: number): string {
   const ms = endsAt - Date.now();
@@ -23,28 +17,25 @@ function formatEndsAt(endsAt: number): string {
 }
 
 const Splash = () => {
-  const [username, setUsername] = useState(context?.username ?? 'Typist');
-  const [wordsTyped, setWordsTyped] = useState<number | null>(null);
-  const [subredditName, setSubredditName] = useState('');
-  const [postMeta, setPostMeta] = useState<PostMeta | null>(null);
+  const [username, setUsername]             = useState(context?.username ?? 'Typist');
+  const [wordsTyped, setWordsTyped]         = useState<number | null>(null);
+  const [subredditName, setSubredditName]   = useState('');
+  const [postMeta, setPostMeta]             = useState<PostMeta | null>(null);
   const [bestCorrectWords, setBestCorrectWords] = useState<number | null>(null);
-  const [bestTimeSeconds, setBestTimeSeconds] = useState<number | null>(null);
-
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [standings, setStandings] = useState<LeaderboardEntry[]>([]);
-  const [joined, setJoined] = useState(false);
+  const [bestTimeSeconds, setBestTimeSeconds]   = useState<number | null>(null);
+  const [tournament, setTournament]         = useState<Tournament | null>(null);
+  const [standings, setStandings]           = useState<LeaderboardEntry[]>([]);
+  const [joined, setJoined]                 = useState(false);
   const [openTournaments, setOpenTournaments] = useState<TournamentSummary[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [createName, setCreateName] = useState('');
-  const [isModerator, setIsModerator] = useState(false);
+  const [busy, setBusy]                     = useState(false);
+  const [actionError, setActionError]       = useState<string | null>(null);
+  const [createName, setCreateName]         = useState('');
+  const [isModerator, setIsModerator]       = useState(false);
 
   const playBtnRef = useRef<HTMLButtonElement>(null);
-  const lbBtnRef = useRef<HTMLButtonElement>(null);
+  const lbBtnRef   = useRef<HTMLButtonElement>(null);
 
-  const isTournamentPost = Boolean(
-    postMeta?.mode === 'tournament' || postMeta?.tournamentId || tournament
-  );
+  const isTournamentPost = Boolean(postMeta?.mode === 'tournament' || postMeta?.tournamentId || tournament);
 
   const refreshMe = useCallback(async () => {
     const res = await fetch('/api/me');
@@ -53,451 +44,217 @@ const Splash = () => {
     if (me.username) setUsername(me.username);
     if (me.subredditName) setSubredditName(me.subredditName);
     setIsModerator(Boolean(me.isModerator));
-    if (me.profile?.totalWordsTyped != null) {
-      setWordsTyped(me.profile.totalWordsTyped as number);
-    }
-    if (me.profile?.bestCorrectWords != null) {
-      setBestCorrectWords(me.profile.bestCorrectWords as number);
-    }
-    if (me.profile?.bestTimeSeconds != null) {
-      setBestTimeSeconds(me.profile.bestTimeSeconds as number);
-    }
-    if (me.postData && typeof me.postData === 'object') {
-      setPostMeta(me.postData as PostMeta);
-    }
+    if (me.profile?.totalWordsTyped != null)  setWordsTyped(me.profile.totalWordsTyped as number);
+    if (me.profile?.bestCorrectWords != null) setBestCorrectWords(me.profile.bestCorrectWords as number);
+    if (me.profile?.bestTimeSeconds != null)  setBestTimeSeconds(me.profile.bestTimeSeconds as number);
+    if (me.postData && typeof me.postData === 'object') setPostMeta(me.postData as PostMeta);
   }, []);
 
   const loadTournamentContext = useCallback(async () => {
-    const [postRes, listRes] = await Promise.all([
-      fetch('/api/post/tournament'),
-      fetch('/api/tournaments'),
-    ]);
+    const [postRes, listRes] = await Promise.all([fetch('/api/post/tournament'), fetch('/api/tournaments')]);
     if (postRes.ok) {
       const data = await postRes.json();
-      if (data.tournament) {
-        setTournament(data.tournament as Tournament);
-        setStandings((data.standings as LeaderboardEntry[]) || []);
-        setJoined(Boolean(data.joined));
-      }
+      if (data.tournament) { setTournament(data.tournament as Tournament); setStandings((data.standings as LeaderboardEntry[]) || []); setJoined(Boolean(data.joined)); }
     }
     if (listRes.ok) {
       const data = await listRes.json();
-      const list = (data.tournaments as TournamentSummary[]) || [];
-      setOpenTournaments(list.filter((t) => t.status === 'open').slice(0, 5));
+      setOpenTournaments(((data.tournaments as TournamentSummary[]) || []).filter(t => t.status === 'open').slice(0, 5));
     }
   }, []);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        await refreshMe();
-        await loadTournamentContext();
-      } catch {
-        // local / offline
-      }
-    })();
+    void (async () => { try { await refreshMe(); await loadTournamentContext(); } catch { /* offline */ } })();
   }, [refreshMe, loadTournamentContext]);
 
   useEffect(() => {
     const playBtn = playBtnRef.current;
-    const lbBtn = lbBtnRef.current;
-
-    const onPlay = (e: MouseEvent) => {
-      requestExpandedMode(e, 'game').catch(() => {
-        window.location.assign('game.html');
-      });
-    };
-
-    const onLb = (e: MouseEvent) => {
-      requestExpandedMode(e, 'leaderboard').catch(() => {
-        window.location.assign('leaderboard.html');
-      });
-    };
-
+    const lbBtn   = lbBtnRef.current;
+    const onPlay  = (e: MouseEvent) => requestExpandedMode(e, 'game').catch(() => window.location.assign('game.html'));
+    const onLb    = (e: MouseEvent) => requestExpandedMode(e, 'leaderboard').catch(() => window.location.assign('leaderboard.html'));
     playBtn?.addEventListener('click', onPlay);
     lbBtn?.addEventListener('click', onLb);
-
-    return () => {
-      playBtn?.removeEventListener('click', onPlay);
-      lbBtn?.removeEventListener('click', onLb);
-    };
+    return () => { playBtn?.removeEventListener('click', onPlay); lbBtn?.removeEventListener('click', onLb); };
   }, [isTournamentPost, joined, tournament?.status]);
 
   const onJoin = async () => {
     if (!tournament?.id) return;
-    setBusy(true);
-    setActionError(null);
+    setBusy(true); setActionError(null);
     try {
-      const res = await fetch(`/api/tournament/${encodeURIComponent(tournament.id)}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
+      const res = await fetch(`/api/tournament/${encodeURIComponent(tournament.id)}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to join');
-      setTournament(data.tournament as Tournament);
-      setStandings((data.standings as LeaderboardEntry[]) || []);
-      setJoined(true);
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Failed to join');
-    } finally {
-      setBusy(false);
-    }
+      setTournament(data.tournament as Tournament); setStandings((data.standings as LeaderboardEntry[]) || []); setJoined(true);
+    } catch (err: unknown) { setActionError(err instanceof Error ? err.message : 'Failed to join'); }
+    finally { setBusy(false); }
   };
 
   const onCreateTournament = async () => {
-    setBusy(true);
-    setActionError(null);
+    setBusy(true); setActionError(null);
     try {
-      const res = await fetch('/api/tournament/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: createName.trim() || undefined,
-          durationHours: 24,
-        }),
-      });
+      const res = await fetch('/api/tournament/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: createName.trim() || undefined, durationHours: 24 }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create tournament');
       const url = data.postUrl as string | undefined;
-      if (url) {
-        await navigateTo(url);
-      } else {
-        setActionError('Tournament created — open it from the community feed.');
-        await loadTournamentContext();
-      }
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Failed to create tournament');
-    } finally {
-      setBusy(false);
-    }
+      if (url) { await navigateTo(url); } else { setActionError('Tournament created — find it in the feed.'); await loadTournamentContext(); }
+    } catch (err: unknown) { setActionError(err instanceof Error ? err.message : 'Failed to create tournament'); }
+    finally { setBusy(false); }
   };
 
-  const communityLabel = subredditName
-    ? subredditName.startsWith('r/')
-      ? subredditName
-      : `r/${subredditName}`
-    : '';
-
-  const hasPostChallenge = Boolean(postMeta?.challengeId) && !isTournamentPost;
-  const showStats =
-    (wordsTyped != null && wordsTyped > 0) ||
-    (bestCorrectWords != null && bestCorrectWords > 0);
-  const tournamentOpen = tournament?.status === 'open' && (tournament.endsAt ?? 0) > Date.now();
+  const communityLabel = subredditName ? (subredditName.startsWith('r/') ? subredditName : `r/${subredditName}`) : '';
+  const hasPostChallenge  = Boolean(postMeta?.challengeId) && !isTournamentPost;
+  const showStats         = (wordsTyped != null && wordsTyped > 0) || (bestCorrectWords != null && bestCorrectWords > 0);
+  const tournamentOpen    = tournament?.status === 'open' && (tournament.endsAt ?? 0) > Date.now();
   const canPlayTournament = isTournamentPost && joined && tournamentOpen;
 
   return (
     <div className="app-shell">
-      <div className="app-center" style={{ gap: '0.65rem' }}>
-        <div style={{ textAlign: 'center', width: '100%', maxWidth: '24rem' }}>
-          <h1
-            style={{
-              fontSize: 'clamp(1.35rem, 5vw, 1.75rem)',
-              fontWeight: 700,
-              color: 'var(--color-vsc-accent)',
-              letterSpacing: '-0.02em',
-              lineHeight: 1.15,
-              marginBottom: '0.2rem',
-            }}
-          >
-            Echokeys
-          </h1>
-          <p className="muted" style={{ fontSize: '0.75rem' }}>
-            {isTournamentPost
-              ? 'Community tournament — same excerpt for everyone. Best correct words wins.'
-              : 'Race a random 2,000+ word excerpt. Rank by correct words and time.'}
-          </p>
-          {communityLabel && (
-            <p
-              className="mono"
-              style={{ fontSize: '0.6875rem', color: 'var(--color-vsc-green)', marginTop: '0.25rem' }}
-            >
-              {communityLabel}
-            </p>
-          )}
+
+      {/* ── Identity header ── */}
+      <div className="splash-header">
+        <div className="splash-wordmark">echo<em>keys</em></div>
+        <div className="splash-tagline">
+          {isTournamentPost
+            ? 'Community tournament — same excerpt for everyone.'
+            : 'Race 2,000+ words. Rank by correct words, then time.'}
         </div>
+        {communityLabel && <div className="splash-community">{communityLabel}</div>}
+      </div>
 
-        <div className="vsc-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '0.875rem', marginBottom: '0.15rem' }}>
-              <span style={{ fontWeight: 600, color: 'var(--color-vsc-green)' }}>{username}</span>
-            </p>
-            <p className="muted" style={{ fontSize: '0.6875rem', lineHeight: 1.4 }}>
-              {isTournamentPost
-                ? 'Join, race once or more — only your best run ranks.'
-                : 'Most correct words wins; ties break on lowest time.'}
-            </p>
+      {/* ── User row ── */}
+      <div className="splash-user-row">
+        <div>
+          <div className="splash-username">
+            u/{username}
           </div>
+        </div>
+        {showStats && !isTournamentPost && (
+          <div style={{ display: 'flex', gap: '0.75rem', fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--color-muted)', textAlign: 'right' }}>
+            {bestCorrectWords != null && bestCorrectWords > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-accent)', fontVariantNumeric: 'tabular-nums' }}>{bestCorrectWords.toLocaleString()}</div>
+                <div style={{ fontSize: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-dim)' }}>Best run{bestTimeSeconds ? ` · ${bestTimeSeconds}s` : ''}</div>
+              </div>
+            )}
+            {wordsTyped != null && wordsTyped > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{wordsTyped.toLocaleString()}</div>
+                <div style={{ fontSize: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-dim)' }}>Words typed</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-          {showStats && !isTournamentPost && (
-            <div
-              className="mono"
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  wordsTyped && bestCorrectWords ? '1fr 1fr' : '1fr',
-                gap: '0.35rem',
-              }}
-            >
-              {wordsTyped != null && wordsTyped > 0 && (
-                <div className="stat-box">
-                  <div className="stat-val" style={{ color: 'var(--color-vsc-orange)', fontSize: '1.05rem' }}>
-                    {wordsTyped.toLocaleString()}
-                  </div>
-                  <div className="stat-lbl">Words</div>
-                </div>
-              )}
-              {bestCorrectWords != null && bestCorrectWords > 0 && (
-                <div className="stat-box">
-                  <div className="stat-val" style={{ fontSize: '1.05rem', color: 'var(--color-vsc-green)' }}>
-                    {bestCorrectWords.toLocaleString()}
-                    {bestTimeSeconds != null && bestTimeSeconds > 0
-                      ? ` · ${bestTimeSeconds}s`
-                      : ''}
-                  </div>
-                  <div className="stat-lbl">Best run</div>
-                </div>
-              )}
-            </div>
-          )}
+      {/* ── Scrollable body ── */}
+      <div className="splash-body">
 
-          {isTournamentPost && tournament && (
-            <div
-              style={{
-                padding: '0.45rem 0.5rem',
-                borderRadius: 2,
-                background: 'var(--color-vsc-bg-darker)',
-                border: '1px solid var(--color-vsc-border)',
-                textAlign: 'left',
-              }}
-            >
-              <p
-                className="muted"
-                style={{
-                  fontSize: '0.5625rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  marginBottom: '0.2rem',
-                }}
-              >
-                Tournament
-              </p>
-              <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-vsc-cyan)' }}>
-                {tournament.name}
-              </p>
-              <p className="mono muted" style={{ fontSize: '0.625rem', marginTop: '0.25rem' }}>
-                Host @{tournament.createdBy} · {tournament.participants.length}/{tournament.maxPlayers} joined ·{' '}
-                {formatEndsAt(tournament.endsAt)} · {tournament.status}
-              </p>
+        {/* Tournament card */}
+        {isTournamentPost && tournament && (
+          <div className="splash-section">
+            <div className="splash-section-label">Tournament</div>
+            <div className="tournament-card">
+              <div className="tournament-card-title">{tournament.name}</div>
+              <div className="tournament-card-meta">
+                {tournament.participants.length}/{tournament.maxPlayers} joined · {formatEndsAt(tournament.endsAt)} · {tournament.status}
+              </div>
               {standings.length > 0 && (
                 <div style={{ marginTop: '0.4rem' }}>
                   {standings.slice(0, 5).map((row) => (
-                    <div
-                      key={row.username}
-                      className="mono"
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        fontSize: '0.625rem',
-                        padding: '0.1rem 0',
-                        color: row.username === username.toLowerCase() ? 'var(--color-vsc-green)' : undefined,
-                      }}
-                    >
-                      <span>
-                        #{row.rank} {row.username}
-                      </span>
-                      <span>
-                        {row.bestCorrectWords}w · {row.bestTimeSeconds}s
-                      </span>
+                    <div key={row.username} className={`standing-row${row.username === username.toLowerCase() ? ' is-me' : ''}`}>
+                      <span>#{row.rank} {row.username}</span>
+                      <span>{row.bestCorrectWords}w · {row.bestTimeSeconds}s</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          )}
-
-          {hasPostChallenge && postMeta?.prompt && (
-            <div
-              style={{
-                padding: '0.45rem 0.5rem',
-                borderRadius: 2,
-                background: 'var(--color-vsc-bg-darker)',
-                border: '1px solid var(--color-vsc-border)',
-                textAlign: 'left',
-              }}
-            >
-              <p
-                className="muted"
-                style={{
-                  fontSize: '0.5625rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  marginBottom: '0.2rem',
-                }}
-              >
-                This post
-              </p>
-              <p
-                className="mono"
-                style={{
-                  fontSize: '0.6875rem',
-                  color: 'var(--color-vsc-cyan)',
-                  lineHeight: 1.4,
-                  wordBreak: 'break-word',
-                }}
-              >
-                {postMeta.prompt.length > 100
-                  ? `${postMeta.prompt.slice(0, 97)}…`
-                  : postMeta.prompt}
-              </p>
-            </div>
-          )}
-
-          {actionError && (
-            <p className="mono" style={{ fontSize: '0.6875rem', color: 'var(--color-vsc-red)' }}>
-              {actionError}
-            </p>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            {isTournamentPost && !joined && tournamentOpen && (
-              <button
-                type="button"
-                className="vsc-btn vsc-btn-lg"
-                style={{ width: '100%' }}
-                disabled={busy}
-                onClick={() => void onJoin()}
-              >
-                {busy ? 'Joining…' : 'Join tournament'}
-              </button>
-            )}
-
-            {(canPlayTournament || !isTournamentPost) && (
-              <button
-                ref={playBtnRef}
-                type="button"
-                className="vsc-btn vsc-btn-lg"
-                style={{ width: '100%' }}
-                disabled={isTournamentPost && !canPlayTournament}
-              >
-                {isTournamentPost
-                  ? 'Race in tournament'
-                  : hasPostChallenge
-                    ? 'Play challenge'
-                    : 'Play Echokeys'}
-              </button>
-            )}
-
-            {isTournamentPost && joined && !tournamentOpen && (
-              <p className="muted" style={{ fontSize: '0.6875rem', textAlign: 'center' }}>
-                Tournament closed — view standings on the leaderboard.
-              </p>
-            )}
-
-            <button ref={lbBtnRef} type="button" className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }}>
-              {isTournamentPost ? 'Tournament standings' : 'Leaderboard'}
-            </button>
           </div>
+        )}
 
-          {!isTournamentPost && (
-            <div
-              style={{
-                marginTop: '0.25rem',
-                paddingTop: '0.5rem',
-                borderTop: '1px solid var(--color-vsc-border)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.35rem',
-              }}
-            >
-              <p
-                className="muted"
-                style={{
-                  fontSize: '0.5625rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                }}
-              >
-                Tournaments
-              </p>
-              {isModerator ? (
-                <>
-                  <input
-                    type="text"
-                    className="vsc-input"
-                    placeholder="Name (optional)"
-                    value={createName}
-                    maxLength={80}
-                    onChange={(e) => setCreateName(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.4rem 0.5rem',
-                      borderRadius: 2,
-                      border: '1px solid var(--color-vsc-border)',
-                      background: 'var(--color-vsc-bg-darker)',
-                      color: 'var(--color-vsc-text)',
-                      fontSize: '0.75rem',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="vsc-btn vsc-btn-ghost"
-                    style={{ width: '100%' }}
-                    disabled={busy}
-                    onClick={() => void onCreateTournament()}
-                  >
-                    {busy ? 'Creating…' : 'Create 24h tournament'}
-                  </button>
-                </>
-              ) : (
-                <p className="muted" style={{ fontSize: '0.625rem', lineHeight: 1.4 }}>
-                  Mods create tournaments. Open a tournament post to{' '}
-                  <strong style={{ color: 'var(--color-vsc-green)', fontWeight: 600 }}>join</strong>.
-                </p>
-              )}
-              {openTournaments.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                  {openTournaments.map((t) => (
-                    <div
-                      key={t.id}
-                      className="mono"
-                      style={{
-                        fontSize: '0.625rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: '0.35rem',
-                        color: 'var(--color-vsc-text-muted)',
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {t.name}
-                      </span>
-                      <span style={{ flexShrink: 0 }}>
-                        {t.participantCount}/{t.maxPlayers} · {formatEndsAt(t.endsAt)}
-                      </span>
-                    </div>
-                  ))}
-                  <p className="muted" style={{ fontSize: '0.5625rem' }}>
-                    {isModerator
-                      ? 'Or use subreddit menu → Create Echokeys Tournament.'
-                      : 'Find open tournament posts in the community feed to join.'}
-                  </p>
-                </div>
-              )}
+        {/* Challenge context */}
+        {hasPostChallenge && postMeta?.prompt && (
+          <div className="splash-section">
+            <div className="splash-section-label">This challenge</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-blue)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+              {postMeta.prompt.length > 120 ? `${postMeta.prompt.slice(0, 117)}…` : postMeta.prompt}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <p className="muted mono" style={{ fontSize: '0.5625rem', textAlign: 'center', opacity: 0.7 }}>
-          Rank: most correct words, then lowest time
-        </p>
+        {/* Error */}
+        {actionError && (
+          <div className="splash-section">
+            <div className="alert-error">{actionError}</div>
+          </div>
+        )}
+
+        {/* Tournaments section (non-tournament posts) */}
+        {!isTournamentPost && (
+          <div className="splash-section">
+            <div className="splash-section-label">Tournaments</div>
+            {isModerator ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  className="vsc-input"
+                  placeholder="Tournament name (optional)"
+                  value={createName}
+                  maxLength={80}
+                  onChange={e => setCreateName(e.target.value)}
+                />
+                <button type="button" className="vsc-btn vsc-btn-ghost" style={{ width: '100%' }} disabled={busy} onClick={() => void onCreateTournament()}>
+                  {busy ? 'Creating…' : 'Create 24h tournament'}
+                </button>
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.6875rem', color: 'var(--color-muted)', lineHeight: 1.5 }}>
+                Mods create tournaments. Open a tournament post to join.
+              </p>
+            )}
+            {openTournaments.length > 0 && (
+              <div style={{ marginTop: '0.6rem' }}>
+                {openTournaments.map(t => (
+                  <div key={t.id} className="open-tournament-row">
+                    <span className="open-tournament-name">{t.name}</span>
+                    <span style={{ flexShrink: 0 }}>{t.participantCount}/{t.maxPlayers} · {formatEndsAt(t.endsAt)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ranking rule footnote */}
+        <div className="splash-section" style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }}>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--color-dim)' }}>
+            Rank: most correct words first, ties by lowest time
+          </p>
+        </div>
+      </div>
+
+      {/* ── Pinned CTA ── */}
+      <div className="splash-cta">
+        {isTournamentPost && !joined && tournamentOpen && (
+          <button type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} disabled={busy} onClick={() => void onJoin()}>
+            {busy ? 'Joining…' : 'Join tournament'}
+          </button>
+        )}
+        {(canPlayTournament || !isTournamentPost) && (
+          <button ref={playBtnRef} type="button" className="vsc-btn vsc-btn-lg" style={{ width: '100%' }} disabled={isTournamentPost && !canPlayTournament}>
+            {isTournamentPost ? 'Race in tournament' : hasPostChallenge ? 'Play challenge' : 'Play Echokeys'}
+          </button>
+        )}
+        {isTournamentPost && joined && !tournamentOpen && (
+          <p style={{ textAlign: 'center', fontSize: '0.6875rem', color: 'var(--color-muted)' }}>
+            Tournament closed — view standings on the leaderboard.
+          </p>
+        )}
+        <button ref={lbBtnRef} type="button" className="vsc-btn vsc-btn-ghost vsc-btn-lg" style={{ width: '100%' }}>
+          {isTournamentPost ? 'Tournament standings' : 'Leaderboard'}
+        </button>
       </div>
     </div>
   );
 };
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Splash />
-  </StrictMode>
-);
+createRoot(document.getElementById('root')!).render(<StrictMode><Splash /></StrictMode>);

@@ -27,6 +27,11 @@ const BACKUP_THROTTLE_KEY = 'echokeys:wiki-backup:last';
 /** Minimum gap between score-triggered backups (ms). */
 export const BACKUP_THROTTLE_MS = 5 * 60 * 1000;
 
+/** Returns the per-subreddit throttle key so communities do not share a throttle. */
+export function backupThrottleKey(subredditId: string): string {
+  return `echokeys:wiki-backup:last:${subredditId}`;
+}
+
 export type WikiReddit = Pick<
   RedditClient,
   'getWikiPage' | 'createWikiPage' | 'updateWikiPage' | 'updateWikiPageSettings'
@@ -193,7 +198,8 @@ export async function backupLeaderboardToWiki(
   }
   const ok = await writeWikiBackup(redditApi, subredditName, backup, reason);
   if (ok) {
-    await redis.set(BACKUP_THROTTLE_KEY, String(Date.now()));
+    const throttleKey = backupThrottleKey(subredditId);
+    await redis.set(throttleKey, String(Date.now()));
     console.log(
       `[WikiBackup] Saved ranks to wiki r/${bareSubredditName(subredditName)}/${LEADERBOARD_WIKI_PAGE} (${backup.alltime.length} all-time, ${backup.profiles.length} profiles)`
     );
@@ -210,7 +216,8 @@ export async function backupLeaderboardToWikiThrottled(
   subredditId: string,
   subredditName: string
 ): Promise<boolean> {
-  const lastRaw = await redis.get(BACKUP_THROTTLE_KEY);
+  const throttleKey = backupThrottleKey(subredditId);
+  const lastRaw = await redis.get(throttleKey);
   const last = lastRaw ? parseInt(lastRaw, 10) : 0;
   if (Number.isFinite(last) && Date.now() - last < BACKUP_THROTTLE_MS) {
     return false;

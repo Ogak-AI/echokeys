@@ -534,11 +534,15 @@ export async function getYearlyLeaderboard(
       }
     }
 
-    // Always fold current month live view for the active year
+    // For the active year, also fold the current month's live view — but only
+    // if it is NOT already in the monthly index (avoid double-counting).
     if (year === currentYear) {
-      const monthEntries = await getMonthlyLeaderboard(redis, subredditId, monthKey());
-      for (const entry of monthEntries) {
-        mergePeriodEntry(merged, entry);
+      const currentMonth = monthKey();
+      if (!monthlyKeys.includes(currentMonth)) {
+        const monthEntries = await getMonthlyLeaderboard(redis, subredditId, currentMonth);
+        for (const entry of monthEntries) {
+          mergePeriodEntry(merged, entry);
+        }
       }
     }
 
@@ -621,16 +625,29 @@ export async function enrichPlayerBadges(
   redis: RedisLike,
   entries: LeaderboardEntry[]
 ): Promise<LeaderboardEntry[]> {
-  return Promise.all(
-    entries.map(async (entry) => {
-      const profile = await getPlayerProfile(redis, entry.username);
-      return {
-        ...entry,
-        badges: profile?.badges ?? entry.badges,
-        totalWordsTyped: profile?.totalWordsTyped ?? entry.totalWordsTyped,
-      };
-    })
-  );
+  // Run in parallel with a concurrency limit to avoid flooding Redis
+  // under large leaderboards (up to 100 entries for all-time).
+  const CONCURRENCY = 8;
+  const results: LeaderboardEntry[] = new Array(entries.length);
+
+  for (let i = 0; i < entries.length; i += CONCURRENCY) {
+    const batch = entries.slice(i, i + CONCURRENCY);
+    const enriched = await Promise.all(
+      batch.map(async (entry, batchIdx) => {
+        const profile = await getPlayerProfile(redis, entry.username);
+        return {
+          ...entry,
+          badges: profile?.badges ?? entry.badges,
+          totalWordsTyped: profile?.totalWordsTyped ?? entry.totalWordsTyped,
+        };
+      })
+    );
+    for (let j = 0; j < enriched.length; j++) {
+      results[i + j] = enriched[j]!;
+    }
+  }
+
+  return results;
 }
 
 // ---- Snapshot Logic (scheduler) ----

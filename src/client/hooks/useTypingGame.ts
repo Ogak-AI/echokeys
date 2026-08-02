@@ -2,12 +2,14 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { calculateScore } from '../../shared/types/index';
 import type { Challenge } from '../../shared/types/index';
 import {
+  MAX_COMPOSITION_JUMP,
   MAX_INPUT_JUMP,
   MAX_WPM,
   THROTTLE_LOCK_MS,
   TIME_LIMIT_SECONDS,
   calculateAccuracy,
   calculateWpm,
+  codePoints,
   countCorrectChars,
   countCorrectWords,
   isSpeedViolation,
@@ -115,6 +117,10 @@ export function useTypingGame(challenge: Challenge | null) {
   const narrationStarted = useRef(false);
   /** Prevent stacking duplicate utterance queues. */
   const speakingRef = useRef(false);
+  /** IME composition (CJK etc.) can insert multi-char clusters — do not treat as paste. */
+  const composingRef = useRef(false);
+  /** Inter-key intervals for optional bot-signal telemetry (client advisory). */
+  const intervalsRef = useRef<number[]>([]);
 
   useEffect(() => {
     challengeRef.current = challenge;
@@ -137,7 +143,7 @@ export function useTypingGame(challenge: Challenge | null) {
         const content = challengeRef.current?.content ?? '';
         const correctWords = countCorrectWords(p.input, content);
         if (rem <= 0 && p.phase === 'playing') {
-          const wpm = calculateWpm(p.input.length, wpmTimeSeconds(t0.current));
+          const wpm = calculateWpm(Array.from(p.input).length, wpmTimeSeconds(t0.current));
           const score = calculateScore(p.accuracy / 100, wpm, scoreTime);
           return {
             ...p,
@@ -150,7 +156,7 @@ export function useTypingGame(challenge: Challenge | null) {
           };
         }
         // Refresh live WPM as time passes even without new keystrokes
-        const wpm = calculateWpm(p.input.length, wpmTimeSeconds(t0.current));
+        const wpm = calculateWpm(Array.from(p.input).length, wpmTimeSeconds(t0.current));
         const score = calculateScore(p.accuracy / 100, wpm, scoreTime);
         return { ...p, elapsed: sec, remaining: rem, wpm, score, correctWords };
       });
@@ -281,6 +287,8 @@ export function useTypingGame(challenge: Challenge | null) {
     isThrottledRef.current = false;
     lastTypeAt.current = Date.now();
     lastLen.current = 0;
+    composingRef.current = false;
+    intervalsRef.current = [];
     narrationStarted.current = false;
     speakingRef.current = false;
     setState((prev) => {
@@ -310,18 +318,28 @@ export function useTypingGame(challenge: Challenge | null) {
     });
   }, [speakContent]);
 
+  const setComposing = useCallback((active: boolean) => {
+    composingRef.current = active;
+  }, []);
+
   const type = useCallback(
     (rawVal: string) => {
       if (!challenge || !t0.current || isThrottledRef.current || phaseRef.current !== 'playing') {
         return;
       }
 
+      // Cap by code-unit length to match stored content bounds (same as server sanitize).
       const val = rawVal.slice(0, challenge.content.length);
       const prev = inputRef.current;
-      const diff = val.length - prev.length;
+      // Jump detection uses Unicode code points so emoji surrogates cannot bypass paste locks.
+      const prevPoints = codePoints(prev).length;
+      const valPoints = codePoints(val).length;
+      const jump = valPoints - prevPoints;
+      const maxJump = composingRef.current ? MAX_COMPOSITION_JUMP : MAX_INPUT_JUMP;
 
-      if (diff > MAX_INPUT_JUMP) {
-        // Force controlled textarea to snap back to last accepted input.
+      // Paste / bulk insert / synthetic composition: hard-cap single-update growth.
+      // MAX_COMPOSITION_JUMP still applies during IME so compositionstart cannot dump a full paste.
+      if (jump > maxJump) {
         setState((p) => ({ ...p, input: prev }));
         lockInput();
         return;
@@ -329,17 +347,29 @@ export function useTypingGame(challenge: Challenge | null) {
 
       const now = Date.now();
       const msDelta = now - lastTypeAt.current;
-      const charsDelta = Math.max(0, val.length - lastLen.current);
+      const charsDelta = Math.max(0, valPoints - lastLen.current);
 
-      if (charsDelta > 0 && isSpeedViolation(charsDelta, msDelta)) {
+      // During IME composition, skip burst speed locks (commit is multi-char by design).
+      // Jump size is still capped above; speed is re-checked on compositionend.
+      if (
+        charsDelta > 0 &&
+        !composingRef.current &&
+        isSpeedViolation(charsDelta, msDelta)
+      ) {
         const burstWpm = calculateWpm(charsDelta, Math.max(msDelta / 1000, 0.001));
         setState((p) => ({ ...p, input: prev }));
         lockInput(Math.min(burstWpm, MAX_WPM + 1));
         return;
       }
 
+      if (charsDelta > 0 && lastTypeAt.current > 0) {
+        const intervals = intervalsRef.current;
+        intervals.push(msDelta);
+        if (intervals.length > 64) intervals.shift();
+      }
+
       lastTypeAt.current = now;
-      lastLen.current = val.length;
+      lastLen.current = valPoints;
 
       const text = challenge.content;
 
@@ -365,12 +395,15 @@ export function useTypingGame(challenge: Challenge | null) {
       }
 
       // Same correctness rules as server validatePlayMetrics / countCorrectChars.
+      // Metrics use Unicode code points so emoji / surrogates match the server.
+      const typedPoints = Array.from(val).length;
+      const contentPoints = Array.from(text).length;
       const ok = countCorrectChars(val, text);
       const correctWords = countCorrectWords(val, text);
       const sec = elapsedSeconds(t0.current);
-      const wpm = calculateWpm(val.length, wpmTimeSeconds(t0.current));
+      const wpm = calculateWpm(typedPoints, wpmTimeSeconds(t0.current));
 
-      if (val.length >= 15 && wpm > MAX_WPM) {
+      if (typedPoints >= 15 && wpm > MAX_WPM) {
         setState((p) => ({ ...p, input: prev }));
         lockInput(wpm);
         return;
@@ -379,12 +412,12 @@ export function useTypingGame(challenge: Challenge | null) {
       // Live display score always uses at least 1s so it matches server floor.
       // Ranking uses correctWords + timeSeconds, not this composite.
       const scoreTime = Math.max(sec, 1);
-      const accuracy = calculateAccuracy(ok, val.length);
-      const progress = text.length
-        ? Math.min(100, Math.round((val.length / text.length) * 100))
+      const accuracy = calculateAccuracy(ok, typedPoints);
+      const progress = contentPoints
+        ? Math.min(100, Math.round((typedPoints / contentPoints) * 100))
         : 0;
       const score = calculateScore(accuracy / 100, wpm, scoreTime);
-      const done = val.length >= text.length && text.length > 0;
+      const done = typedPoints >= contentPoints && contentPoints > 0;
 
       setState((p) => ({
         ...p,
@@ -445,6 +478,8 @@ export function useTypingGame(challenge: Challenge | null) {
     isThrottledRef.current = false;
     lastTypeAt.current = 0;
     lastLen.current = 0;
+    composingRef.current = false;
+    intervalsRef.current = [];
     narrationStarted.current = false;
     speakingRef.current = false;
     cancelSpeech();
@@ -465,10 +500,17 @@ export function useTypingGame(challenge: Challenge | null) {
     }));
   }, []);
 
+  /** Snapshot of inter-key intervals for optional server bot telemetry. */
+  const getKeyIntervals = useCallback((): number[] => {
+    return intervalsRef.current.slice();
+  }, []);
+
   return {
     ...state,
     start,
     type,
+    setComposing,
+    getKeyIntervals,
     toggleMute,
     readAloud,
     ensureNarration,

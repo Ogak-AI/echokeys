@@ -20,44 +20,41 @@ type ProfilePayload = {
 };
 
 function badgeStyle(badge: string): { bg: string; color: string } {
-  if (badge.includes('Weekly')) return { bg: 'rgba(78,201,176,0.15)', color: '#4ec9b0' };
-  if (badge.includes('Monthly')) return { bg: 'rgba(220,220,170,0.15)', color: '#dcdcaa' };
-  if (badge.includes('Yearly')) return { bg: 'rgba(244,135,113,0.15)', color: '#f48771' };
-  return { bg: 'rgba(0,122,204,0.15)', color: '#007acc' };
+  if (badge.includes('Weekly'))  return { bg: 'rgba(61,255,160,0.12)',  color: '#3dffa0' };
+  if (badge.includes('Monthly')) return { bg: 'rgba(232,255,60,0.12)',  color: '#e8ff3c' };
+  if (badge.includes('Yearly'))  return { bg: 'rgba(255,159,74,0.12)',  color: '#ff9f4a' };
+  return { bg: 'rgba(77,166,255,0.12)', color: '#4da6ff' };
 }
 
 function limitForTab(tab: Tab): number {
   if (tab === 'all-time') return 100;
-  if (tab === 'yearly') return 50;
+  if (tab === 'yearly')   return 50;
   return 25;
 }
 
 export const App = () => {
-  const [activeTab, setActiveTab] = useState<Tab>('weekly');
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [subredditId, setSubredditId] = useState<string | null>(null);
+  const [activeTab, setActiveTab]       = useState<Tab>('weekly');
+  const [entries, setEntries]           = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+  const [subredditId, setSubredditId]   = useState<string | null>(null);
   const [subredditName, setSubredditName] = useState('');
-  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [tournament, setTournament]     = useState<Tournament | null>(null);
   const [hasTournament, setHasTournament] = useState(false);
-
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekOffset, setWeekOffset]     = useState(0);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   });
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getUTCFullYear()));
-
   const [profileSearch, setProfileSearch] = useState(context?.username ?? '');
-  const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
+  const [profileData, setProfileData]   = useState<ProfilePayload | null>(null);
   const [profileLoadedOnce, setProfileLoadedOnce] = useState(false);
 
   const liveEnabled = activeTab === 'weekly' && weekOffset === 0 && !hasTournament;
-  const live = useLiveLeaderboard({
-    subredditId,
-    enabled: liveEnabled,
-  });
+  const live = useLiveLeaderboard({ subredditId, enabled: liveEnabled });
+
+  const viewerUsername = (context?.username ?? '').toLowerCase();
 
   useEffect(() => {
     void (async () => {
@@ -65,11 +62,9 @@ export const App = () => {
         const [meRes, tRes] = await Promise.all([fetch('/api/me'), fetch('/api/post/tournament')]);
         if (meRes.ok) {
           const me = await meRes.json();
-          if (me.subredditId) setSubredditId(me.subredditId);
+          if (me.subredditId)  setSubredditId(me.subredditId);
           if (me.subredditName) setSubredditName(me.subredditName);
-          if (me.username) {
-            setProfileSearch((prev) => prev || me.username);
-          }
+          if (me.username)     setProfileSearch(prev => prev || me.username);
         }
         if (tRes.ok) {
           const tData = await tRes.json();
@@ -81,9 +76,7 @@ export const App = () => {
             setLoading(false);
           }
         }
-      } catch {
-        // offline / local
-      }
+      } catch { /* offline */ }
     })();
   }, []);
 
@@ -97,25 +90,14 @@ export const App = () => {
 
   const fetchLeaderboard = useCallback(async () => {
     if (activeTab === 'profile' || liveEnabled) return;
-
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       let url = '/api/leaderboard/weekly';
-
-      if (activeTab === 'tournament' && tournament?.id) {
-        url = `/api/tournament/${encodeURIComponent(tournament.id)}`;
-      } else if (activeTab === 'weekly' && weekOffset !== 0) {
-        url = `/api/leaderboard/weekly/${weekStartWithOffset(weekOffset)}`;
-      } else if (activeTab === 'monthly') {
-        url = `/api/leaderboard/monthly/${selectedMonth}`;
-      } else if (activeTab === 'yearly') {
-        url = `/api/leaderboard/yearly/${selectedYear}`;
-      } else if (activeTab === 'all-time') {
-        url = '/api/leaderboard/all-time';
-      } else if (activeTab === 'weekly') {
-        url = '/api/leaderboard/weekly';
-      }
+      if      (activeTab === 'tournament' && tournament?.id) url = `/api/tournament/${encodeURIComponent(tournament.id)}`;
+      else if (activeTab === 'weekly' && weekOffset !== 0)   url = `/api/leaderboard/weekly/${weekStartWithOffset(weekOffset)}`;
+      else if (activeTab === 'monthly')  url = `/api/leaderboard/monthly/${selectedMonth}`;
+      else if (activeTab === 'yearly')   url = `/api/leaderboard/yearly/${selectedYear}`;
+      else if (activeTab === 'all-time') url = '/api/leaderboard/all-time';
 
       const res = await fetch(url);
       const data = await res.json();
@@ -127,67 +109,37 @@ export const App = () => {
         setEntries(data.entries || []);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error fetching leaderboard data');
-    } finally {
-      setLoading(false);
-    }
+      setError(err instanceof Error ? err.message : 'Error loading leaderboard');
+    } finally { setLoading(false); }
   }, [activeTab, weekOffset, selectedMonth, selectedYear, liveEnabled, tournament?.id]);
-  const fetchProfile = useCallback(async (targetUsername: string) => {
-    if (!targetUsername.trim()) return;
-    setLoading(true);
-    setError(null);
+
+  const fetchProfile = useCallback(async (u: string) => {
+    if (!u.trim()) return;
+    setLoading(true); setError(null);
     try {
-      const res = await fetch(
-        `/api/profile/${encodeURIComponent(targetUsername.trim().toLowerCase())}`
-      );
+      const res = await fetch(`/api/profile/${encodeURIComponent(u.trim().toLowerCase())}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Player profile not found');
+      if (!res.ok) throw new Error(data.error || 'Player not found');
       setProfileData(data as ProfilePayload);
       setProfileLoadedOnce(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error fetching profile');
       setProfileData(null);
       setProfileLoadedOnce(true);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     if (activeTab === 'profile') {
-      if (profileSearch.trim() && !profileLoadedOnce) {
-        void fetchProfile(profileSearch);
-      } else {
-        setLoading(false);
-      }
+      if (profileSearch.trim() && !profileLoadedOnce) void fetchProfile(profileSearch);
+      else setLoading(false);
     } else if (!liveEnabled) {
       void fetchLeaderboard();
     }
-  }, [
-    activeTab,
-    weekOffset,
-    selectedMonth,
-    selectedYear,
-    liveEnabled,
-    fetchLeaderboard,
-    fetchProfile,
-    profileSearch,
-    profileLoadedOnce,
-  ]);
-
-  const handleBack = () => {
-    window.location.href = 'splash.html';
-  };
-
-  const handleProfileSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    void fetchProfile(profileSearch);
-  };
+  }, [activeTab, weekOffset, selectedMonth, selectedYear, liveEnabled, fetchLeaderboard, fetchProfile, profileSearch, profileLoadedOnce]);
 
   const communityLabel = subredditName
-    ? subredditName.startsWith('r/')
-      ? subredditName
-      : `r/${subredditName}`
+    ? subredditName.startsWith('r/') ? subredditName : `r/${subredditName}`
     : 'community';
 
   const openProfile = (name: string) => {
@@ -198,433 +150,280 @@ export const App = () => {
 
   return (
     <div className="app-shell">
+      {/* ── Header ── */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
           <span className="app-header-title">
             {activeTab === 'tournament' ? 'Tournament' : 'Rankings'}
           </span>
-          <span className="mono muted truncate" style={{ fontSize: '0.625rem' }}>
-            {communityLabel}
-          </span>
+          <span className="mono muted truncate" style={{ fontSize: '0.625rem' }}>{communityLabel}</span>
           {liveEnabled && live.updatedAt && (
-            <span className="chip" style={{ color: 'var(--color-vsc-green)', flexShrink: 0 }}>
-              live
-            </span>
+            <span className="chip" style={{ color: 'var(--color-green)', borderColor: 'rgba(61,255,160,0.2)' }}>live</span>
           )}
         </div>
-        <button onClick={handleBack} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
+        <button onClick={() => { window.location.href = 'splash.html'; }} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
           Home
         </button>
       </header>
 
+      {/* ── Tabs ── */}
       <div className="tab-bar">
-        {(
-          [
-            ...(hasTournament ? ([['tournament', 'Cup']] as const) : []),
-            ['weekly', 'Week'],
-            ['monthly', 'Month'],
-            ['yearly', 'Year'],
-            ['all-time', 'All'],
-            ['profile', 'Profile'],
-          ] as const
-        ).map(([id, label]) => (
+        {([
+          ...(hasTournament ? [['tournament', 'Cup']] : []),
+          ['weekly',   'Week'],
+          ['monthly',  'Month'],
+          ['yearly',   'Year'],
+          ['all-time', 'All'],
+          ['profile',  'Profile'],
+        ] as [Tab, string][]).map(([id, label]) => (
           <button
-            key={id}
-            type="button"
+            key={id} type="button"
+            className={`tab-btn ${activeTab === id ? 'active' : ''}`}
             onClick={() => {
               setActiveTab(id);
-              if (id === 'weekly') setWeekOffset(0);
+              if (id === 'weekly')  setWeekOffset(0);
               if (id === 'profile') setProfileLoadedOnce(false);
             }}
-            className={`tab-btn ${activeTab === id ? 'active' : ''}`}
           >
             {label}
           </button>
         ))}
       </div>
 
+      {/* ── Toolbar (time-period controls) ── */}
       {activeTab === 'tournament' && tournament && (
         <div className="toolbar">
-          <span className="mono" style={{ color: 'var(--color-vsc-cyan)', fontSize: '0.6875rem' }}>
-            {tournament.name} · {tournament.participants.length}/{tournament.maxPlayers} ·{' '}
-            {tournament.status}
+          <span className="mono" style={{ color: 'var(--color-blue)', fontSize: '0.6875rem' }}>
+            {tournament.name} · {tournament.participants.length}/{tournament.maxPlayers} · {tournament.status}
           </span>
         </div>
       )}
-
-      {activeTab !== 'profile' && activeTab !== 'all-time' && activeTab !== 'tournament' && (
+      {activeTab === 'weekly' && (
         <div className="toolbar">
-          {activeTab === 'weekly' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => setWeekOffset((p) => p - 1)}
-                className="vsc-btn vsc-btn-ghost vsc-btn-sm"
-              >
-                Prev
-              </button>
-              <span className="mono" style={{ color: 'var(--color-vsc-green)', fontSize: '0.6875rem' }}>
-                {weekOffset === 0 ? 'This week' : `${Math.abs(weekOffset)}w ago`}
-              </span>
-              <button
-                type="button"
-                onClick={() => setWeekOffset((p) => Math.min(0, p + 1))}
-                className="vsc-btn vsc-btn-ghost vsc-btn-sm"
-                disabled={weekOffset === 0}
-              >
-                Next
-              </button>
-            </div>
-          )}
-          {activeTab === 'monthly' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span className="muted">Month</span>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="vsc-input"
-                style={{ width: '9.5rem', minHeight: '1.65rem', padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}
-              />
-            </div>
-          )}
-          {activeTab === 'yearly' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span className="muted">Year</span>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="vsc-select"
-                style={{ width: '5.5rem', minHeight: '1.65rem', padding: '0.2rem 1.5rem 0.2rem 0.4rem', fontSize: '0.75rem' }}
-              >
-                {Array.from({ length: 5 }, (_, i) => new Date().getUTCFullYear() - i).map((y) => (
-                  <option key={y} value={String(y)}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <button type="button" className="vsc-btn vsc-btn-ghost vsc-btn-sm" onClick={() => setWeekOffset(p => p - 1)}>← Prev</button>
+          <span className="mono" style={{ color: 'var(--color-accent)', fontSize: '0.6875rem' }}>
+            {weekOffset === 0 ? 'This week' : `${Math.abs(weekOffset)}w ago`}
+          </span>
+          <button type="button" className="vsc-btn vsc-btn-ghost vsc-btn-sm" disabled={weekOffset === 0} onClick={() => setWeekOffset(p => Math.min(0, p + 1))}>Next →</button>
+        </div>
+      )}
+      {activeTab === 'monthly' && (
+        <div className="toolbar">
+          <span className="muted" style={{ fontSize: '0.75rem' }}>Month</span>
+          <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
+            className="vsc-input" style={{ width: '9rem', height: '1.75rem', padding: '0 0.4rem', fontSize: '0.75rem' }} />
+        </div>
+      )}
+      {activeTab === 'yearly' && (
+        <div className="toolbar">
+          <span className="muted" style={{ fontSize: '0.75rem' }}>Year</span>
+          <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)}
+            className="vsc-select" style={{ width: '5.5rem', height: '1.75rem', padding: '0 1.5rem 0 0.4rem', fontSize: '0.75rem' }}>
+            {Array.from({ length: 5 }, (_, i) => new Date().getUTCFullYear() - i).map(y => (
+              <option key={y} value={String(y)}>{y}</option>
+            ))}
+          </select>
         </div>
       )}
 
-      <div
-        className="app-main"
-        style={{ padding: '0.5rem', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
-      >
+      {/* ── Body ── */}
+      <div className="app-main">
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '2rem 0' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.65rem', padding: '2rem' }}>
             <div className="spinner" />
-            <p className="muted" style={{ fontSize: '0.6875rem' }}>Loading…</p>
+            <p className="muted" style={{ fontSize: '0.75rem' }}>Loading…</p>
           </div>
         ) : error ? (
-          <div className="alert-error" style={{ textAlign: 'center', margin: '1rem auto', maxWidth: '24rem' }}>
-            {error}
+          <div style={{ padding: '1.25rem' }}>
+            <div className="alert-error">{error}</div>
           </div>
         ) : activeTab === 'profile' ? (
-          <div style={{ maxWidth: '36rem', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-            <form onSubmit={handleProfileSearchSubmit} style={{ display: 'flex', gap: '0.35rem' }}>
-              <input
-                type="text"
-                value={profileSearch}
-                onChange={(e) => setProfileSearch(e.target.value)}
-                placeholder="Reddit username…"
-                className="vsc-input"
-              />
-              <button type="submit" className="vsc-btn" style={{ flexShrink: 0 }}>
-                Search
-              </button>
-            </form>
-
-            {profileData ? (
-              <>
-                <div className="vsc-panel" style={{ maxWidth: 'none' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.55rem' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <h2
-                        className="truncate"
-                        style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-vsc-green)' }}
-                      >
-                        {profileData.profile.username}
-                      </h2>
-                      <p className="muted" style={{ fontSize: '0.625rem' }}>
-                        Joined {new Date(profileData.profile.joinedAt).toLocaleDateString()}
-                        {profileData.weeklyRank ? ` · #${profileData.weeklyRank} weekly` : ''}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', justifyContent: 'flex-end', maxWidth: '48%' }}>
-                      {profileData.profile.badges?.slice(0, 4).map((b, i) => {
-                        const { bg, color } = badgeStyle(b);
-                        return (
-                          <span
-                            key={i}
-                            className="chip"
-                            style={{ background: bg, color, borderColor: color + '40' }}
-                            title={b}
-                          >
-                            {b.split(' - ')[0] || b}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
-                      gap: '0.35rem',
-                    }}
-                    className="profile-stats"
-                  >
-                    <div className="stat-box">
-                      <div className="stat-val stat-val-accent">
-                        {(profileData.profile.bestCorrectWords || 0).toLocaleString()}
-                      </div>
-                      <div className="stat-lbl">Best correct</div>
-                    </div>
-                    <div className="stat-box">
-                      <div className="stat-val">
-                        {profileData.profile.bestTimeSeconds
-                          ? `${profileData.profile.bestTimeSeconds}s`
-                          : '—'}
-                      </div>
-                      <div className="stat-lbl">Best time</div>
-                    </div>
-                    <div className="stat-box">
-                      <div className="stat-val">{profileData.profile.bestWpm || 0}</div>
-                      <div className="stat-lbl">Best WPM</div>
-                    </div>
-                    <div className="stat-box">
-                      <div className="stat-val stat-val-yellow">
-                        {profileData.profile.totalChallenges || 0}
-                      </div>
-                      <div className="stat-lbl">Races</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="muted" style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
-                    Domains
-                  </h3>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(6.5rem, 1fr))',
-                      gap: '0.3rem',
-                    }}
-                  >
-                    {ALL_DOMAINS.map((domain: ContentDomain) => {
-                      const count = profileData.profile.domainCounts?.[domain] || 0;
-                      return (
-                        <div
-                          key={domain}
-                          className="mono"
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '0.3rem 0.4rem',
-                            fontSize: '0.6875rem',
-                            background: 'var(--color-vsc-sidebar)',
-                            border: '1px solid var(--color-vsc-border)',
-                            borderRadius: 2,
-                          }}
-                        >
-                          <span style={{ color: DOMAIN_COLORS[domain] || '#d4d4d4', textTransform: 'capitalize' }}>
-                            {domain}
-                          </span>
-                          <span style={{ fontWeight: 700, color: 'var(--color-vsc-green)' }}>{count}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="muted" style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>
-                    Recent
-                  </h3>
-                  <div className="editor-panel">
-                    <div className="editor-titlebar">Recent races</div>
-                    <div style={{ background: 'var(--color-vsc-bg-darker)', maxHeight: '14rem', overflowY: 'auto' }}>
-                      {profileData.recentScores?.length === 0 ? (
-                        <div className="muted" style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.6875rem' }}>
-                          No games yet.
-                        </div>
-                      ) : (
-                        profileData.recentScores.map((score) => (
-                          <div
-                            key={score.id}
-                            className="mono"
-                            style={{
-                              padding: '0.4rem 0.55rem',
-                              fontSize: '0.6875rem',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              gap: '0.5rem',
-                              borderBottom: '1px solid var(--color-vsc-border)',
-                            }}
-                          >
-                            <div style={{ minWidth: 0 }}>
-                              <div className="truncate" style={{ color: 'var(--color-vsc-cyan)', marginBottom: '0.1rem' }}>
-                                &quot;{(score.prompt || 'Challenge').slice(0, 60)}
-                                {(score.prompt?.length ?? 0) > 60 ? '…' : ''}&quot;
-                              </div>
-                              <div className="muted" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', fontSize: '0.625rem' }}>
-                                <span>{score.timeSeconds}s</span>
-                                <span>{score.wpm} wpm</span>
-                                <span>{score.accuracy}%</span>
-                                <span>{new Date(score.playedAt).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                            <div style={{ color: 'var(--color-vsc-green)', fontWeight: 700, flexShrink: 0 }}>
-                              {(score.correctWords ?? 0).toLocaleString()} words
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="muted" style={{ textAlign: 'center', padding: '1.5rem 0', fontSize: '0.75rem' }}>
-                Search a player for stats &amp; badges.
-              </p>
-            )}
-          </div>
+          <ProfileView
+            profileSearch={profileSearch}
+            setProfileSearch={setProfileSearch}
+            profileData={profileData}
+            onSearch={u => { setProfileLoadedOnce(false); void fetchProfile(u); }}
+            loading={loading}
+          />
         ) : (
-          <div className="editor-panel" style={{ maxWidth: '56rem', margin: '0 auto' }}>
-            <div className="editor-titlebar">
-              Top {limitForTab(activeTab)} — most correct words, then lowest time
-            </div>
-
-            {/* Mobile cards */}
-            <div className="lb-cards">
-              {entries.length === 0 ? (
-                <p className="muted" style={{ textAlign: 'center', padding: '1rem', fontSize: '0.75rem' }}>
-                  No records yet. Play a challenge to appear here.
-                </p>
-              ) : (
-                entries.map((entry) => (
-                  <div key={entry.username} className="lb-card">
-                    <span className={`lb-rank rank-${entry.rank}`}>{entry.rank}</span>
-                    <button
-                      type="button"
-                      onClick={() => openProfile(entry.username)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--color-vsc-cyan)',
-                        fontWeight: 600,
-                        fontSize: '0.75rem',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        padding: 0,
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {entry.username}
-                    </button>
-                    <span className="mono" style={{ fontWeight: 700, color: 'var(--color-vsc-green)' }}>
-                      {(entry.bestCorrectWords ?? 0).toLocaleString()}
-                    </span>
-                    <div className="lb-card-meta">
-                      <span>{entry.bestTimeSeconds > 0 ? `${entry.bestTimeSeconds}s` : '—'}</span>
-                      <span>{entry.bestWpm} wpm</span>
-                      <span>{entry.accuracy}% acc</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Table for wider screens */}
-            <div className="lb-table-wrap" style={{ overflowX: 'auto', background: 'var(--color-vsc-bg-darker)' }}>
-              <table className="lb-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>User</th>
-                    <th>Correct</th>
-                    <th>Time</th>
-                    <th>WPM</th>
-                    <th className="lb-col-acc">Acc</th>
-                    <th className="lb-col-challenges">Races</th>
-                    <th className="lb-col-active">Active</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '1.25rem', fontSize: '0.75rem' }}>
-                        No records yet. Play a challenge to appear here.
-                      </td>
-                    </tr>
-                  ) : (
-                    entries.map((entry) => (
-                      <tr key={entry.username}>
-                        <td className={`lb-rank rank-${entry.rank}`}>{entry.rank}</td>
-                        <td style={{ fontWeight: 600 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
-                            <button
-                              type="button"
-                              onClick={() => openProfile(entry.username)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--color-vsc-cyan)',
-                                fontWeight: 600,
-                                fontSize: '0.75rem',
-                                cursor: 'pointer',
-                                padding: 0,
-                              }}
-                            >
-                              {entry.username}
-                            </button>
-                            {entry.badges?.slice(0, 1).map((badge, idx) => {
-                              const { bg, color } = badgeStyle(badge);
-                              return (
-                                <span
-                                  key={idx}
-                                  className="chip"
-                                  style={{ background: bg, color, borderColor: color + '30' }}
-                                  title={badge}
-                                >
-                                  {badge.split(' - ')[0] || badge}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </td>
-                        <td className="mono" style={{ fontWeight: 700, color: 'var(--color-vsc-green)' }}>
-                          {(entry.bestCorrectWords ?? 0).toLocaleString()}
-                        </td>
-                        <td className="mono" style={{ color: 'var(--color-vsc-orange)' }}>
-                          {entry.bestTimeSeconds > 0 ? `${entry.bestTimeSeconds}s` : '—'}
-                        </td>
-                        <td className="mono">{entry.bestWpm}</td>
-                        <td className="mono lb-col-acc" style={{ color: 'var(--color-vsc-yellow)' }}>
-                          {entry.accuracy}%
-                        </td>
-                        <td className="mono muted lb-col-challenges">{entry.challengesCompleted}</td>
-                        <td className="muted lb-col-active" style={{ fontSize: '0.625rem' }}>
-                          {new Date(entry.lastPlayed).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <LeaderboardView
+            entries={entries}
+            tab={activeTab}
+            viewerUsername={viewerUsername}
+            onOpenProfile={openProfile}
+          />
         )}
       </div>
     </div>
   );
 };
+
+/* ── Sub-components ─────────────────────────────────────────── */
+
+function LeaderboardView({ entries, tab, viewerUsername, onOpenProfile }: {
+  entries: LeaderboardEntry[];
+  tab: Tab;
+  viewerUsername: string;
+  onOpenProfile: (u: string) => void;
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="lb-empty">
+        <div className="lb-empty-icon">⌨</div>
+        <span>No records yet.</span>
+        <span className="muted" style={{ fontSize: '0.6875rem' }}>Play a race to appear here.</span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Header row */}
+      <div style={{ padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: '0.5625rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-dim)' }}>
+          Top {limitForTab(tab)} · most correct words, then lowest time
+        </span>
+      </div>
+
+      {/* Rows */}
+      {entries.map(entry => {
+        const isMe = entry.username === viewerUsername;
+        const rankClass = entry.rank <= 3 ? `rank-${entry.rank}` : '';
+        return (
+          <div key={entry.username} className={`lb-row${isMe ? ' is-me' : ''}`}>
+            <span className={`lb-row-rank ${rankClass}`}>{entry.rank}</span>
+            <div className="lb-row-user">
+              <button type="button" className="lb-row-name" onClick={() => onOpenProfile(entry.username)}>
+                {entry.username}
+                {entry.badges?.slice(0, 1).map((b, i) => {
+                  const { bg, color } = badgeStyle(b);
+                  return <span key={i} className="chip" style={{ background: bg, color, borderColor: 'transparent', marginLeft: '0.35rem', verticalAlign: 'middle' }} title={b}>{b.split(' - ')[0]}</span>;
+                })}
+              </button>
+              <div className="lb-row-meta">
+                <span>{entry.bestWpm} wpm</span>
+                <span>{entry.accuracy}% acc</span>
+                <span>{entry.challengesCompleted} races</span>
+              </div>
+            </div>
+            <div className="lb-row-score">
+              <div className="lb-row-score-val">{(entry.bestCorrectWords ?? 0).toLocaleString()}<span style={{ fontSize: '0.6875rem', fontWeight: 400, color: 'var(--color-muted)', marginLeft: '0.2rem' }}>w</span></div>
+              <div className="lb-row-score-time">{entry.bestTimeSeconds > 0 ? `${entry.bestTimeSeconds}s` : '—'}</div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function ProfileView({ profileSearch, setProfileSearch, profileData, onSearch, loading }: {
+  profileSearch: string;
+  setProfileSearch: (v: string) => void;
+  profileData: ProfilePayload | null;
+  onSearch: (u: string) => void;
+  loading: boolean;
+}) {
+  const p = profileData?.profile;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Search bar */}
+      <div style={{ padding: '0.65rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+        <input
+          type="text"
+          value={profileSearch}
+          onChange={e => setProfileSearch(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') onSearch(profileSearch); }}
+          placeholder="Reddit username…"
+          className="vsc-input"
+        />
+        <button type="button" className="vsc-btn" style={{ flexShrink: 0 }} onClick={() => onSearch(profileSearch)}>
+          Search
+        </button>
+      </div>
+
+      {!p ? (
+        <div className="lb-empty">
+          <div className="lb-empty-icon">👤</div>
+          <span>Search a player</span>
+          <span className="muted" style={{ fontSize: '0.6875rem' }}>Stats, WPM, and badges</span>
+        </div>
+      ) : (
+        <>
+          {/* Profile hero */}
+          <div className="profile-hero">
+            <div>
+              <div className="profile-name">{p.username}</div>
+              <div className="profile-joined">
+                Joined {new Date(p.joinedAt).toLocaleDateString()}
+                {profileData.weeklyRank ? ` · #${profileData.weeklyRank} this week` : ''}
+              </div>
+            </div>
+            <div className="profile-badges">
+              {p.badges?.slice(0, 4).map((b, i) => {
+                const { bg, color } = badgeStyle(b);
+                return <span key={i} className="chip" style={{ background: bg, color, borderColor: 'transparent' }} title={b}>{b.split(' - ')[0]}</span>;
+              })}
+            </div>
+          </div>
+
+          {/* Stats grid */}
+          <div className="profile-stats-grid">
+            <div className="profile-stat">
+              <div className="profile-stat-val" style={{ color: 'var(--color-accent)' }}>{(p.bestCorrectWords || 0).toLocaleString()}</div>
+              <div className="profile-stat-lbl">Best run</div>
+            </div>
+            <div className="profile-stat">
+              <div className="profile-stat-val" style={{ color: 'var(--color-green)' }}>{p.bestTimeSeconds ? `${p.bestTimeSeconds}s` : '—'}</div>
+              <div className="profile-stat-lbl">Best time</div>
+            </div>
+            <div className="profile-stat">
+              <div className="profile-stat-val" style={{ color: 'var(--color-blue)' }}>{p.bestWpm}</div>
+              <div className="profile-stat-lbl">Best WPM</div>
+            </div>
+            <div className="profile-stat">
+              <div className="profile-stat-val" style={{ color: 'var(--color-gold)' }}>{p.totalChallenges}</div>
+              <div className="profile-stat-lbl">Races</div>
+            </div>
+          </div>
+
+          {/* Domains */}
+          <div style={{ padding: '0.6rem 1.25rem 0.35rem', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+            <div style={{ fontSize: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-dim)', marginBottom: '0.4rem' }}>Domains</div>
+            <div className="domain-grid">
+              {ALL_DOMAINS.map((domain: ContentDomain) => (
+                <div key={domain} className="domain-cell">
+                  <span style={{ color: DOMAIN_COLORS[domain] ?? '#d4d4d4', textTransform: 'capitalize' }}>{domain}</span>
+                  <span className="domain-count">{p.domainCounts?.[domain] || 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recent scores */}
+          <div style={{ padding: '0.5rem 1.25rem 0.35rem', flexShrink: 0 }}>
+            <div style={{ fontSize: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-dim)', marginBottom: '0.35rem' }}>Recent races</div>
+          </div>
+          {profileData.recentScores?.length === 0 ? (
+            <div style={{ padding: '0.75rem 1.25rem', color: 'var(--color-muted)', fontSize: '0.75rem' }}>No races yet.</div>
+          ) : (
+            profileData.recentScores.map(s => (
+              <div key={s.id} className="score-row">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="score-row-prompt">"{(s.prompt || 'Race').slice(0, 60)}{(s.prompt?.length ?? 0) > 60 ? '…' : ''}"</div>
+                  <div className="score-row-meta">
+                    <span>{s.timeSeconds}s</span>
+                    <span>{s.wpm} wpm</span>
+                    <span>{s.accuracy}%</span>
+                    <span>{new Date(s.playedAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <div className="score-row-words">{(s.correctWords ?? 0).toLocaleString()}w</div>
+              </div>
+            ))
+          )}
+        </>
+      )}
+    </div>
+  );
+}

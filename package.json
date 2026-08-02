@@ -15,7 +15,7 @@
     "dev:server": "cd src/server && vite build --watch",
     "login": "devvit login",
     "publish:app": "npm run build && devvit upload && devvit publish",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@devvit/server": "0.13.9",
@@ -36,7 +36,8 @@
     "tailwindcss": "^4.1.6",
     "tsx": "^4.23.1",
     "typescript": "^5.8.2",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "js-yaml": "4.3.0",
