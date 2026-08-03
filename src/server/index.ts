@@ -33,6 +33,7 @@ import {
   backupLeaderboardToWikiThrottled,
   ensureLeaderboardsHydrated,
   restoreLeaderboardFromWiki,
+  restoreLeaderboardFromWikiWithRetry,
   syncLeaderboardWithWiki,
 } from './services/wikiBackup.js';
 import {
@@ -534,6 +535,8 @@ app.get('/api/history/:kind', async (req, res) => {
 // ---- Me ----
 app.get('/api/me', async (_req, res) => {
   try {
+    // Reinstall path: hydrate ranks as soon as any client opens the hub.
+    await hydrateLeaderboardsIfNeeded();
     const username = await resolveUsername();
     const profile = username !== 'anonymous' ? await getPlayerProfile(redis, username) : null;
     const isModerator =
@@ -1227,7 +1230,53 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
   }
 });
 
-// Menu: force restore ranks from wiki (mods) — recovers after Redis wipe / failed install restore
+// Menu: force backup to wiki (mods) — run BEFORE uninstall so reinstall can restore
+app.post('/internal/menu/backup-leaderboard', async (_req, res) => {
+  try {
+    const mod = await requireModerator();
+    if (!mod.ok) {
+      return res.json({
+        showToast: {
+          text: 'Only moderators can backup the leaderboard.',
+          appearance: 'neutral',
+        },
+      } satisfies UiResponse);
+    }
+    const subId = getSubredditId();
+    const subName = await getSubredditName();
+    if (!subName) {
+      return res.json({
+        showToast: {
+          text: 'Could not resolve community name for wiki backup.',
+          appearance: 'neutral',
+        },
+      } satisfies UiResponse);
+    }
+    const ok = await backupLeaderboardToWiki(
+      redis,
+      reddit,
+      subId,
+      subName,
+      'Echokeys manual leaderboard backup (pre-uninstall)'
+    );
+    return res.json({
+      showToast: {
+        text: ok
+          ? 'Leaderboard backed up to wiki. Safe to reinstall if needed.'
+          : 'Nothing to backup yet (no ranks) or wiki write failed.',
+        appearance: ok ? 'success' : 'neutral',
+      },
+    } satisfies UiResponse);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Backup failed';
+    console.error('[Menu] Backup leaderboard error:', err);
+    return res.json({
+      showToast: { text: message, appearance: 'neutral' },
+    } satisfies UiResponse);
+  }
+});
+
+// Menu: force restore ranks from wiki (mods) — recovers after Redis wipe / reinstall
 app.post('/internal/menu/restore-leaderboard', async (_req, res) => {
   try {
     const mod = await requireModerator();
@@ -1251,9 +1300,15 @@ app.post('/internal/menu/restore-leaderboard', async (_req, res) => {
       } satisfies UiResponse);
     }
 
-    const result = await restoreLeaderboardFromWiki(redis, reddit, subId, subName);
+    // Retries handle flaky wiki right after reinstall.
+    const result = await restoreLeaderboardFromWikiWithRetry(
+      redis,
+      reddit,
+      subId,
+      subName,
+      3
+    );
     if (result.restored) {
-      // Refresh wiki from recovered Redis so cold mirror stays warm.
       await backupLeaderboardToWiki(
         redis,
         reddit,
@@ -1271,7 +1326,9 @@ app.post('/internal/menu/restore-leaderboard', async (_req, res) => {
 
     return res.json({
       showToast: {
-        text: 'No wiki backup found (or already empty). Check r/…/wiki/echokeys/leaderboard-backup',
+        text: result.wikiHadData
+          ? 'Wiki had data but nothing new to import (already merged).'
+          : 'No wiki backup found. Check r/…/wiki/echokeys/leaderboard-backup',
         appearance: 'neutral',
       },
     } satisfies UiResponse);
@@ -1384,13 +1441,37 @@ async function ensureHubPost(): Promise<{ postId: string; created: boolean } | n
 }
 
 // ---- Install + Scheduler Endpoints ----
+/**
+ * Fresh install OR reinstall after uninstall.
+ * Devvit wipes Redis on uninstall — wiki is the only survivor.
+ * We always treat install as a potential reinstall and force retry restore.
+ */
 app.post('/internal/on-app-install', async (_req, res) => {
   try {
     const subId = getSubredditId();
     const subName = await getSubredditName();
-    // Redis is empty after reinstall — restore ranks from subreddit wiki first.
-    await syncLeaderboardWithWiki(redis, reddit, subId, subName);
-    // Layer 2 meta + integrity (never wipes data).
+    console.log(
+      `[Echokeys] on-app-install subId=${subId} subName=${subName || '(unresolved)'}`
+    );
+
+    if (subName) {
+      // isReinstall: true → wiki restore with retries (Redis is empty after uninstall).
+      const { restore, backedUp } = await syncLeaderboardWithWiki(
+        redis,
+        reddit,
+        subId,
+        subName,
+        { isReinstall: true }
+      );
+      console.log(
+        `[Echokeys] Reinstall restore restored=${restore.restored} players=${restore.players} wikiHadData=${restore.wikiHadData} attempts=${restore.attempts} backedUp=${backedUp}`
+      );
+    } else {
+      console.error(
+        '[Echokeys] on-app-install: cannot restore — subreddit name unresolved'
+      );
+    }
+
     await bootstrapPermanence(redis, subId);
     await ensureHubPost();
     return res.json({ status: 'ok' });
@@ -1401,13 +1482,36 @@ app.post('/internal/on-app-install', async (_req, res) => {
   }
 });
 
+/** Version upgrade keeps Redis — still merge wiki then refresh cold mirror. */
 app.post('/internal/on-app-upgrade', async (_req, res) => {
   try {
     const subId = getSubredditId();
     const subName = await getSubredditName();
-    // Merge any wiki backup, then refresh wiki from live Redis.
-    await syncLeaderboardWithWiki(redis, reddit, subId, subName);
-    // Additive schema ensure + integrity report (never destructive).
+    console.log(
+      `[Echokeys] on-app-upgrade subId=${subId} subName=${subName || '(unresolved)'}`
+    );
+
+    if (subName) {
+      // Backup live Redis first (survives if this version later gets uninstalled).
+      await backupLeaderboardToWiki(
+        redis,
+        reddit,
+        subId,
+        subName,
+        'Echokeys pre-upgrade leaderboard backup'
+      );
+      const { restore, backedUp } = await syncLeaderboardWithWiki(
+        redis,
+        reddit,
+        subId,
+        subName,
+        { isReinstall: false }
+      );
+      console.log(
+        `[Echokeys] Upgrade sync restored=${restore.restored} players=${restore.players} backedUp=${backedUp}`
+      );
+    }
+
     await bootstrapPermanence(redis, subId);
     await ensureHubPost();
     return res.json({ status: 'ok' });

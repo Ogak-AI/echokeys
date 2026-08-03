@@ -3,6 +3,8 @@ import {
   parseBackupContent,
   BACKUP_THROTTLE_MS,
   ensureLeaderboardsHydrated,
+  restoreLeaderboardFromWikiWithRetry,
+  syncLeaderboardWithWiki,
   type WikiReddit,
 } from '../src/server/services/wikiBackup.js';
 import {
@@ -413,5 +415,96 @@ describe('ensureLeaderboardsHydrated', () => {
       'echokeys_dev'
     );
     expect(result.attempted).toBe(false);
+  });
+});
+
+describe('reinstall restore path', () => {
+  let redis: RedisMock;
+
+  beforeEach(() => {
+    memoryCache.clear();
+    redis = createRedisMock();
+  });
+
+  function wikiWithBackup(backup: LeaderboardBackupV1): WikiReddit {
+    let reads = 0;
+    const content = [
+      '<!-- echokeys-lb-v1 -->',
+      JSON.stringify(backup),
+      '<!-- /echokeys-lb-v1 -->',
+    ].join('\n');
+    return {
+      getWikiPage: async () => {
+        reads += 1;
+        // First call fails (simulates post-reinstall wiki lag), then succeeds.
+        if (reads === 1) throw new Error('wiki not ready');
+        return { content } as { content: string };
+      },
+      createWikiPage: async () => ({} as never),
+      updateWikiPage: async () => ({} as never),
+      updateWikiPageSettings: async () => ({} as never),
+    };
+  }
+
+  it('restoreWithRetry recovers after transient wiki failure', async () => {
+    const backup = makeMinimalBackup({
+      subredditId: 'sub-re',
+      alltime: [makeLeaderboardEntry('back', { bestCorrectWords: 42 })],
+      profiles: [
+        {
+          username: 'back',
+          bestWpm: 70,
+          bestAccuracy: 90,
+          totalChallenges: 1,
+          badges: [],
+          domainCounts: {},
+          lastPlayed: 1,
+          joinedAt: 1,
+          totalWordsTyped: 42,
+          bestCorrectWords: 42,
+          bestTimeSeconds: 50,
+        },
+      ],
+    });
+    const result = await restoreLeaderboardFromWikiWithRetry(
+      redis,
+      wikiWithBackup(backup),
+      'sub-re',
+      'echokeys_dev',
+      3
+    );
+    expect(result.restored).toBe(true);
+    expect(result.attempts).toBeGreaterThanOrEqual(2);
+    const allTime = await getAllTimeLeaderboard(redis, 'sub-re');
+    expect(allTime[0]?.username).toBe('back');
+  });
+
+  it('syncLeaderboardWithWiki reinstall does not wipe wiki when Redis empty and wiki empty', async () => {
+    let wikiWrites = 0;
+    const emptyWiki: WikiReddit = {
+      getWikiPage: async () => {
+        throw new Error('missing');
+      },
+      createWikiPage: async () => {
+        wikiWrites += 1;
+        return {} as never;
+      },
+      updateWikiPage: async () => {
+        wikiWrites += 1;
+        return {} as never;
+      },
+      updateWikiPageSettings: async () => ({} as never),
+    };
+    const { restore, backedUp } = await syncLeaderboardWithWiki(
+      redis,
+      emptyWiki,
+      'sub-void',
+      'voidsub',
+      { isReinstall: true }
+    );
+    expect(restore.restored).toBe(false);
+    expect(backedUp).toBe(false);
+    // No empty payload should be written when Redis has nothing.
+    expect(wikiWrites).toBe(0);
   });
 });

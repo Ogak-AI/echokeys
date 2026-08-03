@@ -12,6 +12,7 @@ import {
   importLeaderboardBackup,
   type LeaderboardBackupV1,
 } from './leaderboard.js';
+import { memoryCache } from './memoryCache.js';
 
 /** WikiPagePermissionLevel.MODS_ONLY — only mods may edit/view. */
 const WIKI_MODS_ONLY = 2;
@@ -23,8 +24,12 @@ const MARKER_START = '<!-- echokeys-lb-v1 -->';
 const MARKER_END = '<!-- /echokeys-lb-v1 -->';
 /** Stay under typical wiki size limits. */
 const MAX_WIKI_CHARS = 450_000;
-/** Minimum gap between score-triggered backups (ms). */
-export const BACKUP_THROTTLE_MS = 5 * 60 * 1000;
+/**
+ * Minimum gap between score-triggered backups (ms).
+ * Kept short so an unexpected uninstall/reinstall still has a recent wiki copy.
+ * Full snapshots/daily jobs always force an unthrottled backup.
+ */
+export const BACKUP_THROTTLE_MS = 2 * 60 * 1000;
 
 /** Returns the per-subreddit throttle key so communities do not share a throttle. */
 export function backupThrottleKey(subredditId: string): string {
@@ -230,17 +235,32 @@ export async function backupLeaderboardToWikiThrottled(
   );
 }
 
+export type RestoreResult = {
+  restored: boolean;
+  players: number;
+  /** True when a wiki page was found and parsed with data. */
+  wikiHadData: boolean;
+  attempts: number;
+};
+
 /** Wiki → Redis merge. Safe when Redis still has data (upgrade) or is empty (reinstall). */
 export async function restoreLeaderboardFromWiki(
   redis: RedisLike,
   redditApi: WikiReddit,
   subredditId: string,
   subredditName: string
-): Promise<{ restored: boolean; players: number }> {
+): Promise<RestoreResult> {
+  if (!subredditName?.trim()) {
+    console.warn('[WikiBackup] Restore skipped — subreddit name missing');
+    return { restored: false, players: 0, wikiHadData: false, attempts: 0 };
+  }
+
   const backup = await readWikiBackup(redditApi, subredditName);
   if (!backup || !backupHasData(backup)) {
-    console.log('[WikiBackup] No wiki backup found to restore');
-    return { restored: false, players: 0 };
+    console.log(
+      `[WikiBackup] No wiki backup found to restore (sub=r/${bareSubredditName(subredditName)})`
+    );
+    return { restored: false, players: 0, wikiHadData: false, attempts: 1 };
   }
 
   // Prefer live subreddit id; rewrite backup id if an old install used a different key.
@@ -251,33 +271,125 @@ export async function restoreLeaderboardFromWiki(
 
   const result = await importLeaderboardBackup(redis, normalized);
   if (result.imported) {
+    // Drop process-local cache so subsequent reads see restored ranks.
+    memoryCache.clear();
     console.log(
       `[WikiBackup] Restored leaderboard from wiki (${result.players} players, all-time ${normalized.alltime?.length ?? 0})`
     );
   }
-  return { restored: result.imported, players: result.players };
+  return {
+    restored: result.imported,
+    players: result.players,
+    wikiHadData: true,
+    attempts: 1,
+  };
 }
 
-/** Restore from wiki, then write a fresh backup (install/upgrade path). */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry wiki restore — wiki/API can lag right after reinstall.
+ * Used by on-app-install after Devvit wiped Redis.
+ */
+export async function restoreLeaderboardFromWikiWithRetry(
+  redis: RedisLike,
+  redditApi: WikiReddit,
+  subredditId: string,
+  subredditName: string,
+  maxAttempts = 3
+): Promise<RestoreResult> {
+  let last: RestoreResult = {
+    restored: false,
+    players: 0,
+    wikiHadData: false,
+    attempts: 0,
+  };
+
+  for (let i = 1; i <= maxAttempts; i++) {
+    last = await restoreLeaderboardFromWiki(
+      redis,
+      redditApi,
+      subredditId,
+      subredditName
+    );
+    last = { ...last, attempts: i };
+    if (last.restored) {
+      console.log(
+        `[WikiBackup] Reinstall restore OK on attempt ${i}/${maxAttempts} (${last.players} players)`
+      );
+      return last;
+    }
+    // If wiki truly empty, more retries won't help.
+    if (!last.wikiHadData && i < maxAttempts) {
+      // Still retry — getWikiPage can fail transiently and look like "no data".
+      console.warn(`[WikiBackup] Restore attempt ${i} found no data; retrying…`);
+      await sleep(400 * i);
+      continue;
+    }
+    if (last.wikiHadData && !last.restored) {
+      // Had data but import no-op (already merged) — success for reinstall empty redis is rare.
+      break;
+    }
+    if (i < maxAttempts) await sleep(400 * i);
+  }
+
+  console.warn(
+    `[WikiBackup] Reinstall restore finished without import after ${last.attempts} attempt(s) (wikiHadData=${last.wikiHadData})`
+  );
+  return last;
+}
+
+/**
+ * Install / reinstall / upgrade path.
+ * 1) Restore from wiki into Redis (retries on reinstall when Redis is empty)
+ * 2) Only then refresh wiki from Redis — never overwrites wiki with empty Redis
+ */
 export async function syncLeaderboardWithWiki(
   redis: RedisLike,
   redditApi: WikiReddit,
   subredditId: string,
-  subredditName: string
-): Promise<void> {
-  const restore = await restoreLeaderboardFromWiki(
-    redis,
-    redditApi,
-    subredditId,
-    subredditName
-  );
+  subredditName: string,
+  options: { isReinstall?: boolean } = {}
+): Promise<{ restore: RestoreResult; backedUp: boolean }> {
+  const isReinstall = options.isReinstall === true;
+
+  // Detect empty Redis (typical after uninstall wiped installation data).
+  const alltimeRaw = await redis.get(`lb:${subredditId}:alltime`);
+  let redisEmpty = !alltimeRaw;
+  if (alltimeRaw) {
+    try {
+      const parsed = JSON.parse(alltimeRaw) as unknown;
+      redisEmpty = !Array.isArray(parsed) || parsed.length === 0;
+    } catch {
+      redisEmpty = true;
+    }
+  }
+
+  const restore =
+    isReinstall || redisEmpty
+      ? await restoreLeaderboardFromWikiWithRetry(
+          redis,
+          redditApi,
+          subredditId,
+          subredditName,
+          3
+        )
+      : await restoreLeaderboardFromWiki(
+          redis,
+          redditApi,
+          subredditId,
+          subredditName
+        );
+
   if (restore.restored) {
     console.log(
-      `[WikiBackup] Install/upgrade restored ${restore.players} players into Redis`
+      `[WikiBackup] Install/upgrade restored ${restore.players} players into Redis (reinstall=${isReinstall || redisEmpty})`
     );
   } else {
     console.warn(
-      `[WikiBackup] Install/upgrade restore did not import data (wiki empty, unreadable, or already merged). sub=${subredditName}`
+      `[WikiBackup] Install/upgrade restore did not import data (wiki empty, unreadable, or already merged). sub=${subredditName} redisEmpty=${redisEmpty}`
     );
   }
 
@@ -287,13 +399,17 @@ export async function syncLeaderboardWithWiki(
     redditApi,
     subredditId,
     subredditName,
-    'Echokeys leaderboard sync after install/upgrade'
+    isReinstall || redisEmpty
+      ? 'Echokeys leaderboard sync after reinstall'
+      : 'Echokeys leaderboard sync after install/upgrade'
   );
   if (!backedUp) {
     console.warn(
       `[WikiBackup] Post-sync backup skipped or failed (no Redis data or wiki write error)`
     );
   }
+
+  return { restore, backedUp };
 }
 
 /**
@@ -339,11 +455,13 @@ export async function ensureLeaderboardsHydrated(
   console.warn(
     `[WikiBackup] All-time board empty for ${subredditId} — attempting wiki restore from r/${bareSubredditName(subredditName)}`
   );
-  const result = await restoreLeaderboardFromWiki(
+  // Use retries — right after reinstall the wiki API can flap.
+  const result = await restoreLeaderboardFromWikiWithRetry(
     redis,
     redditApi,
     subredditId,
-    subredditName
+    subredditName,
+    2
   );
   if (result.restored) {
     console.log(

@@ -60,8 +60,16 @@
         "postFilter": "none"
       },
       {
+        "label": "Backup Echokeys Leaderboard",
+        "description": "Moderators only: write ranks to the private wiki now (run before uninstall/reinstall)",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/backup-leaderboard",
+        "postFilter": "none"
+      },
+      {
         "label": "Restore Echokeys Leaderboard",
-        "description": "Moderators only: re-import ranks from the private wiki backup after Redis wipe/reinstall",
+        "description": "Moderators only: re-import ranks from the private wiki after Redis wipe/reinstall",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/restore-leaderboard",
