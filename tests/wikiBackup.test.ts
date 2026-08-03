@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   parseBackupContent,
-  BACKUP_THROTTLE_MS,
   ensureLeaderboardsHydrated,
   restoreLeaderboardFromWikiWithRetry,
   syncLeaderboardWithWiki,

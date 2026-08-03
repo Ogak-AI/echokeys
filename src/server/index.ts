@@ -32,7 +32,6 @@ import {
   backupLeaderboardToWiki,
   backupLeaderboardToWikiThrottled,
   ensureLeaderboardsHydrated,
-  restoreLeaderboardFromWiki,
   restoreLeaderboardFromWikiWithRetry,
   syncLeaderboardWithWiki,
 } from './services/wikiBackup.js';

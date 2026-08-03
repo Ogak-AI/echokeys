@@ -4,7 +4,7 @@ type Realtime = {
   send(channel: string, message: unknown): Promise<void>;
 };
 
-export function leaderboardChannel(subredditId: string): string {
+function leaderboardChannel(subredditId: string): string {
   return `leaderboard:${subredditId}`;
 }
 

@@ -178,14 +178,6 @@ html.ek-lock-scroll #root { height: 100%; overflow: hidden; }
   -webkit-overflow-scrolling: touch;
 }
 
-/* ---- Centered layout for splash / results ---- */
-.app-center {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-
 /* ---- Buttons ---- */
 .vsc-btn {
   display: inline-flex;
@@ -232,11 +224,6 @@ html.ek-lock-scroll #root { height: 100%; overflow: hidden; }
 }
 .vsc-btn-ghost:hover  { background: var(--color-raised); opacity: 1; }
 .vsc-btn-ghost:active { background: var(--color-panel); opacity: 1; }
-
-.vsc-btn-danger {
-  background: var(--color-red);
-  color: #fff;
-}
 
 /* ---- Inputs ---- */
 .vsc-input {
@@ -526,9 +513,6 @@ html.ek-lock-scroll #root { height: 100%; overflow: hidden; }
   font-variant-numeric: tabular-nums;
 }
 .stat-val-accent  { color: var(--color-accent); }
-.stat-val-green   { color: var(--color-green); }
-.stat-val-yellow  { color: var(--color-gold); }
-.stat-val-red     { color: var(--color-red); }
 .stat-lbl {
   font-size: 0.5rem;
   text-transform: uppercase;
@@ -666,11 +650,6 @@ html.ek-lock-scroll #root { height: 100%; overflow: hidden; }
   flex-shrink: 0;
 }
 
-/* Rank medals (used by .lb-row-rank.rank-N) */
-.rank-1 { color: var(--color-gold) !important; }
-.rank-2 { color: var(--color-silver) !important; }
-.rank-3 { color: var(--color-bronze) !important; }
-
 /* Safe area */
 @supports (padding: env(safe-area-inset-bottom)) {
   .app-shell { padding-bottom: env(safe-area-inset-bottom); }
@@ -741,36 +720,6 @@ html.ek-lock-scroll #root { height: 100%; overflow: hidden; }
   color: var(--color-text);
 }
 .splash-username span { color: var(--color-muted); font-weight: 400; font-size: 0.75rem; }
-
-/* Stats strip */
-.splash-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: var(--color-border);
-  flex-shrink: 0;
-}
-.splash-stat {
-  background: var(--color-surface);
-  padding: 0.65rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-.splash-stat-val {
-  font-family: var(--font-mono);
-  font-size: clamp(1.25rem, 4vw, 1.6rem);
-  font-weight: 700;
-  color: var(--color-accent);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.splash-stat-lbl {
-  font-size: 0.5625rem;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--color-dim);
-}
 
 /* Scrollable middle zone */
 .splash-body {
