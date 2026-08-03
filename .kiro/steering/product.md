@@ -1,18 +1,18 @@
 # Product Overview
 
-This is a **Devvit React Application** - a game built with React.JS that will be built with Devvit and run on Reddit
+**Echokeys** is a free multiplayer *async* typing race that runs inside Reddit (Devvit).
 
-## Core Features
+## Core features
 
-- 2D game, built with Devvit to run on Reddit
-- Click the splash screen to open the game in full screen mode
+- Random 2,000+ word races from a built-in knowledge base (4-minute cap)
+- Ranking by correct words, then time (server-authoritative)
+- Community leaderboards: weekly, monthly, yearly, all-time
+- Immutable period freezes + wiki backup for reinstall durability
+- Tournaments (mod-created, shared excerpt, standings)
+- Optional teleprompter narration (starts muted)
 
-## Platform Integration
+## Platform
 
-- Runs as a Reddit app within the Devvit ecosystem
-- Creates posts automatically on app installation
-- Provides moderator menu actions for post creation
-
-## Target Use Case
-
-This game will be published and played on Reddit
+- Reddit custom posts (splash / game / leaderboard entrypoints)
+- Hub post on install; menu actions for play hub, challenge, tournament
+- Redis + private wiki backup; no external API keys

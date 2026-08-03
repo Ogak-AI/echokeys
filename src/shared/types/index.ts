@@ -90,6 +90,19 @@ export type PlayerProfile = {
   bestCorrectWords?: number;
   /** Time of that personal-best run (seconds). */
   bestTimeSeconds?: number;
+  /**
+   * Permanent career counters (Layer 2). Optional for backward compatibility;
+   * always merge-only — never wiped by deployments.
+   */
+  career?: {
+    totalRaces: number;
+    rankedRaces: number;
+    weeklyWins: number;
+    weeklyTop3: number;
+    tournamentWins: number;
+    firstRaceAt: number | null;
+    lastRaceAt: number | null;
+  };
 };
 
 export type LeaderboardUpdate = {

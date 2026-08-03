@@ -21,8 +21,6 @@ export const BOT_INTERVAL_MIN_SAMPLES = 16;
  * Fixed product duration: 4 minutes per race.
  */
 export const TIME_LIMIT_SECONDS = 4 * 60; // 4 minutes
-/** Allowed WPM drift between client claim and server recalculation (legacy / display). */
-export const WPM_TOLERANCE = 8;
 /** Race session TTL — must finish (or time out) within this window (+ buffer). */
 export const RACE_TTL_MS = (TIME_LIMIT_SECONDS + 2 * 60) * 1000;
 /**
@@ -131,17 +129,6 @@ export function countCorrectWords(typed: string, target: string): number {
 export function minDurationSeconds(charsTyped: number): number {
   if (charsTyped <= 0) return 0;
   return charsTyped / MAX_CHARS_PER_SECOND;
-}
-
-/**
- * Strip control chars and bound length for short display strings / titles.
- * For source-pool text use `sanitizeSourceText` in raceExcerpt.ts.
- */
-export function sanitizePrompt(raw: string, maxLen = 500): string {
-  return raw
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    .trim()
-    .slice(0, maxLen);
 }
 
 /**
@@ -329,11 +316,6 @@ export function validatePlayMetrics(params: {
       eligibleForLeaderboard,
     },
   };
-}
-
-/** User-facing explanation when a run is saved but not ranked. */
-export function leaderboardIneligibleReason(): string {
-  return `Run saved — needs ${MIN_LEADERBOARD_CORRECT_WORDS}+ correct words, or ${Math.round(MIN_LEADERBOARD_PROGRESS * 100)}%+ progress with at least 1 correct word, to rank`;
 }
 
 /**

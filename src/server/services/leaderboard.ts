@@ -11,17 +11,37 @@ import {
   previousWeekStartKey,
   previousYearKey,
   weekStartKey,
+  weekStartWithOffset,
   yearKey,
 } from '../../shared/utils/time.js';
 import { formatSubredditLabel } from '../../shared/utils/antiCheat.js';
 import { memoryCache } from './memoryCache.js';
+import { freezeSnapshot } from './permanence.js';
 
 /** Minimal Redis surface used by Echokeys leaderboard storage. */
 export type RedisLike = {
   get(key: string): Promise<string | undefined>;
   set(key: string, value: string): Promise<string | void>;
   del(...keys: string[]): Promise<void | number>;
+  /** Optional — present on Devvit Redis; used for ephemeral key TTL. */
+  expire?(key: string, seconds: number): Promise<unknown>;
 };
+
+/** Best-effort TTL. No-op when Redis lacks expire (tests / older mocks). */
+export async function setKeyExpiry(
+  redis: RedisLike,
+  key: string,
+  seconds: number
+): Promise<void> {
+  if (typeof redis.expire !== 'function' || !Number.isFinite(seconds) || seconds <= 0) {
+    return;
+  }
+  try {
+    await redis.expire(key, Math.ceil(seconds));
+  } catch (err) {
+    console.warn(`[Redis] expire failed for ${key}:`, err);
+  }
+}
 
 function runKey(entry: Pick<LeaderboardEntry, 'bestCorrectWords' | 'bestTimeSeconds' | 'score'>) {
   return {
@@ -327,6 +347,22 @@ async function updatePlayerProfile(
     }
   }
 
+  // Permanent career counters — merge-only, never reset on deploy/week rollover.
+  const career = profile.career ?? {
+    totalRaces: 0,
+    rankedRaces: 0,
+    weeklyWins: 0,
+    weeklyTop3: 0,
+    tournamentWins: 0,
+    firstRaceAt: null,
+    lastRaceAt: null,
+  };
+  career.totalRaces += 1;
+  if (trackPersonalBest) career.rankedRaces += 1;
+  career.firstRaceAt = career.firstRaceAt ?? score.playedAt;
+  career.lastRaceAt = score.playedAt;
+  profile.career = career;
+
   if (score.communityId) {
     profile.communityId = score.communityId;
   }
@@ -340,10 +376,35 @@ async function updatePlayerProfile(
   return profile;
 }
 
+/** Increment permanent career placement counters (merge-only). */
+export async function recordCareerPlacement(
+  redis: RedisLike,
+  username: string,
+  placement: { weeklyWin?: boolean; weeklyTop3?: boolean; tournamentWin?: boolean }
+): Promise<void> {
+  const profile = await getPlayerProfile(redis, username);
+  if (!profile) return;
+  const career = profile.career ?? {
+    totalRaces: 0,
+    rankedRaces: 0,
+    weeklyWins: 0,
+    weeklyTop3: 0,
+    tournamentWins: 0,
+    firstRaceAt: null,
+    lastRaceAt: null,
+  };
+  if (placement.weeklyWin) career.weeklyWins += 1;
+  if (placement.weeklyTop3) career.weeklyTop3 += 1;
+  if (placement.tournamentWin) career.tournamentWins += 1;
+  profile.career = career;
+  memoryCache.delete(`player:${username}`);
+  await writeJson(redis, `player:${username}`, profile);
+}
+
 async function updateWeeklyLeaderboard(
   redis: RedisLike,
   score: PlayerScore,
-  profile: PlayerProfile
+  _profile: PlayerProfile
 ): Promise<void> {
   const subId = score.communityId || 'global';
   const week = weekStartKey();
@@ -375,7 +436,9 @@ async function updateWeeklyLeaderboard(
     existing.bestWpm = Math.max(existing.bestWpm, score.wpm);
     existing.challengesCompleted += completedDelta;
     existing.lastPlayed = score.playedAt;
-    existing.totalWordsTyped = profile.totalWordsTyped;
+    // Week-scoped word total (not lifetime profile total).
+    existing.totalWordsTyped =
+      (existing.totalWordsTyped || 0) + (score.wordsTyped || 0);
   } else {
     entries.push({
       rank: 0,
@@ -386,7 +449,7 @@ async function updateWeeklyLeaderboard(
       challengesCompleted: completedDelta,
       lastPlayed: score.playedAt,
       badges: [],
-      totalWordsTyped: profile.totalWordsTyped,
+      totalWordsTyped: score.wordsTyped || 0,
       bestCorrectWords: correctWords,
       bestTimeSeconds: timeSeconds,
     });
@@ -621,6 +684,14 @@ export async function getPlayerScores(
   return scores;
 }
 
+/**
+ * Attach live badge lists from profiles.
+ *
+ * Intentionally does NOT overwrite totalWordsTyped: period boards (weekly /
+ * monthly / yearly) store period-scoped word totals, while profiles store
+ * lifetime totals. Overwriting here previously made every leaderboard API
+ * return lifetime words and undid period-scoped storage.
+ */
 export async function enrichPlayerBadges(
   redis: RedisLike,
   entries: LeaderboardEntry[]
@@ -633,12 +704,12 @@ export async function enrichPlayerBadges(
   for (let i = 0; i < entries.length; i += CONCURRENCY) {
     const batch = entries.slice(i, i + CONCURRENCY);
     const enriched = await Promise.all(
-      batch.map(async (entry, batchIdx) => {
+      batch.map(async (entry) => {
         const profile = await getPlayerProfile(redis, entry.username);
         return {
           ...entry,
           badges: profile?.badges ?? entry.badges,
-          totalWordsTyped: profile?.totalWordsTyped ?? entry.totalWordsTyped,
+          // Keep board-scoped counters; only refresh badge cosmetics.
         };
       })
     );
@@ -680,9 +751,30 @@ export async function snapshotWeekly(
   memoryCache.delete(`lb:${subredditId}:weekly:${endedWeek}`);
   await pushIndex(redis, `lb:${subredditId}:weekly:archives`, endedWeek);
 
+  // Layer 2 immutable freeze — refuses divergent overwrite if already frozen.
+  const freeze = await freezeSnapshot(redis, {
+    communityId: subredditId,
+    kind: 'weekly',
+    periodKey: endedWeek,
+    entries,
+    label: `Week of ${endedWeek}`,
+    now: now.getTime(),
+  });
+  if (!freeze.ok) {
+    console.warn(`[Leaderboard] Weekly freeze skipped: ${freeze.error}`);
+  }
+
   const badgeLabel = `Weekly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, entries.length); i++) {
-    await awardBadge(redis, entries[i]!.username, badgeLabel);
+    const player = entries[i]!.username;
+    await awardBadge(redis, player, badgeLabel);
+    // Career placements only on first successful freeze of this week.
+    if (freeze.ok && freeze.created) {
+      await recordCareerPlacement(redis, player, {
+        weeklyWin: i === 0,
+        weeklyTop3: true,
+      });
+    }
   }
 
   // Feed all-time with absolute counters from profiles when available
@@ -767,6 +859,18 @@ export async function snapshotMonthly(
   );
   await pushIndex(redis, `lb:${subredditId}:monthly:index`, mk);
 
+  const freeze = await freezeSnapshot(redis, {
+    communityId: subredditId,
+    kind: 'monthly',
+    periodKey: mk,
+    entries: monthEntries,
+    label: `Month ${mk}`,
+    now: now.getTime(),
+  });
+  if (!freeze.ok) {
+    console.warn(`[Leaderboard] Monthly freeze skipped: ${freeze.error}`);
+  }
+
   const badgeLabel = `Monthly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, monthEntries.length); i++) {
     await awardBadge(redis, monthEntries[i]!.username, badgeLabel);
@@ -814,6 +918,18 @@ export async function snapshotYearly(
     50,
     'replace'
   );
+
+  const freeze = await freezeSnapshot(redis, {
+    communityId: subredditId,
+    kind: 'yearly',
+    periodKey: yk,
+    entries: yearEntries,
+    label: `Year ${yk}`,
+    now: now.getTime(),
+  });
+  if (!freeze.ok) {
+    console.warn(`[Leaderboard] Yearly freeze skipped: ${freeze.error}`);
+  }
 
   const badgeLabel = `Yearly Champion - ${formatSubredditLabel(subredditName)}`;
   for (let i = 0; i < Math.min(3, yearEntries.length); i++) {
@@ -901,7 +1017,7 @@ export async function exportLeaderboardBackup(
 
   // Also keep a few prior live week keys if still present (no delete policy).
   for (let i = 1; i <= 4; i++) {
-    const wk = weekStartWithOffsetLocal(-i, now);
+    const wk = weekStartWithOffset(-i, now);
     if (weekly[wk]) continue;
     const rows = await readJson<LeaderboardEntry[]>(redis, `lb:${subredditId}:weekly:${wk}`, []);
     if (rows.length > 0) weekly[wk] = sortAndRank(rows, 25);
@@ -1098,13 +1214,6 @@ export async function importLeaderboardBackup(
   }
 
   return { imported: true, players: backup.profiles?.length ?? backup.alltime?.length ?? 0 };
-}
-
-/** Local week offset helper (avoids circular import from shared time in older call sites). */
-function weekStartWithOffsetLocal(offset: number, date = new Date()): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  d.setUTCDate(d.getUTCDate() - d.getUTCDay() + offset * 7);
-  return d.toISOString().split('T')[0]!;
 }
 
 export { monthKey, weekStartKey, yearKey };

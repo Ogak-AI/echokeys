@@ -24,6 +24,7 @@ import {
   snapshotMonthly,
   snapshotYearly,
   enrichPlayerBadges,
+  setKeyExpiry,
   weekStartKey,
 } from './services/leaderboard.js';
 import { broadcastWeeklyLeaderboard } from './services/realtime.js';
@@ -32,6 +33,12 @@ import {
   backupLeaderboardToWikiThrottled,
   syncLeaderboardWithWiki,
 } from './services/wikiBackup.js';
+import {
+  bootstrapPermanence,
+  getFrozenSnapshot,
+  listFrozenPeriods,
+  verifyPermanenceIntegrity,
+} from './services/permanence.js';
 import {
   createTournament,
   getTournament,
@@ -161,6 +168,8 @@ async function checkRateLimit(username: string, action: string, maxCount: number
   if (!Number.isFinite(count) || count >= maxCount) return false;
 
   await redis.set(key, String(count + 1));
+  // Hour-bucket keys must not live forever in installation Redis.
+  await setKeyExpiry(redis, key, 2 * 60 * 60);
 
   // Best-effort confirm: reject when a concurrent burst put us well over cap.
   // Tolerance of +2 handles the "two tabs submit simultaneously" case without
@@ -180,9 +189,15 @@ async function createRaceSession(username: string, challengeId: string): Promise
     challengeId,
     startedAt: Date.now(),
   };
-  await redis.set(`race:${session.id}`, JSON.stringify(session));
+  const raceKey = `race:${session.id}`;
+  const openKey = `race_open:${username}:${challengeId}`;
+  await redis.set(raceKey, JSON.stringify(session));
   // Soft index so a player cannot hold unlimited open races on one challenge.
-  await redis.set(`race_open:${username}:${challengeId}`, session.id);
+  await redis.set(openKey, session.id);
+  // Ephemeral: abandoned races must not accumulate in Redis forever.
+  const ttlSec = Math.ceil(RACE_TTL_MS / 1000) + 60;
+  await setKeyExpiry(redis, raceKey, ttlSec);
+  await setKeyExpiry(redis, openKey, ttlSec);
   return session;
 }
 
@@ -238,9 +253,10 @@ async function loadRaceSession(
     return { ok: false, error: 'Race session required', status: 400 };
   }
 
-  // Validate raceId format to prevent Redis key injection
-  // Expected format: "race-<timestamp>-<random6>" from newId('race')
-  if (!/^race-\d+-[a-z0-9]{6}$/.test(raceId)) {
+  // Validate raceId format to prevent Redis key injection.
+  // newId('race') produces: "race-<13-digit-timestamp>-<1-6 alphanumeric chars>"
+  // Math.random().toString(36).slice(2,8) yields 1–6 chars from [0-9a-z].
+  if (!/^race-\d{1,20}-[0-9a-z]{1,8}$/.test(raceId)) {
     return { ok: false, error: 'Invalid race session ID format', status: 400 };
   }
 
@@ -436,13 +452,63 @@ async function submitInteractiveCustomPost(opts: {
   });
 }
 
-// ---- Health ----
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+// ---- Health (+ optional permanence integrity) ----
+app.get('/api/health', async (req, res) => {
+  const base = {
+    status: 'ok' as const,
     timestamp: Date.now(),
     week: weekStartKey(),
-  });
+  };
+  // ?integrity=1 runs Layer-2 checks (deploy smoke / ops). Default stays cheap.
+  if (req.query.integrity === '1') {
+    try {
+      const subId = getSubredditId();
+      const integrity = await verifyPermanenceIntegrity(redis, subId);
+      return res.status(integrity.ok ? 200 : 503).json({
+        ...base,
+        status: integrity.ok ? 'ok' : 'degraded',
+        integrity,
+      });
+    } catch (err) {
+      console.error('[Health] Integrity check failed:', err);
+      return res.status(503).json({ ...base, status: 'degraded', error: 'integrity_failed' });
+    }
+  }
+  return res.json(base);
+});
+
+// ---- Permanent history (immutable frozen snapshots) ----
+app.get('/api/history/:kind/:periodKey', async (req, res) => {
+  try {
+    const kind = req.params.kind as 'weekly' | 'monthly' | 'yearly' | 'tournament' | 'season';
+    const periodKey = req.params.periodKey;
+    if (!['weekly', 'monthly', 'yearly', 'tournament', 'season'].includes(kind)) {
+      return res.status(400).json({ error: 'Invalid history kind' });
+    }
+    if (!periodKey || periodKey.length > 120) {
+      return res.status(400).json({ error: 'Invalid period key' });
+    }
+    const snap = await getFrozenSnapshot(redis, getSubredditId(), kind, periodKey);
+    if (!snap) return res.status(404).json({ error: 'Frozen history not found' });
+    return res.json({ snapshot: snap, immutable: true });
+  } catch (err) {
+    console.error('[API] History get error:', err);
+    return res.status(500).json({ error: 'Failed to load history' });
+  }
+});
+
+app.get('/api/history/:kind', async (req, res) => {
+  try {
+    const kind = req.params.kind as 'weekly' | 'monthly' | 'yearly' | 'tournament' | 'season';
+    if (!['weekly', 'monthly', 'yearly', 'tournament', 'season'].includes(kind)) {
+      return res.status(400).json({ error: 'Invalid history kind' });
+    }
+    const periods = await listFrozenPeriods(redis, getSubredditId(), kind, 100);
+    return res.json({ kind, periods, immutable: true });
+  } catch (err) {
+    console.error('[API] History list error:', err);
+    return res.status(500).json({ error: 'Failed to list history' });
+  }
 });
 
 // ---- Me ----
@@ -899,6 +965,10 @@ app.get('/api/tournament/:id', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'Tournament id required' });
     const tournament = await getTournament(redis, id);
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+    // Defense in depth: installation Redis is per-sub, but reject mismatched ids.
+    if (tournament.communityId && tournament.communityId !== getSubredditId()) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
     const standings = await getTournamentStandings(redis, id);
     const username = await resolveUsername();
     return res.json({
@@ -975,7 +1045,10 @@ app.post('/api/tournament/create', async (req, res) => {
       createdBy: username,
       challengeId: challenge.id,
       durationMs,
-      maxPlayers: typeof body.maxPlayers === 'number' ? body.maxPlayers : undefined,
+      maxPlayers:
+        typeof body.maxPlayers === 'number' && Number.isFinite(body.maxPlayers)
+          ? body.maxPlayers
+          : undefined,
       prompt: challenge.prompt,
       domain: challenge.domain,
     });
@@ -1023,6 +1096,15 @@ app.post('/api/tournament/:id/join', async (req, res) => {
     const allowed = await checkRateLimit(username, 'tournament-join', 30);
     if (!allowed) {
       return res.status(429).json({ error: 'Rate limit: too many join attempts' });
+    }
+
+    // Reject cross-community tournament ids before mutating membership.
+    const existing = await getTournament(redis, id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    if (existing.communityId && existing.communityId !== getSubredditId()) {
+      return res.status(404).json({ error: 'Tournament not found' });
     }
 
     const result = await joinTournament(redis, id, username);
@@ -1225,6 +1307,8 @@ app.post('/internal/on-app-install', async (_req, res) => {
     const subName = await getSubredditName();
     // Redis is empty after reinstall — restore ranks from subreddit wiki first.
     await syncLeaderboardWithWiki(redis, reddit, subId, subName);
+    // Layer 2 meta + integrity (never wipes data).
+    await bootstrapPermanence(redis, subId);
     await ensureHubPost();
     return res.json({ status: 'ok' });
   } catch (err) {
@@ -1240,6 +1324,8 @@ app.post('/internal/on-app-upgrade', async (_req, res) => {
     const subName = await getSubredditName();
     // Merge any wiki backup, then refresh wiki from live Redis.
     await syncLeaderboardWithWiki(redis, reddit, subId, subName);
+    // Additive schema ensure + integrity report (never destructive).
+    await bootstrapPermanence(redis, subId);
     await ensureHubPost();
     return res.json({ status: 'ok' });
   } catch (err) {

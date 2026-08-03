@@ -23,7 +23,6 @@ const MARKER_START = '<!-- echokeys-lb-v1 -->';
 const MARKER_END = '<!-- /echokeys-lb-v1 -->';
 /** Stay under typical wiki size limits. */
 const MAX_WIKI_CHARS = 450_000;
-const BACKUP_THROTTLE_KEY = 'echokeys:wiki-backup:last';
 /** Minimum gap between score-triggered backups (ms). */
 export const BACKUP_THROTTLE_MS = 5 * 60 * 1000;
 

@@ -1,52 +1,38 @@
 # Technology Stack
 
-## Core Technologies
+## Core
 
-- **Devvit**: Reddit's developer platform for building apps
-- **React.JS**: Frontend engine for client rendering
-- **TypeScript**: Primary language with strict type checking
-- **Vite**: Build tool for both client and server bundles
-- **Express**: Server-side HTTP framework
-- **Redis**: Data persistence layer (via Devvit)
+- **Devvit** 0.13.x — Reddit app platform
+- **React 19** + **TypeScript** — client UI
+- **Vite 6** — client multi-page build + server CJS bundle
+- **Express 5** — HTTP API
+- **Redis** (Devvit) — primary persistence
+- **Subreddit wiki** — cold leaderboard backup
+- **Vitest** — unit tests
 
-## Build System
-
-- **Vite** handles compilation for both client and server
-- **TypeScript** project references for modular compilation
-- **ESLint** with TypeScript rules for code quality
-- **Prettier** for consistent code formatting
-
-## Common Commands
+## Commands
 
 ```bash
-# Development (runs client, server, and devvit in parallel)
-npm run dev
-
-# Build for production
-npm run build
-
-# Deploy to Reddit
-npm run deploy
-
-# Publish for review
-npm run launch
-
-# Code quality checks
-npm run check
-
-# Individual builds
-npm run build:client
-npm run build:server
+npm install
+npm test
+npm run check          # tsc --build
+npm run build          # client + server
+npm run dev            # build + devvit playtest
+npm run deploy         # build + devvit upload
+npm run publish:app    # build + upload + publish
 ```
 
-## Development Workflow
+## Workflow
 
-- Use `npm run dev` for live development with hot reloading
-- Client builds to `dist/client` with HTML entry point
-- Server builds to `dist/server` as CommonJS module
-- Devvit playtest provides live Reddit integration testing
+1. Edit source under `src/` or `content/`.
+2. `npm test` and `npm run check`.
+3. `npm run build` before deploy.
+4. `npm run dev` for playtest on `r/echokeys_dev`.
 
-## Dependencies
+## Quality gates
 
-- **Runtime**: @devvit/web, React.JS, express
-- **Development**: TypeScript, ESLint, Prettier, Vite, Vitest
+- Unit tests (`npm test`)
+- Typecheck (`npm run check`)
+- CI: `.github/workflows/ci.yml` (install, check, test, build)
+
+There is no ESLint toolchain in package.json; do not assume `eslint` is available.

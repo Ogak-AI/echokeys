@@ -39,6 +39,44 @@ function makeScore(
 // ---------------------------------------------------------------------------
 // createTournament
 // ---------------------------------------------------------------------------
+describe('joinTournament capacity', () => {
+  let redis: RedisMock;
+
+  beforeEach(() => {
+    memoryCache.clear();
+    redis = createRedisMock();
+  });
+
+  it('rejects joins once maxPlayers is reached', async () => {
+    await createTournament(redis, {
+      id: 'trn-cap',
+      name: 'Tiny',
+      communityId: 'sub-a',
+      createdBy: 'host',
+      challengeId: 'ch-1',
+      maxPlayers: 2,
+    });
+    const second = await joinTournament(redis, 'trn-cap', 'alice');
+    expect(second.ok).toBe(true);
+    const third = await joinTournament(redis, 'trn-cap', 'bob');
+    expect(third.ok).toBe(false);
+    if (!third.ok) expect(third.error).toMatch(/full/i);
+  });
+
+  it('treats non-finite maxPlayers as default capacity (not NaN-unlimited)', async () => {
+    const t = await createTournament(redis, {
+      id: 'trn-nan',
+      name: 'NaN Max',
+      communityId: 'sub-a',
+      createdBy: 'host',
+      challengeId: 'ch-1',
+      maxPlayers: Number.NaN,
+    });
+    expect(Number.isFinite(t.maxPlayers)).toBe(true);
+    expect(t.maxPlayers).toBe(DEFAULT_MAX_PLAYERS);
+  });
+});
+
 describe('createTournament', () => {
   let redis: RedisMock;
 

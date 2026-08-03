@@ -11,7 +11,9 @@ import type {
 } from '../../shared/types/index.js';
 import { isBetterRun } from '../../shared/types/index.js';
 import type { RedisLike } from './leaderboard.js';
+import { recordCareerPlacement } from './leaderboard.js';
 import { memoryCache } from './memoryCache.js';
+import { freezeSnapshot } from './permanence.js';
 
 export const DEFAULT_TOURNAMENT_DURATION_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_MAX_PLAYERS = 50;
@@ -110,6 +112,9 @@ export async function getTournament(
       if (status !== cached.status) {
         cached.status = status;
         await saveTournament(redis, cached);
+        if (status === 'closed') {
+          await archiveTournamentStandings(redis, cached);
+        }
       }
       return cached;
     }
@@ -122,10 +127,42 @@ export async function getTournament(
   if (status !== tournament.status) {
     tournament.status = status;
     await saveTournament(redis, tournament);
+    // Closing freezes final standings permanently (Layer 2).
+    if (status === 'closed') {
+      await archiveTournamentStandings(redis, tournament);
+    }
   } else {
     memoryCache.set(key, tournament, 10000);
   }
   return tournament;
+}
+
+/**
+ * Freeze tournament standings when the cup ends.
+ * Idempotent: re-close does not rewrite a frozen archive.
+ */
+export async function archiveTournamentStandings(
+  redis: RedisLike,
+  tournament: Tournament
+): Promise<void> {
+  const standings = await getTournamentStandings(redis, tournament.id);
+  if (standings.length === 0) {
+    console.log(`[Tournament] Archive skipped — empty standings for ${tournament.id}`);
+    return;
+  }
+  const freeze = await freezeSnapshot(redis, {
+    communityId: tournament.communityId,
+    kind: 'tournament',
+    periodKey: tournament.id,
+    entries: standings,
+    label: tournament.name,
+  });
+  if (freeze.ok && freeze.created && standings[0]) {
+    await recordCareerPlacement(redis, standings[0].username, { tournamentWin: true });
+  }
+  if (!freeze.ok) {
+    console.warn(`[Tournament] Freeze refused for ${tournament.id}: ${freeze.error}`);
+  }
 }
 
 async function pushCommunityIndex(
@@ -167,10 +204,12 @@ export async function createTournament(
     60 * 60 * 1000,
     Math.min(input.durationMs ?? DEFAULT_TOURNAMENT_DURATION_MS, 14 * 24 * 60 * 60 * 1000)
   );
-  const maxPlayers = Math.max(
-    2,
-    Math.min(input.maxPlayers ?? DEFAULT_MAX_PLAYERS, 200)
-  );
+  // NaN is typeof 'number' — must reject non-finite so capacity checks work.
+  const rawMax =
+    typeof input.maxPlayers === 'number' && Number.isFinite(input.maxPlayers)
+      ? input.maxPlayers
+      : DEFAULT_MAX_PLAYERS;
+  const maxPlayers = Math.max(2, Math.min(rawMax, 200));
   const name = sanitizeTournamentName(
     input.name,
     `Tournament by ${createdBy}`
@@ -229,7 +268,30 @@ export async function joinTournament(
 
   tournament.participants.push(player);
   await saveTournament(redis, tournament);
-  return { ok: true, tournament, alreadyJoined: false };
+
+  // Re-read after write: concurrent joins can race past maxPlayers (no Redis MULTI).
+  // Enforce capacity by trimming overflow; reject this join if the player was cut.
+  const confirmed = await getTournament(redis, tournamentId, now);
+  if (!confirmed) {
+    return { ok: false, error: 'Tournament not found' };
+  }
+
+  if (confirmed.participants.length > confirmed.maxPlayers) {
+    const unique = [...new Set(confirmed.participants.map((p) => p.toLowerCase()))];
+    const capped = unique.slice(0, confirmed.maxPlayers);
+    confirmed.participants = capped;
+    await saveTournament(redis, confirmed);
+    if (!capped.includes(player)) {
+      return { ok: false, error: 'Tournament is full' };
+    }
+  }
+
+  if (!confirmed.participants.includes(player)) {
+    // Lost a concurrent overwrite — surface as full rather than a false join.
+    return { ok: false, error: 'Tournament is full' };
+  }
+
+  return { ok: true, tournament: confirmed, alreadyJoined: false };
 }
 
 export async function listCommunityTournaments(

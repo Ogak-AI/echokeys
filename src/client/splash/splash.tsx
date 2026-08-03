@@ -110,15 +110,15 @@ const Splash = () => {
     <div className="app-shell">
 
       {/* ── Identity header ── */}
-      <div className="splash-header">
-        <div className="splash-wordmark">echo<em>keys</em></div>
-        <div className="splash-tagline">
+      <header className="splash-header">
+        <h1 className="splash-wordmark">echo<em>keys</em></h1>
+        <p className="splash-tagline">
           {isTournamentPost
             ? 'Community tournament — same excerpt for everyone.'
             : 'Race 2,000+ words. Rank by correct words, then time.'}
-        </div>
-        {communityLabel && <div className="splash-community">{communityLabel}</div>}
-      </div>
+        </p>
+        {communityLabel && <p className="splash-community">{communityLabel}</p>}
+      </header>
 
       {/* ── User row ── */}
       <div className="splash-user-row">
@@ -212,11 +212,29 @@ const Splash = () => {
               </p>
             )}
             {openTournaments.length > 0 && (
-              <div style={{ marginTop: '0.6rem' }}>
+              <div style={{ marginTop: '0.6rem' }} role="list" aria-label="Open tournaments">
                 {openTournaments.map(t => (
-                  <div key={t.id} className="open-tournament-row">
+                  <div key={t.id} className="open-tournament-row" role="listitem">
                     <span className="open-tournament-name">{t.name}</span>
-                    <span style={{ flexShrink: 0 }}>{t.participantCount}/{t.maxPlayers} · {formatEndsAt(t.endsAt)}</span>
+                    <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>{t.participantCount}/{t.maxPlayers} · {formatEndsAt(t.endsAt)}</span>
+                      {t.postId ? (
+                        <button
+                          type="button"
+                          className="vsc-btn vsc-btn-ghost vsc-btn-sm"
+                          disabled={busy}
+                          onClick={() => {
+                            void navigateTo(
+                              t.postId!.startsWith('t3_')
+                                ? `https://www.reddit.com/comments/${t.postId!.slice(3)}`
+                                : `https://www.reddit.com/comments/${t.postId}`
+                            );
+                          }}
+                        >
+                          Open
+                        </button>
+                      ) : null}
+                    </span>
                   </div>
                 ))}
               </div>

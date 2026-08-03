@@ -20,7 +20,7 @@ You never paste your own text. The app always chooses a random excerpt from its 
 2. If tied, lowest time wins  
 3. Further ties: accuracy, then WPM  
 
-Partial runs need **50%+** progress to rank. Each player keeps their **best single run** for the period.
+Partial runs rank when they have **20+ correct words**, or **50%+** progress with at least one correct word. Each player keeps their **best single run** for the period.
 
 ## What moderators do
 
@@ -57,14 +57,16 @@ Devvit clears installation Redis when an app is uninstalled. Echokeys mirrors ra
 |--------|----------------|
 | Ranked score (throttled) | Backup to wiki |
 | Daily job (06:00 UTC) | Full wiki backup |
-| Weekly / monthly / yearly snapshot | Snapshot + wiki backup |
-| Install or upgrade | Restore from wiki into Redis, then refresh wiki |
+| Weekly / monthly / yearly snapshot | Archive + **immutable freeze** + wiki backup |
+| Tournament end | Standings frozen permanently |
+| Install or upgrade | Restore from wiki into Redis, bootstrap permanence meta, refresh wiki |
 
-App code **never deletes** leaderboard Redis keys, never overwrites a non-empty board with empty data, and **merges** on restore (best run wins).
+App code **never deletes** leaderboard or permanence Redis keys, never overwrites a non-empty board with empty data, and **merges** on restore (best run wins). Frozen period snapshots refuse divergent overwrites (historical winners stay sealed).
 
 **Notes**
 
-- The **Weekly** tab is the current week only (new week starts empty by design). Past weeks and **All-time** stay stored.
+- The **Weekly** tab is the current week only (new week starts empty by design). Past weeks are archived/frozen; **All-time** stays stored.
+- Player **career** counters (races, weekly top-3, tournament wins) live on the profile and do not reset with the weekly board.
 - Wiki restore needs the app to edit the subreddit wiki (normal for installed apps with mod rights). If wiki is disabled for the community, ranks still work in Redis until uninstall.
 - Moderators should not manually edit the backup page.
 
@@ -84,20 +86,23 @@ npm run check
 npm run build
 npm run dev       # build + playtest on r/echokeys_dev
 npm run deploy    # build + upload
-npx devvit publish
+npm run publish:app
 ```
 
 | Path | Purpose |
 |------|---------|
 | `content/knowledge-base.txt` | Built-in race source pool (≥ 2,000 words) |
 | `src/client/` | Splash, game, leaderboard UI |
-| `src/server/` | API, leaderboards, wiki backup |
-| `src/shared/` | Types, ranking helpers, race excerpt |
-| `tests/` | Unit tests |
+| `src/server/` | API, leaderboards, freezes, wiki backup |
+| `src/shared/` | Types, ranking helpers, race excerpt, permanence types |
+| `tests/` | Unit tests (incl. permanence / integrity) |
+| `docs/` | Architecture, Redis inventory, deploy guide |
 
 Playtest community: `r/echokeys_dev` (`dev.subreddit` in `devvit.json`).
 
-Example review post: create or open **Play Echokeys Typing Game** on the development subreddit after `npx devvit install echokeys_dev`.
+### Deploy checklist
+
+See **`docs/DEPLOY.md`**. Minimum gate: `npm test && npm run check && npm run build`.
 
 ### Knowledge base
 
@@ -106,6 +111,15 @@ Edit `content/knowledge-base.txt`, then `npm run build`. Plain text with real se
 Optional local env (`.env.template`):
 
 - `DEVVIT_SUBREDDIT` — playtest subreddit for `npm run dev`
+
+### Ops endpoints (server)
+
+| Path | Purpose |
+|------|---------|
+| `GET /api/health` | Liveness |
+| `GET /api/health?integrity=1` | Permanence integrity report |
+| `GET /api/history/:kind` | List frozen period keys |
+| `GET /api/history/:kind/:periodKey` | Immutable snapshot |
 
 ## License
 

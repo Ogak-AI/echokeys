@@ -59,4 +59,14 @@ describe('memoryCache', () => {
     memoryCache.set('over', 'second', 10_000);
     expect(memoryCache.get('over')).toBe('second');
   });
+
+  it('evicts oldest entries when over max capacity', () => {
+    // Default max is 500; fill past it with tiny TTLs still live.
+    for (let i = 0; i < 520; i++) {
+      memoryCache.set(`cap-${i}`, i, 60_000);
+    }
+    expect(memoryCache.size()).toBeLessThanOrEqual(500);
+    // Newest keys should still be present.
+    expect(memoryCache.get('cap-519')).toBe(519);
+  });
 });

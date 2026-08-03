@@ -106,8 +106,10 @@ export function useTypingGame(challenge: Challenge | null) {
 
   const t0 = useRef<number>(0);
   const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const throttleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isThrottledRef = useRef(false);
   const lastTypeAt = useRef(0);
+  /** Code-point length of last accepted input (must match server codePoints). */
   const lastLen = useRef(0);
   const inputRef = useRef('');
   const mutedRef = useRef(true);
@@ -178,6 +180,11 @@ export function useTypingGame(challenge: Challenge | null) {
     return () => {
       cancelSpeech();
       stopSpeechKeepAlive();
+      if (throttleTimer.current != null) {
+        clearTimeout(throttleTimer.current);
+        throttleTimer.current = undefined;
+      }
+      clearInterval(timer.current);
     };
   }, []);
 
@@ -188,10 +195,13 @@ export function useTypingGame(challenge: Challenge | null) {
       throttled: true,
       ...(wpmHint != null ? { wpm: wpmHint } : {}),
     }));
-    setTimeout(() => {
+    if (throttleTimer.current != null) clearTimeout(throttleTimer.current);
+    throttleTimer.current = setTimeout(() => {
+      throttleTimer.current = undefined;
       isThrottledRef.current = false;
       lastTypeAt.current = Date.now();
-      lastLen.current = inputRef.current.length;
+      // Code points — never UTF-16 length (emoji / surrogates).
+      lastLen.current = codePoints(inputRef.current).length;
       setState((p) => ({ ...p, throttled: false }));
     }, THROTTLE_LOCK_MS);
   }, []);

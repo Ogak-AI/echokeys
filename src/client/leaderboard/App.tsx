@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type {
   LeaderboardEntry,
   ContentDomain,
@@ -51,7 +51,9 @@ export const App = () => {
   const [profileData, setProfileData]   = useState<ProfilePayload | null>(null);
   const [profileLoadedOnce, setProfileLoadedOnce] = useState(false);
 
-  const liveEnabled = activeTab === 'weekly' && weekOffset === 0 && !hasTournament;
+  // Live weekly updates apply whenever the current week is visible — tournament
+  // posts still expose weekly/all-time tabs and should not disable realtime.
+  const liveEnabled = activeTab === 'weekly' && weekOffset === 0;
   const live = useLiveLeaderboard({ subredditId, enabled: liveEnabled });
 
   const viewerUsername = (context?.username ?? '').toLowerCase();
@@ -153,12 +155,12 @@ export const App = () => {
       {/* ── Header ── */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-          <span className="app-header-title">
+          <h1 className="app-header-title" style={{ margin: 0, fontSize: 'inherit', fontWeight: 'inherit' }}>
             {activeTab === 'tournament' ? 'Tournament' : 'Rankings'}
-          </span>
+          </h1>
           <span className="mono muted truncate" style={{ fontSize: '0.625rem' }}>{communityLabel}</span>
           {liveEnabled && live.updatedAt && (
-            <span className="chip" style={{ color: 'var(--color-green)', borderColor: 'rgba(61,255,160,0.2)' }}>live</span>
+            <span className="chip" style={{ color: 'var(--color-green)', borderColor: 'rgba(61,255,160,0.2)' }} aria-live="polite">live</span>
           )}
         </div>
         <button onClick={() => { window.location.href = 'splash.html'; }} className="vsc-btn vsc-btn-ghost vsc-btn-sm" type="button">
@@ -167,7 +169,7 @@ export const App = () => {
       </header>
 
       {/* ── Tabs ── */}
-      <div className="tab-bar">
+      <div className="tab-bar" role="tablist" aria-label="Leaderboard periods">
         {([
           ...(hasTournament ? [['tournament', 'Cup']] : []),
           ['weekly',   'Week'],
@@ -178,6 +180,8 @@ export const App = () => {
         ] as [Tab, string][]).map(([id, label]) => (
           <button
             key={id} type="button"
+            role="tab"
+            aria-selected={activeTab === id}
             className={`tab-btn ${activeTab === id ? 'active' : ''}`}
             onClick={() => {
               setActiveTab(id);
@@ -234,8 +238,22 @@ export const App = () => {
             <p className="muted" style={{ fontSize: '0.75rem' }}>Loading…</p>
           </div>
         ) : error ? (
-          <div style={{ padding: '1.25rem' }}>
-            <div className="alert-error">{error}</div>
+          <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div className="alert-error" role="alert">{error}</div>
+            <button
+              type="button"
+              className="vsc-btn vsc-btn-ghost"
+              onClick={() => {
+                if (activeTab === 'profile') {
+                  setProfileLoadedOnce(false);
+                  void fetchProfile(profileSearch);
+                } else {
+                  void fetchLeaderboard();
+                }
+              }}
+            >
+              Retry
+            </button>
           </div>
         ) : activeTab === 'profile' ? (
           <ProfileView

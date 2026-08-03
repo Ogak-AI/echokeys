@@ -8,6 +8,8 @@ import {
   importLeaderboardBackup,
   exportLeaderboardBackup,
   backupHasData,
+  enrichPlayerBadges,
+  setKeyExpiry,
 } from '../src/server/services/leaderboard.js';
 import type { PlayerScore, LeaderboardEntry } from '../src/shared/types/index.js';
 import { isBetterRun } from '../src/shared/types/index.js';
@@ -87,6 +89,85 @@ describe('saveScore', () => {
     expect(lb).toHaveLength(1);
     expect(lb[0]!.username).toBe('bob');
     expect(lb[0]!.bestCorrectWords).toBe(50);
+  });
+
+  it('accumulates week-scoped totalWordsTyped (not lifetime profile total)', async () => {
+    await saveScore(
+      redis,
+      makeScore({
+        id: 'sc-words-1',
+        username: 'wally',
+        communityId: 'sub-words',
+        wordsTyped: 40,
+        correctWords: 30,
+      })
+    );
+    await saveScore(
+      redis,
+      makeScore({
+        id: 'sc-words-2',
+        username: 'wally',
+        communityId: 'sub-words',
+        wordsTyped: 25,
+        correctWords: 20,
+        timeSeconds: 90,
+      })
+    );
+    const lb = await getWeeklyLeaderboard(redis, 'sub-words');
+    expect(lb[0]!.totalWordsTyped).toBe(65);
+    const profile = await getPlayerProfile(redis, 'wally');
+    // Profile is lifetime; weekly board must stay period-scoped.
+    expect(profile!.totalWordsTyped).toBe(65);
+  });
+
+  it('enrichPlayerBadges does not overwrite period totalWordsTyped with lifetime', async () => {
+    await saveScore(
+      redis,
+      makeScore({
+        id: 'sc-enrich-1',
+        username: 'erin',
+        communityId: 'sub-enrich',
+        wordsTyped: 30,
+        correctWords: 28,
+      })
+    );
+    // Simulate extra lifetime activity not on this board snapshot path by
+    // updating profile after a second save on another community key... we only
+    // need badges enrichment: period words must stay board-scoped.
+    const weekly = await getWeeklyLeaderboard(redis, 'sub-enrich');
+    expect(weekly[0]!.totalWordsTyped).toBe(30);
+
+    // Inflate profile lifetime words beyond the board entry.
+    const profile = await getPlayerProfile(redis, 'erin');
+    expect(profile).toBeTruthy();
+    await redis.set(
+      'player:erin',
+      JSON.stringify({ ...profile!, totalWordsTyped: 9999, badges: ['Weekly Champion - r/test'] })
+    );
+    memoryCache.delete('player:erin');
+
+    const enriched = await enrichPlayerBadges(redis, weekly);
+    expect(enriched[0]!.totalWordsTyped).toBe(30);
+    expect(enriched[0]!.badges.some((b) => b.includes('Weekly'))).toBe(true);
+  });
+
+  it('setKeyExpiry is a no-op when expire is missing and works when present', async () => {
+    const bare = {
+      get: async () => undefined,
+      set: async () => {},
+      del: async () => {},
+    };
+    await expect(setKeyExpiry(bare, 'k', 60)).resolves.toBeUndefined();
+
+    const calls: Array<[string, number]> = [];
+    const withExpire = {
+      ...bare,
+      expire: async (key: string, seconds: number) => {
+        calls.push([key, seconds]);
+      },
+    };
+    await setKeyExpiry(withExpire, 'race:1', 120.4);
+    expect(calls).toEqual([['race:1', 121]]);
   });
 
   it('updates all-time leaderboard', async () => {

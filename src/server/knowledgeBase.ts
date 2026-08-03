@@ -41,8 +41,3 @@ export function getKnowledgeBaseSource():
 
   return { ok: true, source, wordCount };
 }
-
-export function knowledgeBaseWordCount(): number {
-  const result = getKnowledgeBaseSource();
-  return result.ok ? result.wordCount : 0;
-}

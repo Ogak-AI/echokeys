@@ -440,6 +440,55 @@ describe('validatePlayMetrics', () => {
       expect(result.metrics.progress).toBeGreaterThanOrEqual(MIN_LEADERBOARD_PROGRESS);
     }
   });
+
+  it('scores final buffer after simulated backspaces (only final typed matters)', () => {
+    // User typed wrong then corrected — server only sees final buffer.
+    const content = 'the quick brown fox';
+    const typed = 'the quick brown fox';
+    const result = validatePlayMetrics({ typedRaw: typed, content, timeSeconds: 25 });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.metrics.accuracy).toBe(100);
+      expect(result.metrics.correctWords).toBe(4);
+      expect(result.metrics.wpm).toBe(calculateWpm(codePoints(typed).length, 25));
+    }
+  });
+
+  it('handles emoji in content and typed (code-point metrics)', () => {
+    const content = 'go 👍 team';
+    const result = validatePlayMetrics({ typedRaw: content, content, timeSeconds: 8 });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.metrics.charsTyped).toBe(codePoints(content).length);
+      expect(result.metrics.correctChars).toBe(codePoints(content).length);
+      expect(result.metrics.correctWords).toBe(3);
+    }
+  });
+
+  it('accepts slow typing well under the speed ceiling', () => {
+    const content = 'slow and steady wins the race today';
+    // ~5 chars/sec is far under 35 cps max
+    const result = validatePlayMetrics({ typedRaw: content, content, timeSeconds: 40 });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.metrics.wpm).toBeLessThan(MAX_WPM);
+      expect(result.metrics.accuracy).toBe(100);
+    }
+  });
+
+  it('strips control characters from typed input', () => {
+    const content = 'hello';
+    const result = validatePlayMetrics({
+      typedRaw: 'he\u0000llo',
+      content,
+      timeSeconds: 10,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.metrics.typed).toBe('hello');
+      expect(result.metrics.accuracy).toBe(100);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

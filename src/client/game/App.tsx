@@ -110,7 +110,8 @@ export const App = () => {
     tournamentIdRef.current = tournamentId;
   }, [tournamentId]);
 
-  const isPlaying = phase === 'playing' || phase === 'idle';
+  /** Active typing only — idle must not lock scroll or show the teleprompter shell. */
+  const isPlaying = phase === 'playing';
   const isEnded = phase === 'finished' || phase === 'timeout';
 
   /** Open a server race session so score time is server-authoritative. */
@@ -428,7 +429,7 @@ export const App = () => {
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Submit failed';
-      console.error('Submit score error:', err);
+      console.error('[Game] Submit score error:', err);
       setError(message);
       submittedKeys.delete(key);
 
@@ -606,10 +607,15 @@ export const App = () => {
         <div className="results-shell">
           {/* Outcome headline */}
           <div className="results-hero">
-            <div className={`results-outcome ${isTimeout ? 'timeout' : 'complete'}`}>
+            <h1 className={`results-outcome ${isTimeout ? 'timeout' : 'complete'}`}>
               {isTimeout ? "Time's up" : 'Complete'}
-            </div>
-            {communityLabel && <div className="results-community">{communityLabel}{tournamentName ? ` · ${tournamentName}` : ''}</div>}
+            </h1>
+            {communityLabel && (
+              <p className="results-community">
+                {communityLabel}
+                {tournamentName ? ` · ${tournamentName}` : ''}
+              </p>
+            )}
           </div>
 
           {submitting && !results ? (
@@ -938,7 +944,7 @@ export const App = () => {
               </div>
             </div>
 
-            <div className="game-stats-row">
+            <div className="game-stats-row" aria-live="polite" aria-atomic="true">
               <div className="stat-box">
                 <div className="stat-val stat-val-accent">{correctWords}</div>
                 <div className="stat-lbl">Correct</div>
