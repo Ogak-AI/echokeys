@@ -69,6 +69,8 @@ App code **never deletes** leaderboard or permanence Redis keys, never overwrite
 - Player **career** counters (races, weekly top-3, tournament wins) live on the profile and do not reset with the weekly board.
 - Wiki restore needs the app to edit the subreddit wiki (normal for installed apps with mod rights). If wiki is disabled for the community, ranks still work in Redis until uninstall.
 - Moderators should not manually edit the backup page.
+- If ranks look empty after a reinstall or playtest reset: open the subreddit menu → **Restore Echokeys Leaderboard** (mods). Opening Rankings also auto-tries a wiki restore when all-time is empty.
+- Confirm the backup page exists: `https://www.reddit.com/r/<your_sub>/wiki/echokeys/leaderboard-backup` (mods only).
 
 ## Privacy and data
 

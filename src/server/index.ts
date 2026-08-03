@@ -31,6 +31,8 @@ import { broadcastWeeklyLeaderboard } from './services/realtime.js';
 import {
   backupLeaderboardToWiki,
   backupLeaderboardToWikiThrottled,
+  ensureLeaderboardsHydrated,
+  restoreLeaderboardFromWiki,
   syncLeaderboardWithWiki,
 } from './services/wikiBackup.js';
 import {
@@ -82,15 +84,33 @@ function getSubredditId(): string {
   return context.subredditId || 'global';
 }
 
+/**
+ * Resolve bare-or-prefixed subreddit name for wiki/API.
+ * Do NOT invent a wrong community (that would restore/backup the wrong wiki page).
+ */
 async function getSubredditName(): Promise<string> {
   if (context.subredditName) return formatSubredditLabel(context.subredditName);
   try {
     const sub = await reddit.getCurrentSubreddit();
     if (sub?.name) return formatSubredditLabel(sub.name);
-  } catch {
-    // local testing or fallback
+  } catch (err) {
+    console.warn('[Echokeys] getCurrentSubreddit failed:', err);
   }
-  return 'r/echokeys';
+  console.error(
+    '[Echokeys] Subreddit name unresolved — wiki backup/restore cannot run safely'
+  );
+  return '';
+}
+
+/** If ranks are missing from Redis, pull them back from the wiki (merge-only). */
+async function hydrateLeaderboardsIfNeeded(): Promise<void> {
+  const subName = await getSubredditName();
+  if (!subName) return;
+  try {
+    await ensureLeaderboardsHydrated(redis, reddit, getSubredditId(), subName);
+  } catch (err) {
+    console.warn('[WikiBackup] Auto-hydrate failed:', err);
+  }
 }
 
 async function resolveUsername(): Promise<string> {
@@ -856,8 +876,10 @@ app.post('/api/score/submit', async (req, res) => {
 });
 
 // ---- Leaderboards (community-scoped) ----
+// Empty all-time after Redis wipe → auto-merge from wiki before serving.
 app.get('/api/leaderboard/weekly', async (_req, res) => {
   try {
+    await hydrateLeaderboardsIfNeeded();
     const entries = await enrichPlayerBadges(
       redis,
       await getWeeklyLeaderboard(redis, getSubredditId())
@@ -871,6 +893,7 @@ app.get('/api/leaderboard/weekly', async (_req, res) => {
 
 app.get('/api/leaderboard/weekly/:weekStart', async (req, res) => {
   try {
+    await hydrateLeaderboardsIfNeeded();
     const weekStart = req.params.weekStart;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
       return res.status(400).json({ error: 'Invalid week key (use YYYY-MM-DD)' });
@@ -887,6 +910,7 @@ app.get('/api/leaderboard/weekly/:weekStart', async (req, res) => {
 
 app.get('/api/leaderboard/monthly/:yearMonth', async (req, res) => {
   try {
+    await hydrateLeaderboardsIfNeeded();
     const yearMonth = req.params.yearMonth;
     if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
       return res.status(400).json({ error: 'Invalid month key (use YYYY-MM)' });
@@ -903,6 +927,7 @@ app.get('/api/leaderboard/monthly/:yearMonth', async (req, res) => {
 
 app.get('/api/leaderboard/yearly/:year', async (req, res) => {
   try {
+    await hydrateLeaderboardsIfNeeded();
     const year = req.params.year;
     if (!/^\d{4}$/.test(year)) {
       return res.status(400).json({ error: 'Invalid year key (use YYYY)' });
@@ -919,6 +944,7 @@ app.get('/api/leaderboard/yearly/:year', async (req, res) => {
 
 app.get('/api/leaderboard/all-time', async (_req, res) => {
   try {
+    await hydrateLeaderboardsIfNeeded();
     const entries = await enrichPlayerBadges(
       redis,
       await getAllTimeLeaderboard(redis, getSubredditId())
@@ -1195,6 +1221,63 @@ app.post('/internal/menu/create-challenge', async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create challenge';
     console.error('[Menu] Create challenge error:', err);
+    return res.json({
+      showToast: { text: message, appearance: 'neutral' },
+    } satisfies UiResponse);
+  }
+});
+
+// Menu: force restore ranks from wiki (mods) — recovers after Redis wipe / failed install restore
+app.post('/internal/menu/restore-leaderboard', async (_req, res) => {
+  try {
+    const mod = await requireModerator();
+    if (!mod.ok) {
+      return res.json({
+        showToast: {
+          text: 'Only moderators can restore the leaderboard backup.',
+          appearance: 'neutral',
+        },
+      } satisfies UiResponse);
+    }
+
+    const subId = getSubredditId();
+    const subName = await getSubredditName();
+    if (!subName) {
+      return res.json({
+        showToast: {
+          text: 'Could not resolve community name for wiki restore.',
+          appearance: 'neutral',
+        },
+      } satisfies UiResponse);
+    }
+
+    const result = await restoreLeaderboardFromWiki(redis, reddit, subId, subName);
+    if (result.restored) {
+      // Refresh wiki from recovered Redis so cold mirror stays warm.
+      await backupLeaderboardToWiki(
+        redis,
+        reddit,
+        subId,
+        subName,
+        'Echokeys leaderboard after manual restore'
+      );
+      return res.json({
+        showToast: {
+          text: `Leaderboard restored (${result.players} players). Open Rankings to refresh.`,
+          appearance: 'success',
+        },
+      } satisfies UiResponse);
+    }
+
+    return res.json({
+      showToast: {
+        text: 'No wiki backup found (or already empty). Check r/…/wiki/echokeys/leaderboard-backup',
+        appearance: 'neutral',
+      },
+    } satisfies UiResponse);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Restore failed';
+    console.error('[Menu] Restore leaderboard error:', err);
     return res.json({
       showToast: { text: message, appearance: 'neutral' },
     } satisfies UiResponse);

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   parseBackupContent,
   BACKUP_THROTTLE_MS,
+  ensureLeaderboardsHydrated,
+  type WikiReddit,
 } from '../src/server/services/wikiBackup.js';
 import {
   exportLeaderboardBackup,
@@ -11,6 +13,7 @@ import {
   getAllTimeLeaderboard,
   getWeeklyLeaderboard,
   getPlayerProfile,
+  type LeaderboardBackupV1,
 } from '../src/server/services/leaderboard.js';
 import type { PlayerScore, LeaderboardEntry } from '../src/shared/types/index.js';
 import { memoryCache } from '../src/server/services/memoryCache.js';
@@ -42,7 +45,10 @@ function makeMinimalBackup(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeLeaderboardEntry(username: string): LeaderboardEntry {
+function makeLeaderboardEntry(
+  username: string,
+  overrides: Partial<LeaderboardEntry> = {}
+): LeaderboardEntry {
   return {
     rank: 1,
     username,
@@ -55,6 +61,7 @@ function makeLeaderboardEntry(username: string): LeaderboardEntry {
     totalWordsTyped: 80,
     bestCorrectWords: 80,
     bestTimeSeconds: 60,
+    ...overrides,
   };
 }
 
@@ -331,5 +338,80 @@ describe('importLeaderboardBackup merge without wipe', () => {
     const empty = makeMinimalBackup();
     const result = await importLeaderboardBackup(redis, empty);
     expect(result.imported).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureLeaderboardsHydrated — auto restore when all-time empty
+// ---------------------------------------------------------------------------
+describe('ensureLeaderboardsHydrated', () => {
+  let redis: RedisMock;
+
+  beforeEach(() => {
+    memoryCache.clear();
+    redis = createRedisMock();
+  });
+
+  function wikiWithBackup(backup: LeaderboardBackupV1): WikiReddit {
+    const content = [
+      '<!-- echokeys-lb-v1 -->',
+      JSON.stringify(backup),
+      '<!-- /echokeys-lb-v1 -->',
+    ].join('\n');
+    return {
+      getWikiPage: async () => ({ content } as { content: string }),
+      createWikiPage: async () => ({} as never),
+      updateWikiPage: async () => ({} as never),
+      updateWikiPageSettings: async () => ({} as never),
+    };
+  }
+
+  it('restores all-time from wiki when Redis all-time is empty', async () => {
+    const backup = makeMinimalBackup({
+      subredditId: 'sub-empty',
+      alltime: [makeLeaderboardEntry('recovered', { bestCorrectWords: 99, bestTimeSeconds: 40 })],
+      profiles: [
+        {
+          username: 'recovered',
+          bestWpm: 90,
+          bestAccuracy: 95,
+          totalChallenges: 2,
+          badges: [],
+          domainCounts: {},
+          lastPlayed: Date.now(),
+          joinedAt: Date.now(),
+          totalWordsTyped: 99,
+          bestCorrectWords: 99,
+          bestTimeSeconds: 40,
+        },
+      ],
+    });
+
+    const result = await ensureLeaderboardsHydrated(
+      redis,
+      wikiWithBackup(backup),
+      'sub-empty',
+      'echokeys_dev'
+    );
+    expect(result.attempted).toBe(true);
+    expect(result.restored).toBe(true);
+
+    const allTime = await getAllTimeLeaderboard(redis, 'sub-empty');
+    expect(allTime[0]?.username).toBe('recovered');
+    expect(allTime[0]?.bestCorrectWords).toBe(99);
+  });
+
+  it('does not attempt restore when all-time already has rows', async () => {
+    await saveScore(
+      redis,
+      makeScore({ id: 'sc-live', username: 'live', communityId: 'sub-full', correctWords: 10 })
+    );
+    const result = await ensureLeaderboardsHydrated(
+      redis,
+      wikiWithBackup(makeMinimalBackup({ alltime: [makeLeaderboardEntry('ghost')] })),
+      'sub-full',
+      'echokeys_dev'
+    );
+    expect(result.attempted).toBe(false);
   });
 });

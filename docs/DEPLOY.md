@@ -56,7 +56,7 @@ npm run publish:app     # build + upload + publish
 |---------|--------|
 | Scores rejected | Auth, race session, speed ceiling, rate limit |
 | Empty leaderboard | New week, or no eligible runs yet |
-| Ranks lost after reinstall | Wiki restore on install; wiki must be enabled |
+| Ranks lost after reinstall | Subreddit menu → **Restore Echokeys Leaderboard** (mods). Opening Rankings auto-hydrates from wiki when all-time is empty. Check `wiki/echokeys/leaderboard-backup` |
 | Integrity degraded | Logs `[Permanence]`; inspect checksum issues |
 | Knowledge base errors | Rebuild after editing `content/knowledge-base.txt` |
 

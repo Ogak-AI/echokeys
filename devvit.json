@@ -58,6 +58,14 @@
         "forUserType": "moderator",
         "endpoint": "/internal/menu/create-tournament",
         "postFilter": "none"
+      },
+      {
+        "label": "Restore Echokeys Leaderboard",
+        "description": "Moderators only: re-import ranks from the private wiki backup after Redis wipe/reinstall",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/restore-leaderboard",
+        "postFilter": "none"
       }
     ]
   },

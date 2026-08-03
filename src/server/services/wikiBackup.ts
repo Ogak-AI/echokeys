@@ -265,12 +265,90 @@ export async function syncLeaderboardWithWiki(
   subredditId: string,
   subredditName: string
 ): Promise<void> {
-  await restoreLeaderboardFromWiki(redis, redditApi, subredditId, subredditName);
-  await backupLeaderboardToWiki(
+  const restore = await restoreLeaderboardFromWiki(
+    redis,
+    redditApi,
+    subredditId,
+    subredditName
+  );
+  if (restore.restored) {
+    console.log(
+      `[WikiBackup] Install/upgrade restored ${restore.players} players into Redis`
+    );
+  } else {
+    console.warn(
+      `[WikiBackup] Install/upgrade restore did not import data (wiki empty, unreadable, or already merged). sub=${subredditName}`
+    );
+  }
+
+  // Never push an empty Redis state over a non-empty wiki (backupHasData guards this).
+  const backedUp = await backupLeaderboardToWiki(
     redis,
     redditApi,
     subredditId,
     subredditName,
     'Echokeys leaderboard sync after install/upgrade'
   );
+  if (!backedUp) {
+    console.warn(
+      `[WikiBackup] Post-sync backup skipped or failed (no Redis data or wiki write error)`
+    );
+  }
+}
+
+/**
+ * If all-time board is empty, try one wiki restore (throttled).
+ * Recovers ranks after Redis wipe (reinstall / playtest) without waiting for a menu click.
+ * Safe: import only merges; never deletes existing rows.
+ */
+export async function ensureLeaderboardsHydrated(
+  redis: RedisLike,
+  redditApi: WikiReddit,
+  subredditId: string,
+  subredditName: string
+): Promise<{ attempted: boolean; restored: boolean; players: number }> {
+  if (!subredditName?.trim()) {
+    return { attempted: false, restored: false, players: 0 };
+  }
+
+  const alltimeRaw = await redis.get(`lb:${subredditId}:alltime`);
+  let alltimeEmpty = true;
+  if (alltimeRaw) {
+    try {
+      const parsed = JSON.parse(alltimeRaw) as unknown;
+      alltimeEmpty = !Array.isArray(parsed) || parsed.length === 0;
+    } catch {
+      alltimeEmpty = true;
+    }
+  }
+
+  // Fresh communities have empty all-time forever — only auto-restore when empty.
+  if (!alltimeEmpty) {
+    return { attempted: false, restored: false, players: 0 };
+  }
+
+  // At most one auto-restore attempt per 2 minutes per community.
+  const throttleKey = `echokeys:auto-restore:last:${subredditId}`;
+  const lastRaw = await redis.get(throttleKey);
+  const last = lastRaw ? parseInt(lastRaw, 10) : 0;
+  if (Number.isFinite(last) && Date.now() - last < 2 * 60 * 1000) {
+    return { attempted: false, restored: false, players: 0 };
+  }
+  await redis.set(throttleKey, String(Date.now()));
+
+  console.warn(
+    `[WikiBackup] All-time board empty for ${subredditId} — attempting wiki restore from r/${bareSubredditName(subredditName)}`
+  );
+  const result = await restoreLeaderboardFromWiki(
+    redis,
+    redditApi,
+    subredditId,
+    subredditName
+  );
+  if (result.restored) {
+    console.log(
+      `[WikiBackup] Auto-restore recovered ${result.players} players for ${subredditId}`
+    );
+  }
+  return { attempted: true, restored: result.restored, players: result.players };
 }
